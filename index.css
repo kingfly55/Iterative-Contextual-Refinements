@@ -663,177 +663,10 @@ textarea.input-base {
     text-transform: capitalize;
 }
 
-/* Math Mode - Strategic Solver and Hypothesis Explorer Styles */
-.strategies-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 1.5rem;
-    margin-top: 1.5rem;
-}
-
-.strategy-card {
-    background-color: rgba(var(--card-bg-base-rgb), 0.3);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-md);
-    padding: 1.25rem;
-    box-shadow: var(--shadow-sm);
-}
-
-.strategy-card h5 {
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--text-color);
-    margin: 0 0 0.75rem 0;
-}
-
-.strategy-text {
-    font-size: 0.9rem;
-    color: var(--text-secondary-color);
-    line-height: 1.5;
-    margin-bottom: 1rem;
-}
-
-.sub-strategies-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.75rem;
-}
-
-.sub-strategy-card {
-    background-color: rgba(var(--bg-color-rgb), 0.4);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-sm);
-    padding: 0.75rem;
-    transition: all var(--transition-speed-fast);
-}
-
-.sub-strategy-card.status-completed {
-    border-color: var(--accent-green);
-    box-shadow: 0 0 8px -2px var(--success-glow);
-}
-
-.sub-strategy-card.status-processing {
-    border-color: var(--accent-yellow);
-    box-shadow: 0 0 8px -2px rgba(var(--accent-yellow-rgb), 0.3);
-}
-
-.sub-strategy-card.status-error {
-    border-color: var(--accent-pink);
-    box-shadow: 0 0 8px -2px var(--error-glow);
-}
-
-.sub-strategy-card h6 {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--text-color);
-    margin: 0 0 0.5rem 0;
-}
-
-.sub-strategy-text {
-    font-size: 0.75rem;
-    color: var(--text-tertiary-color);
-    line-height: 1.4;
-}
-
-.hypotheses-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-    gap: 1.5rem;
-    margin-top: 1.5rem;
-}
-
-.hypothesis-card {
-    background-color: rgba(var(--card-bg-base-rgb), 0.3);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-md);
-    padding: 1.25rem;
-    box-shadow: var(--shadow-sm);
-    transition: all var(--transition-speed);
-}
-
-.hypothesis-card.hypothesis-proven {
-    border-color: var(--accent-green);
-    box-shadow: 0 0 15px -3px var(--success-glow);
-    background-color: rgba(var(--accent-green-rgb), 0.05);
-}
-
-.hypothesis-card.hypothesis-refuted {
-    border-color: var(--accent-pink);
-    box-shadow: 0 0 15px -3px var(--error-glow);
-    background-color: rgba(var(--accent-pink-rgb), 0.05);
-}
-
-.hypothesis-card.hypothesis-contradiction {
-    border-color: var(--accent-purple);
-    box-shadow: 0 0 15px -3px var(--purple-glow);
-    background-color: rgba(var(--accent-purple-rgb), 0.05);
-}
-
-.hypothesis-card h5 {
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--text-color);
-    margin: 0 0 0.75rem 0;
-}
-
-.hypothesis-text {
-    font-size: 0.95rem;
-    color: var(--text-secondary-color);
-    line-height: 1.6;
-    margin-bottom: 1rem;
-    font-style: italic;
-}
-
-.hypothesis-status {
-    margin-bottom: 1rem;
-}
-
-.prover-disprover-status {
-    display: flex;
-    gap: 1rem;
-    align-items: center;
-}
-
-.prover-status, .disprover-status {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.agent-label {
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: var(--text-tertiary-color);
-}
-
-.track-description {
-    font-size: 0.9rem;
-    color: var(--text-secondary-color);
-    margin-bottom: 1rem;
-    font-style: italic;
-}
-.api-key-status-message { padding: 0.5rem 1rem; margin-bottom: 0.5rem;}
 .status-ok, .status-completed { background-color: rgba(var(--accent-green-rgb), 0.15); color: var(--accent-green); }
 .status-error, .status-failed { background-color: rgba(var(--accent-pink-rgb), 0.15); color: var(--accent-pink); }
 .status-processing, .status-retrying, .status-orchestrating, .status-orchestrating_retrying, .status-processing_workers, .status-stopping { background-color: rgba(var(--accent-yellow-rgb), 0.15); color: var(--accent-yellow); }
 .status-idle, .status-pending, .status-stopped, .status-cancelled { background-color: rgba(var(--card-bg-base-rgb), 0.4); color: var(--text-tertiary-color); }
-
-.tab-button.status-math-error, .tab-button.status-error { border-bottom-color: rgba(var(--accent-pink-rgb), 0.6); }
-.tab-button.status-math-processing, .tab-button.status-processing { border-bottom-color: rgba(var(--accent-yellow-rgb), 0.6); }
-.tab-button.status-math-completed, .tab-button.status-completed { border-bottom-color: rgba(var(--accent-green-rgb), 0.6); }
-
-.tab-button.active.status-math-error, .tab-button.active.status-error { border-bottom-color: var(--accent-pink); }
-.tab-button.active.status-math-processing, .tab-button.active.status-processing { border-bottom-color: var(--accent-yellow); }
-.tab-button.active.status-math-completed, .tab-button.active.status-completed {
-  border-bottom-color: var(--accent-green);
-  box-shadow: 0 2px 20px -5px var(--success-glow);
-}
-#math-tab-final-result.status-math-completed.active {
-    color: var(--accent-green);
-    font-weight: 700;
-    box-shadow: 0 4px 25px -5px var(--success-glow);
-}
-
 
 .status-message {
   padding: 1rem 1.5rem; 
@@ -1394,16 +1227,64 @@ summary.prompt-group-title::-webkit-details-marker { display: none; }
   color: var(--accent-purple);
 }
 
-/* Math Mode Specific Layout */
-.math-problem-display {
+/* ========================================================================== */
+/* == MATH MODE UI REFRESH ================================================== */
+/* ========================================================================== */
+
+@keyframes pulse-glow-yellow {
+  0%, 100% { box-shadow: 0 0 12px -2px rgba(var(--accent-yellow-rgb), 0.25); }
+  50% { box-shadow: 0 0 16px 0px rgba(var(--accent-yellow-rgb), 0.4); }
+}
+
+/* Math Mode Tabs */
+.tab-button.math-mode-tab {
+  border-bottom: 3px solid transparent;
+  padding-bottom: calc(1rem - 1px);
+  margin-bottom: -2px; /* Pull up to overlap border-bottom */
+}
+.tab-button.math-mode-tab.active {
+  background-color: rgba(var(--card-bg-base-rgb), 0.25);
+  border-bottom-color: var(--accent-purple);
+  color: var(--text-color);
+  box-shadow: 0 4px 15px -5px var(--purple-glow);
+}
+.tab-button.math-mode-tab.status-math-error:not(.active) { border-bottom-color: rgba(var(--accent-pink-rgb), 0.4); }
+.tab-button.math-mode-tab.status-math-processing:not(.active) { border-bottom-color: rgba(var(--accent-yellow-rgb), 0.4); }
+.tab-button.math-mode-tab.status-math-completed:not(.active) { border-bottom-color: rgba(var(--accent-green-rgb), 0.4); }
+
+.tab-button.math-mode-tab.active.status-math-error { border-bottom-color: var(--accent-pink); box-shadow: 0 4px 15px -5px var(--error-glow); }
+.tab-button.math-mode-tab.active.status-math-processing { border-bottom-color: var(--accent-yellow); box-shadow: 0 4px 15px -5px rgba(var(--accent-yellow-rgb),0.3); animation: pulse-glow-yellow 2s infinite; }
+.tab-button.math-mode-tab.active.status-math-completed { border-bottom-color: var(--accent-green); box-shadow: 0 4px 15px -5px var(--success-glow); }
+
+#math-tab-final-result.status-math-completed.active {
+    color: var(--accent-green);
+    font-weight: 700;
+    border-bottom-color: var(--accent-green);
+}
+
+/* General Math Mode Card Style */
+.math-problem-display,
+.math-strategic-solver,
+.math-hypothesis-explorer,
+.math-final-result,
+.math-strategy-branch {
+    background: var(--card-bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    padding: 2rem;
+    backdrop-filter: var(--card-blur-effect);
+    -webkit-backdrop-filter: var(--card-blur-effect);
+    box-shadow: var(--shadow-lg);
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
 }
+
 .math-problem-display .problem-text {
-    font-size: 1.1rem;
-    line-height: 1.6;
+    font-size: 1.2rem;
+    line-height: 1.7;
     color: var(--text-secondary-color);
+    font-style: italic;
 }
 .math-problem-display .problem-image-display {
     max-width: 100%;
@@ -1411,68 +1292,208 @@ summary.prompt-group-title::-webkit-details-marker { display: none; }
     border-radius: var(--border-radius-md);
     border: 1px solid var(--border-color);
 }
-.math-strategy-branch .strategy-text {
+.track-description {
     font-size: 1rem;
     color: var(--text-secondary-color);
-    margin-top: -1rem;
-    margin-bottom: 1rem;
+    margin: -1rem 0 1rem 0;
+    max-width: 70ch;
 }
+.math-strategy-branch .strategy-text {
+    font-size: 1.1rem;
+    color: var(--text-secondary-color);
+    margin-top: -1.5rem;
+    margin-bottom: 1rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* Strategic Solver Overview Tab */
+.strategies-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1rem;
+}
+.strategy-card {
+    background-color: rgba(var(--card-bg-base-rgb), 0.3);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-md);
+    transition: all var(--transition-speed-fast);
+}
+.strategy-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--border-hover-color);
+}
+.strategy-card h5 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-color);
+    margin: 0 0 1rem 0;
+}
+.strategy-text {
+    font-size: 0.95rem;
+    color: var(--text-secondary-color);
+    line-height: 1.6;
+    margin-bottom: 1.5rem;
+    min-height: 80px;
+}
+.sub-strategies-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+    border-top: 1px solid var(--border-color);
+    padding-top: 1.5rem;
+}
+.sub-strategy-card {
+    background-color: rgba(var(--bg-color-rgb), 0.4);
+    border: 1px solid transparent;
+    border-radius: var(--border-radius-sm);
+    padding: 0.75rem;
+    text-align: center;
+    transition: all var(--transition-speed-fast);
+}
+.sub-strategy-card h6 {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary-color);
+    margin: 0 0 0.5rem 0;
+}
+.sub-strategy-text {
+    display: none; /* Hide text on overview */
+}
+.sub-strategy-card::after {
+  content: '';
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin: 0.5rem auto 0;
+  background-color: var(--text-tertiary-color); /* pending */
+  transition: all var(--transition-speed-fast);
+}
+.sub-strategy-card.status-completed::after { background-color: var(--accent-green); box-shadow: 0 0 8px -2px var(--success-glow); }
+.sub-strategy-card.status-processing::after,
+.sub-strategy-card.status-retrying::after { background-color: var(--accent-yellow); box-shadow: 0 0 8px -2px rgba(var(--accent-yellow-rgb), 0.4); animation: pulse-glow-yellow 2s infinite; }
+.sub-strategy-card.status-error::after { background-color: var(--accent-pink); box-shadow: 0 0 8px -2px var(--error-glow); }
+
+/* Hypothesis Explorer Tab */
+.hypotheses-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1rem;
+}
+.hypothesis-card {
+    background-color: var(--card-bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-md);
+    transition: all var(--transition-speed);
+    position: relative;
+    overflow: hidden;
+}
+.hypothesis-card::before {
+  content: '';
+  position: absolute;
+  top: 0; right: 0;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  opacity: 0.05;
+  transform: translate(40%, -40%);
+  transition: opacity var(--transition-speed);
+}
+.hypothesis-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-xl); border-color: var(--border-hover-color); }
+.hypothesis-card h5 { font-size: 1.1rem; color: var(--text-color); margin: 0 0 0.75rem 0; }
+.hypothesis-text { font-size: 1rem; color: var(--text-secondary-color); line-height: 1.7; margin-bottom: 1.5rem; font-style: italic; }
+.hypothesis-status { margin-bottom: 1.5rem; }
+.prover-disprover-status { display: flex; gap: 1.5rem; align-items: center; border-top: 1px solid var(--border-color); padding-top: 1.5rem; }
+.prover-status, .disprover-status { display: flex; align-items: center; gap: 0.5rem; }
+.agent-label { font-size: 0.85rem; font-weight: 500; color: var(--text-tertiary-color); }
+/* Hypothesis status styling */
+.hypothesis-card.hypothesis-proven { border-color: rgba(var(--accent-green-rgb), 0.5); }
+.hypothesis-card.hypothesis-proven::before { background-color: var(--accent-green); opacity: 0.1; }
+.hypothesis-card.hypothesis-refuted { border-color: rgba(var(--accent-pink-rgb), 0.5); }
+.hypothesis-card.hypothesis-refuted::before { background-color: var(--accent-pink); opacity: 0.1; }
+.hypothesis-card.hypothesis-contradiction { border-color: rgba(var(--accent-purple-rgb), 0.5); }
+.hypothesis-card.hypothesis-contradiction::before { background-color: var(--accent-purple); opacity: 0.1; }
+.hypothesis-card.status-processing { animation: pulse-glow-yellow 2.5s infinite; }
+
+/* Strategy Detail View */
 .math-sub-strategies-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-    gap: 1.5rem;
+    grid-template-columns: 1fr;
+    gap: 2rem;
     margin-top: 1.5rem;
 }
 .math-sub-strategy-card {
-    padding: 1rem;
+    padding: 1.5rem;
+    background-color: rgba(var(--bg-color-rgb), 0.3);
 }
 .math-sub-strategy-card .sub-strategy-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem;
+    margin-bottom: 1.5rem;
 }
 .sub-strategy-title {
-    font-size: 1rem;
+    font-size: 1.25rem;
     font-weight: 600;
     color: var(--text-color);
     margin: 0;
 }
-.sub-strategy-text {
-    font-size: 0.9rem;
+.math-sub-strategy-card .sub-strategy-text {
+    font-size: 1rem;
     color: var(--text-secondary-color);
-    line-height: 1.6;
+    line-height: 1.7;
+    margin-bottom: 1.5rem;
 }
 .solution-details .code-block-wrapper, .prompt-details .scrollable-content-area {
     margin-top: 1rem;
 }
 
+/* Judging & Final Result */
 .math-judging-section {
     margin-top: 2rem;
-    padding-top: 2rem;
-    border-top: 1px solid var(--border-color);
-    background: linear-gradient(rgba(var(--accent-purple-rgb), 0.03), transparent);
+    padding: 2rem;
+    border-radius: var(--border-radius-lg);
+    background: linear-gradient(145deg, rgba(var(--accent-purple-rgb), 0.05), rgba(var(--accent-purple-rgb), 0));
+    border: 1px solid rgba(var(--accent-purple-rgb), 0.2);
 }
-
+.math-final-result {
+    border-color: var(--accent-green);
+    box-shadow: 0 0 30px -5px var(--success-glow);
+}
+.math-final-result .track-description {
+    font-size: 1.1rem;
+}
 .math-judging-section .markdown-content h3, 
-#pipeline-content-final-result .markdown-content h3 {
-    font-size: 1rem;
+#pipeline-content-final-result .markdown-content h3,
+.final-solution-display .markdown-content h3 {
+    font-size: 1.1rem;
     font-weight: 600;
     color: var(--accent-purple);
     margin-top: 1.5rem;
-    margin-bottom: 0.75rem;
-    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
     border-bottom: 1px solid rgba(var(--accent-purple-rgb), 0.2);
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
-
+#pipeline-content-final-result .markdown-content h3 {
+  color: var(--accent-green);
+  border-bottom-color: rgba(var(--accent-green-rgb), 0.2);
+}
 .math-judging-section .markdown-content hr,
 #pipeline-content-final-result .markdown-content hr {
     border: none;
     height: 1px;
-    background-color: var(--border-color);
-    margin: 1.5rem 0;
+    background-image: linear-gradient(to right, transparent, var(--border-color), transparent);
+    margin: 2rem 0;
 }
 
 
