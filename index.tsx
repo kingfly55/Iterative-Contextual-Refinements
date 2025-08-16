@@ -172,6 +172,7 @@ interface MathPipelineState {
     error?: string; // Overall error for the whole process
     isStopRequested?: boolean;
     activeTabId?: string; // e.g., "problem-details", "strategic-solver", "hypothesis-explorer", "final-result"
+    activeStrategyTab?: number;
     retryAttempt?: number; // for initial strategy generation step
 
     // New fields for Hypothesis Explorer (Track B)
@@ -962,6 +963,10 @@ function activateTab(idToActivate: number | string) {
         const contentPane = document.getElementById(`pipeline-content-${idToActivate}`);
         if (tabButton) tabButton.classList.add('active');
         if (contentPane) contentPane.classList.add('active');
+
+        if (idToActivate === 'strategic-solver' && activeMathPipeline.initialStrategies.length > 0) {
+            activateStrategyTab(activeMathPipeline.activeStrategyTab ?? 0);
+        }
 
     } else if (currentMode === 'react' && activeReactPipeline) {
         activeReactPipeline.activeTabId = idToActivate as string;
@@ -2212,6 +2217,7 @@ async function startMathSolvingProcess(problemText: string, imageBase64?: string
         status: 'processing',
         isStopRequested: false,
         activeTabId: 'problem-details',
+        activeStrategyTab: 0,
         strategicSolverComplete: false,
         hypothesisExplorerComplete: false,
         knowledgePacket: ''
@@ -2876,6 +2882,253 @@ async function makeMathJudgingApiCall(
     throw new Error(`API call for ${stepDescription} failed all retries.`);
 }
 
+function openSolutionModal(subStrategyId: string) {
+    const subStrategy = activeMathPipeline?.initialStrategies.flatMap(ms => ms.subStrategies).find(ss => ss.id === subStrategyId);
+    if (!subStrategy) return;
+
+    const modalOverlay = document.createElement('div');
+    modalOverlay.id = 'solution-modal-overlay';
+    modalOverlay.className = 'modal-overlay';
+    modalOverlay.style.display = 'flex';
+
+    const modalContent = document.createElement('div');
+    modalContent.className = 'modal-content';
+    modalContent.setAttribute('role', 'dialog');
+    modalContent.setAttribute('aria-modal', 'true');
+    modalContent.setAttribute('aria-labelledby', 'solution-modal-title');
+
+    const modalHeader = document.createElement('header');
+    modalHeader.className = 'modal-header';
+
+    const modalTitle = document.createElement('h2');
+    modalTitle.id = 'solution-modal-title';
+    modalTitle.className = 'modal-title';
+    modalTitle.textContent = 'Solution Details';
+    modalHeader.appendChild(modalTitle);
+
+    const closeModalButton = document.createElement('button');
+    closeModalButton.className = 'modal-close-button';
+    closeModalButton.setAttribute('aria-label', 'Close Solution Modal');
+    closeModalButton.innerHTML = '<span class="material-symbols-outlined">close</span>';
+    closeModalButton.addEventListener('click', closeSolutionModal);
+    modalHeader.appendChild(closeModalButton);
+
+    modalContent.appendChild(modalHeader);
+
+    const modalBody = document.createElement('div');
+    modalBody.className = 'modal-body';
+
+    const solutionModalLayout = document.createElement('div');
+    solutionModalLayout.className = 'solution-modal-layout';
+
+    // Navigation panel (left side)
+    const solutionNav = document.createElement('nav');
+    solutionNav.className = 'solution-nav custom-scrollbar';
+    
+    const navTitle = document.createElement('div');
+    navTitle.className = 'solution-nav-title';
+    navTitle.textContent = 'Solution Components';
+    solutionNav.appendChild(navTitle);
+
+    const navItems = [
+        { id: 'side-by-side', text: 'Side by Side View', icon: 'view_column' },
+        { id: 'diff-view', text: 'Diff Analysis', icon: 'difference' }
+    ];
+
+    navItems.forEach((item, index) => {
+        const navItem = document.createElement('div');
+        navItem.className = 'solution-nav-item';
+        if (index === 0) navItem.classList.add('active');
+        navItem.dataset.target = item.id;
+        
+        const icon = document.createElement('span');
+        icon.className = 'material-symbols-outlined';
+        icon.textContent = item.icon;
+        navItem.appendChild(icon);
+        
+        const text = document.createElement('span');
+        text.textContent = item.text;
+        navItem.appendChild(text);
+        
+        navItem.addEventListener('click', () => activateSolutionTab(item.id));
+        solutionNav.appendChild(navItem);
+    });
+
+    solutionModalLayout.appendChild(solutionNav);
+
+    // Content panel (right side)
+    const solutionContent = document.createElement('div');
+    solutionContent.className = 'solution-content custom-scrollbar';
+
+    // Side by Side Panel (Default View)
+    const sideBySidePanel = document.createElement('div');
+    sideBySidePanel.className = 'solution-content-pane active';
+    sideBySidePanel.id = 'side-by-side';
+    
+    const sideBySideTitle = document.createElement('h3');
+    sideBySideTitle.className = 'solution-pane-title';
+    sideBySideTitle.innerHTML = '<span class="material-symbols-outlined">view_column</span>Solution Comparison';
+    sideBySidePanel.appendChild(sideBySideTitle);
+    
+    const solutionComparison = document.createElement('div');
+    solutionComparison.className = 'solution-comparison-grid';
+    
+    const leftPanel = document.createElement('div');
+    leftPanel.className = 'comparison-panel';
+    const leftHeader = document.createElement('h4');
+    leftHeader.className = 'comparison-panel-title';
+    leftHeader.innerHTML = '<span class="material-symbols-outlined">psychology</span>Attempted Solution';
+    leftPanel.appendChild(leftHeader);
+    const leftContent = document.createElement('div');
+    leftContent.className = 'comparison-content custom-scrollbar';
+    leftContent.innerHTML = renderMarkdown(subStrategy.solutionAttempt || 'Solution attempt not available');
+    leftPanel.appendChild(leftContent);
+    
+    const rightPanel = document.createElement('div');
+    rightPanel.className = 'comparison-panel';
+    const rightHeader = document.createElement('h4');
+    rightHeader.className = 'comparison-panel-title';
+    rightHeader.innerHTML = '<span class="material-symbols-outlined">auto_fix_high</span>Refined Solution';
+    rightPanel.appendChild(rightHeader);
+    const rightContent = document.createElement('div');
+    rightContent.className = 'comparison-content custom-scrollbar';
+    rightContent.innerHTML = renderMarkdown(subStrategy.refinedSolution || 'Refined solution not available');
+    rightPanel.appendChild(rightContent);
+    
+    solutionComparison.appendChild(leftPanel);
+    solutionComparison.appendChild(rightPanel);
+    sideBySidePanel.appendChild(solutionComparison);
+
+    // Diff Analysis Panel (Full Screen Diff)
+    const diffPanel = document.createElement('div');
+    diffPanel.className = 'solution-content-pane';
+    diffPanel.id = 'diff-view';
+    
+    const diffTitle = document.createElement('h3');
+    diffTitle.className = 'solution-pane-title';
+    diffTitle.innerHTML = '<span class="material-symbols-outlined">difference</span>Detailed Diff Analysis';
+    diffPanel.appendChild(diffTitle);
+    
+    const diffCard = document.createElement('div');
+    diffCard.className = 'solution-card diff-card-fullscreen';
+    
+    const diffCardHeader = document.createElement('div');
+    diffCardHeader.className = 'solution-card-header';
+    
+    const diffCardTitle = document.createElement('span');
+    diffCardTitle.className = 'solution-card-title';
+    diffCardTitle.textContent = 'Line-by-Line Comparison';
+    diffCardHeader.appendChild(diffCardTitle);
+    
+    const diffControls = document.createElement('div');
+    diffControls.className = 'diff-controls';
+    
+    const generateDiffButton = document.createElement('button');
+    generateDiffButton.className = 'button';
+    generateDiffButton.innerHTML = '<span class="material-symbols-outlined">refresh</span><span class="button-text">Generate Diff</span>';
+    diffControls.appendChild(generateDiffButton);
+    
+    const clearDiffButton = document.createElement('button');
+    clearDiffButton.className = 'button';
+    clearDiffButton.innerHTML = '<span class="material-symbols-outlined">clear</span><span class="button-text">Clear</span>';
+    diffControls.appendChild(clearDiffButton);
+    
+    diffCardHeader.appendChild(diffControls);
+    diffCard.appendChild(diffCardHeader);
+    
+    const diffCardBody = document.createElement('div');
+    diffCardBody.className = 'solution-card-body';
+    
+    const diffOutput = document.createElement('div');
+    diffOutput.className = 'diff-output-container-fullscreen custom-scrollbar';
+    diffOutput.innerHTML = '<div class="empty-state-message">Click "Generate Diff" to see detailed line-by-line changes between the attempted and refined solutions</div>';
+    diffCardBody.appendChild(diffOutput);
+    diffCard.appendChild(diffCardBody);
+    diffPanel.appendChild(diffCard);
+
+    // Diff generation logic
+    const generateDiff = () => {
+        const diff = Diff.diffLines(subStrategy.solutionAttempt || '', subStrategy.refinedSolution || '');
+        let diffHtml = '<div class="diff-view-fullscreen">';
+        let lineNumber = 1;
+        
+        diff.forEach(part => {
+            const lines = part.value.split('\n');
+            lines.forEach((line, index) => {
+                if (index === lines.length - 1 && line === '') return; // Skip empty last line
+                
+                const colorClass = part.added ? 'diff-added' : part.removed ? 'diff-removed' : 'diff-neutral';
+                const prefix = part.added ? '+' : part.removed ? '-' : ' ';
+                
+                diffHtml += `<div class="diff-line ${colorClass}">
+                    <span class="diff-line-number">${lineNumber}</span>
+                    <span class="diff-line-prefix">${prefix}</span>
+                    <span class="diff-line-content">${escapeHtml(line)}</span>
+                </div>`;
+                
+                if (!part.removed) lineNumber++;
+            });
+        });
+        
+        diffHtml += '</div>';
+        diffOutput.innerHTML = diffHtml;
+    };
+
+    generateDiffButton.addEventListener('click', generateDiff);
+    clearDiffButton.addEventListener('click', () => {
+        diffOutput.innerHTML = '<div class="empty-state-message">Click "Generate Diff" to see detailed line-by-line changes between the attempted and refined solutions</div>';
+    });
+
+    solutionContent.appendChild(sideBySidePanel);
+    solutionContent.appendChild(diffPanel);
+    solutionModalLayout.appendChild(solutionContent);
+    modalBody.appendChild(solutionModalLayout);
+    modalContent.appendChild(modalBody);
+    modalOverlay.appendChild(modalContent);
+    document.body.appendChild(modalOverlay);
+
+    // Trigger the modal animation
+    setTimeout(() => {
+        modalOverlay.classList.add('is-visible');
+    }, 10);
+}
+
+function activateSolutionTab(targetId: string) {
+    // Update navigation
+    const navItems = document.querySelectorAll('.solution-nav-item');
+    navItems.forEach(item => {
+        item.classList.toggle('active', item.dataset.target === targetId);
+    });
+
+    // Update content panels
+    const contentPanes = document.querySelectorAll('.solution-content-pane');
+    contentPanes.forEach(pane => {
+        pane.classList.toggle('active', pane.id === targetId);
+    });
+}
+
+function closeSolutionModal() {
+    const modalOverlay = document.getElementById('solution-modal-overlay');
+    if (modalOverlay) {
+        modalOverlay.remove();
+    }
+}
+
+function activateStrategyTab(strategyIndex: number) {
+    if (!activeMathPipeline) return;
+    activeMathPipeline.activeStrategyTab = strategyIndex;
+
+    const subTabButtons = document.querySelectorAll('.sub-tab-button');
+    subTabButtons.forEach((button, index) => {
+        button.classList.toggle('active', index === strategyIndex);
+    });
+
+    const subTabContents = document.querySelectorAll('.sub-tab-content');
+    subTabContents.forEach((content, index) => {
+        content.classList.toggle('active', index === strategyIndex);
+    });
+}
+
 function renderActiveMathPipeline() {
     if (currentMode !== 'math' || !pipelinesContentContainer || !tabsNavContainer) {
         if (currentMode !== 'math' && tabsNavContainer && pipelinesContentContainer) {
@@ -2894,77 +3147,53 @@ function renderActiveMathPipeline() {
     tabsNavContainer.innerHTML = '';
     pipelinesContentContainer.innerHTML = '';
 
-    const problemTabButton = document.createElement('button');
-    problemTabButton.className = 'tab-button math-mode-tab';
-    problemTabButton.id = `math-tab-problem-details`;
-    problemTabButton.textContent = 'Problem Details';
-    problemTabButton.setAttribute('role', 'tab');
-    problemTabButton.setAttribute('aria-controls', `pipeline-content-problem-details`);
-    problemTabButton.addEventListener('click', () => activateTab('problem-details'));
-    tabsNavContainer.appendChild(problemTabButton);
+    // Main Tabs
+    const mainTabs = [
+        { id: 'problem-details', text: 'Problem Details' },
+        { id: 'strategic-solver', text: 'Strategic Solver' },
+        { id: 'hypothesis-explorer', text: 'Hypothesis Explorer' },
+        { id: 'final-result', text: 'Final Result' }
+    ];
 
-    // Strategic Solver Tab
-    const strategicSolverTabButton = document.createElement('button');
-    strategicSolverTabButton.className = 'tab-button math-mode-tab';
-    strategicSolverTabButton.id = `math-tab-strategic-solver`;
-    strategicSolverTabButton.textContent = 'Strategic Solver';
-    strategicSolverTabButton.setAttribute('role', 'tab');
-    strategicSolverTabButton.setAttribute('aria-controls', `pipeline-content-strategic-solver`);
-    strategicSolverTabButton.addEventListener('click', () => activateTab('strategic-solver'));
+    mainTabs.forEach(tabInfo => {
+        const tabButton = document.createElement('button');
+        tabButton.className = 'tab-button math-mode-tab';
+        tabButton.id = `math-tab-${tabInfo.id}`;
+        tabButton.textContent = tabInfo.text;
+        tabButton.setAttribute('role', 'tab');
+        tabButton.setAttribute('aria-controls', `pipeline-content-${tabInfo.id}`);
+        tabButton.addEventListener('click', () => activateTab(tabInfo.id));
+        tabsNavContainer.appendChild(tabButton);
 
-    // Set status class based on strategic solver completion
-    if (mathProcess.strategicSolverComplete) {
-        strategicSolverTabButton.classList.add('status-math-completed');
-    } else if (mathProcess.status === 'processing') {
-        strategicSolverTabButton.classList.add('status-math-processing');
-    }
+        if (tabInfo.id === 'strategic-solver') {
+            if (mathProcess.strategicSolverComplete) {
+                tabButton.classList.add('status-math-completed');
+            } else if (mathProcess.status === 'processing') {
+                tabButton.classList.add('status-math-processing');
+            }
+        } else if (tabInfo.id === 'hypothesis-explorer') {
+            if (mathProcess.hypothesisExplorerComplete) {
+                tabButton.classList.add('status-math-completed');
+            } else if (mathProcess.status === 'processing') {
+                tabButton.classList.add('status-math-processing');
+            }
+        } else if (tabInfo.id === 'final-result') {
+            if (mathProcess.finalJudgingStatus === 'completed') {
+                tabButton.classList.add('status-math-completed');
+            } else if (mathProcess.finalJudgingStatus === 'processing' || mathProcess.finalJudgingStatus === 'retrying') {
+                tabButton.classList.add('status-math-processing');
+            } else if (mathProcess.finalJudgingStatus === 'error') {
+                tabButton.classList.add('status-math-error');
+            }
+        }
+    });
 
-    tabsNavContainer.appendChild(strategicSolverTabButton);
-
-    // Hypothesis Explorer Tab
-    const hypothesisExplorerTabButton = document.createElement('button');
-    hypothesisExplorerTabButton.className = 'tab-button math-mode-tab';
-    hypothesisExplorerTabButton.id = `math-tab-hypothesis-explorer`;
-    hypothesisExplorerTabButton.textContent = 'Hypothesis Explorer';
-    hypothesisExplorerTabButton.setAttribute('role', 'tab');
-    hypothesisExplorerTabButton.setAttribute('aria-controls', `pipeline-content-hypothesis-explorer`);
-    hypothesisExplorerTabButton.addEventListener('click', () => activateTab('hypothesis-explorer'));
-
-    // Set status class based on hypothesis explorer completion
-    if (mathProcess.hypothesisExplorerComplete) {
-        hypothesisExplorerTabButton.classList.add('status-math-completed');
-    } else if (mathProcess.status === 'processing') {
-        hypothesisExplorerTabButton.classList.add('status-math-processing');
-    }
-
-    tabsNavContainer.appendChild(hypothesisExplorerTabButton);
-
-    // Final Result Tab
-    const finalResultTabButton = document.createElement('button');
-    finalResultTabButton.className = 'tab-button math-mode-tab';
-    finalResultTabButton.id = `math-tab-final-result`;
-    finalResultTabButton.textContent = 'Final Result';
-    finalResultTabButton.setAttribute('role', 'tab');
-    finalResultTabButton.setAttribute('aria-controls', `pipeline-content-final-result`);
-    finalResultTabButton.addEventListener('click', () => activateTab('final-result'));
-
-    // Set status class based on final judging completion
-    if (mathProcess.finalJudgingStatus === 'completed') {
-        finalResultTabButton.classList.add('status-math-completed');
-    } else if (mathProcess.finalJudgingStatus === 'processing' || mathProcess.finalJudgingStatus === 'retrying') {
-        finalResultTabButton.classList.add('status-math-processing');
-    } else if (mathProcess.finalJudgingStatus === 'error') {
-        finalResultTabButton.classList.add('status-math-error');
-    }
-
-    tabsNavContainer.appendChild(finalResultTabButton);
-
+    // Problem Details Pane
     let problemContentPane = document.createElement('div');
     problemContentPane.id = `pipeline-content-problem-details`;
     problemContentPane.className = 'pipeline-content';
     problemContentPane.setAttribute('role', 'tabpanel');
     problemContentPane.setAttribute('aria-labelledby', `math-tab-problem-details`);
-
     let problemDetailsHtml = `
         <div class="math-problem-display model-detail-card">
             <h4 class="model-title">Original Problem</h4>
@@ -2988,74 +3217,106 @@ function renderActiveMathPipeline() {
     problemContentPane.innerHTML = problemDetailsHtml;
     pipelinesContentContainer.appendChild(problemContentPane);
 
-    // Strategic Solver Content Pane
+    // Strategic Solver Pane
     const strategicSolverContentPane = document.createElement('div');
     strategicSolverContentPane.id = `pipeline-content-strategic-solver`;
     strategicSolverContentPane.className = 'pipeline-content';
     strategicSolverContentPane.setAttribute('role', 'tabpanel');
     strategicSolverContentPane.setAttribute('aria-labelledby', `math-tab-strategic-solver`);
+    
+    const strategicSolverCard = document.createElement('div');
+    strategicSolverCard.className = 'math-strategic-solver model-detail-card';
 
-    let strategicSolverHtml = `<div class="math-strategic-solver model-detail-card">
-        <h4 class="model-title">Strategic Solver (Track A)</h4>
-        <p class="track-description">Generates 3 main strategies, then 3 sub-strategies for each, followed by solution attempts and self-improvement.</p>`;
+    const subTabsNav = document.createElement('div');
+    subTabsNav.className = 'sub-tabs-nav';
 
-    if (mathProcess.strategicSolverComplete) {
-        strategicSolverHtml += `<p class="status-badge status-completed">Strategic Solver Complete</p>`;
-    } else if (mathProcess.status === 'processing') {
-        strategicSolverHtml += `<p class="status-badge status-processing">Strategic Solver In Progress</p>`;
-    }
+    mathProcess.initialStrategies.forEach((_, index) => {
+        const subTabButton = document.createElement('button');
+        subTabButton.className = 'sub-tab-button';
+        subTabButton.id = `sub-tab-strategy-${index}`;
+        subTabButton.textContent = `Strategy ${index + 1}`;
+        if (index === mathProcess.activeStrategyTab) {
+            subTabButton.classList.add('active');
+        }
+        subTabButton.addEventListener('click', () => activateStrategyTab(index));
+        subTabsNav.appendChild(subTabButton);
+    });
 
-    // Display strategies in a grid format
-    if (mathProcess.initialStrategies.length > 0) {
-        strategicSolverHtml += `<div class="strategies-grid">`;
-        mathProcess.initialStrategies.forEach((mainStrategy, index) => {
-            strategicSolverHtml += `<div class="strategy-card">
-                <h5>Strategy ${index + 1}</h5>
-                <p class="strategy-text">${escapeHtml(mainStrategy.strategyText.substring(0, 200))}${mainStrategy.strategyText.length > 200 ? '...' : ''}</p>
-                <div class="sub-strategies-grid">`;
+    strategicSolverCard.appendChild(subTabsNav);
 
-            mainStrategy.subStrategies.forEach((subStrategy, subIndex) => {
-                let subStatusClass = 'status-pending';
-                if (subStrategy.selfImprovementStatus === 'completed') subStatusClass = 'status-completed';
-                else if (subStrategy.selfImprovementStatus === 'processing') subStatusClass = 'status-processing';
-                else if (subStrategy.selfImprovementStatus === 'error') subStatusClass = 'status-error';
-                else if (subStrategy.status === 'completed') subStatusClass = 'status-processing'; // Solution done, refinement pending
-                else if (subStrategy.status === 'processing') subStatusClass = 'status-processing';
-                else if (subStrategy.status === 'error') subStatusClass = 'status-error';
+    mathProcess.initialStrategies.forEach((mainStrategy, index) => {
+        const subTabContent = document.createElement('div');
+        subTabContent.className = 'sub-tab-content';
+        subTabContent.id = `sub-tab-content-strategy-${index}`;
+        if (index === mathProcess.activeStrategyTab) {
+            subTabContent.classList.add('active');
+        }
 
-                strategicSolverHtml += `<div class="sub-strategy-card ${subStatusClass}">
-                    <h6>Sub ${subIndex + 1}</h6>
-                    <p class="sub-strategy-text">${escapeHtml(subStrategy.subStrategyText.substring(0, 100))}${subStrategy.subStrategyText.length > 100 ? '...' : ''}</p>
-                </div>`;
-            });
+        const strategyTitle = document.createElement('h5');
+        strategyTitle.innerHTML = escapeHtml(mainStrategy.strategyText);
+        subTabContent.appendChild(strategyTitle);
 
-            strategicSolverHtml += `</div></div>`;
+        const subStrategiesGrid = document.createElement('div');
+        subStrategiesGrid.className = 'sub-strategies-grid';
+
+        mainStrategy.subStrategies.forEach((subStrategy, subIndex) => {
+            const subStrategyCard = document.createElement('div');
+            subStrategyCard.className = 'sub-strategy-card';
+
+            const subStrategyTitle = document.createElement('h6');
+            subStrategyTitle.textContent = `Sub-Strategy ${index + 1}.${subIndex + 1}`;
+            subStrategyCard.appendChild(subStrategyTitle);
+
+            const subStrategyText = document.createElement('div');
+            subStrategyText.className = 'markdown-content';
+            subStrategyText.innerHTML = renderMarkdown(subStrategy.subStrategyText);
+            subStrategyCard.appendChild(subStrategyText);
+
+            const solutionButton = document.createElement('button');
+            solutionButton.className = 'button';
+            solutionButton.textContent = 'Solution';
+            solutionButton.addEventListener('click', () => openSolutionModal(subStrategy.id));
+            subStrategyCard.appendChild(solutionButton);
+
+            subStrategiesGrid.appendChild(subStrategyCard);
         });
-        strategicSolverHtml += `</div>`;
-    }
 
-    strategicSolverHtml += `</div>`;
-    strategicSolverContentPane.innerHTML = strategicSolverHtml;
+        subTabContent.appendChild(subStrategiesGrid);
+
+        const bestJudgedSolution = document.createElement('div');
+        bestJudgedSolution.className = 'best-judged-solution';
+
+        const bestJudgedSolutionTitle = document.createElement('h6');
+        bestJudgedSolutionTitle.textContent = `Best Judged Solution for Strategy ${index + 1}`;
+        bestJudgedSolution.appendChild(bestJudgedSolutionTitle);
+
+        const bestJudgedSolutionText = document.createElement('div');
+        bestJudgedSolutionText.className = 'markdown-content';
+        bestJudgedSolutionText.innerHTML = renderMarkdown(mainStrategy.judgedBestSolution || 'Not available');
+        bestJudgedSolution.appendChild(bestJudgedSolutionText);
+
+        subTabContent.appendChild(bestJudgedSolution);
+
+        strategicSolverCard.appendChild(subTabContent);
+    });
+
+    strategicSolverContentPane.appendChild(strategicSolverCard);
     pipelinesContentContainer.appendChild(strategicSolverContentPane);
 
-    // Hypothesis Explorer Content Pane
+    // Hypothesis Explorer Pane
     const hypothesisExplorerContentPane = document.createElement('div');
     hypothesisExplorerContentPane.id = `pipeline-content-hypothesis-explorer`;
     hypothesisExplorerContentPane.className = 'pipeline-content';
     hypothesisExplorerContentPane.setAttribute('role', 'tabpanel');
     hypothesisExplorerContentPane.setAttribute('aria-labelledby', `math-tab-hypothesis-explorer`);
-
     let hypothesisExplorerHtml = `<div class="math-hypothesis-explorer model-detail-card">
         <h4 class="model-title">Hypothesis Explorer (Track B)</h4>
         <p class="track-description">Generates 3 hypotheses, then runs parallel Prover and Disprover agents for each.</p>`;
-
     if (mathProcess.hypothesisExplorerComplete) {
         hypothesisExplorerHtml += `<p class="status-badge status-completed">Hypothesis Explorer Complete</p>`;
     } else if (mathProcess.status === 'processing') {
         hypothesisExplorerHtml += `<p class="status-badge status-processing">Hypothesis Explorer In Progress</p>`;
     }
-
-    // Display hypotheses as cards
     if (mathProcess.hypotheses.length > 0) {
         hypothesisExplorerHtml += `<div class="hypotheses-grid">`;
         mathProcess.hypotheses.forEach((hypothesis, index) => {
@@ -3110,8 +3371,6 @@ function renderActiveMathPipeline() {
         });
         hypothesisExplorerHtml += `</div>`;
     }
-
-    // Display knowledge packet if available
     if (mathProcess.knowledgePacket) {
         hypothesisExplorerHtml += `
             <details class="model-detail-section collapsible-section">
@@ -3119,26 +3378,23 @@ function renderActiveMathPipeline() {
                 <div class="scrollable-content-area custom-scrollbar"><pre>${escapeHtml(mathProcess.knowledgePacket)}</pre></div>
             </details>`;
     }
-
     hypothesisExplorerHtml += `</div>`;
     hypothesisExplorerContentPane.innerHTML = hypothesisExplorerHtml;
     pipelinesContentContainer.appendChild(hypothesisExplorerContentPane);
 
-    // Final Result Content Pane
+    // Final Result Pane
     const finalResultContentPane = document.createElement('div');
     finalResultContentPane.id = `pipeline-content-final-result`;
     finalResultContentPane.className = 'pipeline-content';
     finalResultContentPane.setAttribute('role', 'tabpanel');
     finalResultContentPane.setAttribute('aria-labelledby', `math-tab-final-result`);
-
     let finalResultHtml = `<div class="math-final-result model-detail-card">
         <h4 class="model-title">Final Result</h4>
         <p class="track-description">The ultimate solution selected from all refined strategies.</p>`;
-
     if (mathProcess.finalJudgingStatus === 'completed' && mathProcess.finalJudgedBestSolution) {
         finalResultHtml += `<div class="final-solution-display">
-            <div class="scrollable-content-area custom-scrollbar">
-                <pre>${escapeHtml(mathProcess.finalJudgedBestSolution)}</pre>
+            <div class="markdown-content">
+                ${renderMarkdown(mathProcess.finalJudgedBestSolution)}
             </div>
         </div>`;
     } else if (mathProcess.finalJudgingStatus === 'processing' || mathProcess.finalJudgingStatus === 'retrying') {
@@ -3153,198 +3409,9 @@ function renderActiveMathPipeline() {
     } else {
         finalResultHtml += `<p class="status-badge status-pending">Waiting for solution completion...</p>`;
     }
-
     finalResultHtml += `</div>`;
     finalResultContentPane.innerHTML = finalResultHtml;
     pipelinesContentContainer.appendChild(finalResultContentPane);
-
-    mathProcess.initialStrategies.forEach((mainStrategy, index) => {
-        const tabButton = document.createElement('button');
-        tabButton.className = 'tab-button math-mode-tab';
-        tabButton.id = `math-tab-strategy-${index}`;
-        tabButton.textContent = `Strategy ${index + 1}`;
-        if (mainStrategy.status === 'error' || mainStrategy.judgingStatus === 'error') tabButton.classList.add('status-math-error');
-        else if (mainStrategy.status === 'processing' || mainStrategy.status === 'retrying' || mainStrategy.judgingStatus === 'processing' || mainStrategy.judgingStatus === 'retrying') tabButton.classList.add('status-math-processing');
-        else if (mainStrategy.judgingStatus === 'completed') tabButton.classList.add('status-math-completed');
-        tabButton.setAttribute('role', 'tab');
-        tabButton.setAttribute('aria-controls', `pipeline-content-strategy-${index}`);
-        tabButton.addEventListener('click', () => activateTab(`strategy-${index}`));
-        tabsNavContainer.appendChild(tabButton);
-
-        const contentPane = document.createElement('div');
-        contentPane.id = `pipeline-content-strategy-${index}`;
-        contentPane.className = 'pipeline-content';
-        contentPane.setAttribute('role', 'tabpanel');
-        contentPane.setAttribute('aria-labelledby', `math-tab-strategy-${index}`);
-
-        let contentHtml = `<div class="math-strategy-branch model-detail-card" id="math-branch-${mainStrategy.id}">
-            <div class="model-detail-header">
-                <div class="model-title-area">
-                    <p class="strategy-text">${escapeHtml(mainStrategy.strategyText)}</p>
-                </div>
-                <div class="model-card-actions">
-                    <span class="status-badge status-${mainStrategy.status}" id="math-main-strat-status-${mainStrategy.id}">${mainStrategy.status}</span>
-                </div>
-            </div>`;
-        if (mainStrategy.status === 'retrying' && mainStrategy.retryAttempt !== undefined) {
-            contentHtml += `<p class="status-badge status-retrying">Retrying sub-strategy generation (${mainStrategy.retryAttempt}/${MAX_RETRIES})...</p>`;
-        } else if (mainStrategy.error) {
-            contentHtml += `<div class="status-message error"><pre>${escapeHtml(mainStrategy.error)}</pre></div>`;
-        }
-        if (mainStrategy.requestPromptSubStrategyGen) {
-            contentHtml += `<details class="model-detail-section collapsible-section">
-                    <summary class="model-section-title">Sub-strategy Generation Prompt</summary>
-                    <div class="scrollable-content-area custom-scrollbar"><pre>${escapeHtml(mainStrategy.requestPromptSubStrategyGen)}</pre></div>
-                </details>`;
-        }
-
-        if (mainStrategy.subStrategies.length > 0) {
-            contentHtml += `<div class="math-sub-strategies-grid">`;
-            mainStrategy.subStrategies.forEach((subStrategy, subIndex) => {
-                let solutionContent;
-                if (subStrategy.solutionAttempt) {
-                    const contentToRender = `\`\`\`tex\n${subStrategy.solutionAttempt}\n\`\`\``;
-                    solutionContent = renderMarkdown(contentToRender);
-                } else {
-                    solutionContent = `<div class="empty-state-message">${getEmptyStateMessage(subStrategy.status, 'solution')}</div>`;
-                }
-
-                contentHtml += `
-                    <div class="math-sub-strategy-card model-detail-section" id="math-sub-item-${subStrategy.id}">
-                        <div class="sub-strategy-header">
-                            <h5 class="sub-strategy-title">Sub-Strategy ${index + 1}.${subIndex + 1}</h5>
-                            <span class="status-badge status-${subStrategy.status}" id="math-sub-strat-status-${subStrategy.id}">${subStrategy.status}</span>
-                        </div>
-                        <p class="sub-strategy-text">${escapeHtml(subStrategy.subStrategyText)}</p>`;
-                if (subStrategy.status === 'retrying' && subStrategy.retryAttempt !== undefined) {
-                    contentHtml += `<p class="status-badge status-retrying">Retrying solution attempt (${subStrategy.retryAttempt}/${MAX_RETRIES})...</p>`;
-                }
-                if (subStrategy.error) {
-                    contentHtml += `<div class="status-message error"><pre>${escapeHtml(subStrategy.error)}</pre></div>`;
-                }
-
-                if (subStrategy.solutionAttempt || ['pending', 'processing', 'retrying', 'cancelled', 'error'].includes(subStrategy.status)) {
-                    contentHtml += `<details class="collapsible-section solution-details">
-                        <summary class="model-section-title">Solution Attempt</summary>
-                        <div class="code-block-wrapper">
-                           <div class="scrollable-content-area custom-scrollbar">${solutionContent}</div>
-                           ${subStrategy.solutionAttempt ? `
-                           <div class="code-actions">
-                               <button class="button copy-math-solution-btn" data-sub-strategy-id="${subStrategy.id}" title="Copy Solution"><span class="material-symbols-outlined">content_copy</span><span class="button-text">Copy</span></button>
-                               <button class="button download-math-solution-btn" data-sub-strategy-id="${subStrategy.id}" title="Download Solution"><span class="material-symbols-outlined">download</span><span class="button-text">Download</span></button>
-                           </div>` : ''}
-                        </div>
-                    </details>`;
-                }
-                if (subStrategy.requestPromptSolutionAttempt) {
-                    contentHtml += `<details class="collapsible-section prompt-details">
-                            <summary class="model-section-title">Solution Attempt Prompt</summary>
-                            <div class="scrollable-content-area custom-scrollbar"><pre>${escapeHtml(subStrategy.requestPromptSolutionAttempt)}</pre></div>
-                        </details>`;
-                }
-                contentHtml += `</div>`; // Close card
-            });
-            contentHtml += `</div>`; // Close grid
-        } else if (mainStrategy.status === 'completed' && mainStrategy.subStrategies.length === 0) {
-            contentHtml += `<div class="empty-state-message">No sub-strategies were generated for this main strategy.</div>`;
-        }
-
-        // --- Intra-Strategy Judging Section ---
-        if (mainStrategy.judgingStatus) {
-            let statusText = mainStrategy.judgingStatus;
-            if (statusText === 'retrying' && mainStrategy.judgingRetryAttempt) statusText += ` (${mainStrategy.judgingRetryAttempt}/${MAX_RETRIES})`;
-
-            contentHtml += `<div class="math-judging-section model-detail-section" id="math-judging-${mainStrategy.id}">
-                <div class="model-detail-header">
-                    <h5 class="model-section-title">Strategy ${index + 1} - Judging Result</h5>
-                    <span class="status-badge status-${mainStrategy.judgingStatus}">${statusText}</span>
-                </div>`;
-            if (mainStrategy.judgingError) {
-                contentHtml += `<div class="status-message error"><pre>${escapeHtml(mainStrategy.judgingError)}</pre></div>`;
-            }
-            if (mainStrategy.judgedBestSolution) {
-                contentHtml += `<div class="markdown-content">${renderMarkdown(mainStrategy.judgedBestSolution)}</div>`;
-            } else if (mainStrategy.judgingStatus === 'processing' || mainStrategy.judgingStatus === 'retrying') {
-                contentHtml += `<div class="empty-state-message">Judging solutions for this strategy...</div>`;
-            }
-            if (mainStrategy.judgingRequestPrompt) {
-                contentHtml += `<details class="collapsible-section prompt-details">
-                        <summary class="model-section-title">Judging Prompt</summary>
-                        <div class="scrollable-content-area custom-scrollbar"><pre>${escapeHtml(mainStrategy.judgingRequestPrompt)}</pre></div>
-                    </details>`;
-            }
-            contentHtml += `</div>`;
-        }
-
-        contentHtml += `</div>`; // Close math-strategy-branch
-        contentPane.innerHTML = contentHtml;
-        pipelinesContentContainer.appendChild(contentPane);
-
-        // Attach listeners
-        contentPane.querySelectorAll('.copy-math-solution-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const subStrategyId = (e.currentTarget as HTMLElement).dataset.subStrategyId;
-                const solutionText = mathProcess.initialStrategies.flatMap(ms => ms.subStrategies).find(ss => ss.id === subStrategyId)?.solutionAttempt;
-                if (solutionText) copyToClipboard(solutionText, e.currentTarget as HTMLButtonElement);
-            });
-        });
-
-        contentPane.querySelectorAll('.download-math-solution-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const subStrategyId = (e.currentTarget as HTMLElement).dataset.subStrategyId;
-                const subStrategy = mathProcess.initialStrategies.flatMap(ms => ms.subStrategies).find(ss => ss.id === subStrategyId);
-                if (subStrategy?.solutionAttempt) downloadFile(subStrategy.solutionAttempt, `math_solution_${subStrategy.id}.txt`, 'text/plain');
-            });
-        });
-    });
-
-    // --- Final Result Tab and Pane ---
-    if (mathProcess.finalJudgingStatus) {
-        const finalTabButton = document.createElement('button');
-        finalTabButton.className = 'tab-button math-mode-tab';
-        finalTabButton.id = `math-tab-final-result`;
-        finalTabButton.textContent = 'Final Result';
-        if (mathProcess.finalJudgingStatus === 'error') finalTabButton.classList.add('status-math-error');
-        else if (mathProcess.finalJudgingStatus === 'processing' || mathProcess.finalJudgingStatus === 'retrying') finalTabButton.classList.add('status-math-processing');
-        else if (mathProcess.finalJudgingStatus === 'completed') finalTabButton.classList.add('status-math-completed');
-        finalTabButton.setAttribute('role', 'tab');
-        finalTabButton.setAttribute('aria-controls', `pipeline-content-final-result`);
-        finalTabButton.addEventListener('click', () => activateTab('final-result'));
-        tabsNavContainer.appendChild(finalTabButton);
-
-        const finalContentPane = document.createElement('div');
-        finalContentPane.id = `pipeline-content-final-result`;
-        finalContentPane.className = 'pipeline-content';
-        finalContentPane.setAttribute('role', 'tabpanel');
-        finalContentPane.setAttribute('aria-labelledby', `math-tab-final-result`);
-
-        let finalContentHtml = `<div class="math-judging-section model-detail-card">`;
-        let statusText = mathProcess.finalJudgingStatus;
-        if (statusText === 'retrying' && mathProcess.finalJudgingRetryAttempt) statusText += ` (${mathProcess.finalJudgingRetryAttempt}/${MAX_RETRIES})`;
-
-        finalContentHtml += `<div class="model-detail-header">
-                <h4 class="model-title">Overall Best Solution</h4>
-                <span class="status-badge status-${mathProcess.finalJudgingStatus}">${statusText}</span>
-            </div>`;
-        if (mathProcess.finalJudgingError) {
-            finalContentHtml += `<div class="status-message error"><pre>${escapeHtml(mathProcess.finalJudgingError)}</pre></div>`;
-        }
-        if (mathProcess.finalJudgedBestSolution) {
-            finalContentHtml += `<div class="markdown-content">${renderMarkdown(mathProcess.finalJudgedBestSolution)}</div>`;
-        } else if (mathProcess.finalJudgingStatus === 'processing' || mathProcess.finalJudgingStatus === 'retrying') {
-            finalContentHtml += `<div class="empty-state-message">Selecting the best overall solution...</div>`;
-        }
-        if (mathProcess.finalJudgingRequestPrompt) {
-            finalContentHtml += `<details class="collapsible-section prompt-details">
-                    <summary class="model-section-title">Final Judging Prompt</summary>
-                    <div class="scrollable-content-area custom-scrollbar"><pre>${escapeHtml(mathProcess.finalJudgingRequestPrompt)}</pre></div>
-                </details>`;
-        }
-        finalContentHtml += `</div>`;
-        finalContentPane.innerHTML = finalContentHtml;
-        pipelinesContentContainer.appendChild(finalContentPane);
-    }
-
 
     if (mathProcess.activeTabId) {
         activateTab(mathProcess.activeTabId);
