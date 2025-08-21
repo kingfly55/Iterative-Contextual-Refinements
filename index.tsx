@@ -4398,6 +4398,11 @@ function renderDiff(sourceText: string, targetText: string) {
     currentTargetContent = targetText;
     
     if (!diffViewerPanel) return;
+    // Ensure parent containers can scroll in unified view (disable split lock on both containers)
+    const unifiedGlobalContainer = document.getElementById('diff-viewer-panel');
+    const unifiedInstantContainer = document.getElementById('instant-fixes-diff-viewer');
+    unifiedGlobalContainer?.classList.remove('diff-side-by-side-active');
+    unifiedInstantContainer?.classList.remove('diff-side-by-side-active');
     const differences = Diff.diffLines(sourceText, targetText, { newlineIsToken: true });
     
     // Calculate diff statistics
@@ -4543,7 +4548,6 @@ function populateDiffTargetTree() {
                         if (currentDiffViewMode === 'unified') {
                             renderDiff(diffSourceData!.content, targetContent);
                         } else {
-                            // Use renderDiffSideBySide for split view in global compare
                             renderDiffSideBySide(diffSourceData!.content, targetContent);
                         }
                         
@@ -4817,8 +4821,29 @@ function renderDiffSideBySide(sourceText: string, targetText: string) {
     currentSourceContent = sourceText;
     currentTargetContent = targetText;
 
-    const container = document.getElementById('instant-fixes-diff-viewer') || document.getElementById('diff-viewer-panel');
+    // Choose the correct container based on the active panel.
+    // When in Global Compare, we must render into 'diff-viewer-panel'.
+    // When in Instant Fixes, render into 'instant-fixes-diff-viewer'.
+    const globalComparePanel = document.getElementById('global-compare-panel');
+    const instantFixesPanel = document.getElementById('instant-fixes-panel');
+    let container: HTMLElement | null = null;
+
+    if (globalComparePanel && globalComparePanel.classList.contains('active')) {
+        container = document.getElementById('diff-viewer-panel');
+    } else if (instantFixesPanel && instantFixesPanel.classList.contains('active')) {
+        container = document.getElementById('instant-fixes-diff-viewer');
+    } else {
+        // Fallback: try global compare container first, then instant fixes
+        container = document.getElementById('diff-viewer-panel') || document.getElementById('instant-fixes-diff-viewer');
+    }
     if (!container) return;
+    // Only the active split container should suppress its own scrolling
+    const globalContainer = document.getElementById('diff-viewer-panel');
+    const instantContainer = document.getElementById('instant-fixes-diff-viewer');
+    globalContainer?.classList.remove('diff-side-by-side-active');
+    instantContainer?.classList.remove('diff-side-by-side-active');
+    // Prevent parent container from scrolling; let panes handle scroll (for proper sync)
+    container.classList.add('diff-side-by-side-active');
 
     // Calculate and update header diff stats
     updateHeaderDiffStats(sourceText, targetText);
@@ -4853,73 +4878,74 @@ function renderDiffSideBySide(sourceText: string, targetText: string) {
     const diffHtml = `
         <div class="diff-view-side-by-side">
             <div id="diff-pane-left" class="diff-pane custom-scrollbar">
-                <pre><code>${leftPaneHtml}</code></pre>
+                <pre style="font-family: var(--font-family)"><code>${leftPaneHtml}</code></pre>
             </div>
             <div id="diff-pane-right" class="diff-pane custom-scrollbar">
-                <pre><code>${rightPaneHtml}</code></pre>
+                <pre style="font-family: var(--font-family)"><code>${rightPaneHtml}</code></pre>
             </div>
         </div>
     `;
 
     container.innerHTML = diffHtml;
 
-    const leftPane = document.getElementById('diff-pane-left');
-    const rightPane = document.getElementById('diff-pane-right');
+    // IMPORTANT: scope queries to the active container to avoid duplicate ID conflicts
+    const leftPane = container.querySelector('#diff-pane-left') as HTMLElement | null;
+    const rightPane = container.querySelector('#diff-pane-right') as HTMLElement | null;
 
     if (leftPane && rightPane) {
         let isSyncing = false;
-        
+
         const syncScroll = (source: HTMLElement, target: HTMLElement) => {
             if (isSyncing) return;
-            
             isSyncing = true;
-            
-            // Immediate sync for natural feel like GitHub Desktop
-            target.scrollTop = source.scrollTop;
+
+            // Proportional vertical sync to handle minor height differences
+            const sMax = Math.max(1, source.scrollHeight - source.clientHeight);
+            const tMax = Math.max(1, target.scrollHeight - target.clientHeight);
+            const ratio = source.scrollTop / sMax;
+            target.scrollTop = Math.round(ratio * tMax);
+
+            // Direct horizontal sync
             target.scrollLeft = source.scrollLeft;
-            
-            // Use requestAnimationFrame to reset sync flag for smooth performance
-            requestAnimationFrame(() => {
-                isSyncing = false;
-            });
+
+            requestAnimationFrame(() => { isSyncing = false; });
         };
-        
-        // Sync both vertical and horizontal scrolling
-        leftPane.addEventListener('scroll', () => syncScroll(leftPane, rightPane), { passive: true });
-        rightPane.addEventListener('scroll', () => syncScroll(rightPane, leftPane), { passive: true });
-        
-        // Also handle wheel events for better responsiveness
+
+        const onLeftScroll = () => syncScroll(leftPane, rightPane);
+        const onRightScroll = () => syncScroll(rightPane, leftPane);
+
+        // Scroll events (keyboard, programmatic, touchpad)
+        leftPane.addEventListener('scroll', onLeftScroll, { passive: true });
+        rightPane.addEventListener('scroll', onRightScroll, { passive: true });
+
+        // Wheel events for horizontal Shift+scroll
         leftPane.addEventListener('wheel', (e) => {
-            if (!e.shiftKey) {
-                // Vertical scrolling - sync immediately
-                setTimeout(() => {
-                    if (!isSyncing) {
-                        rightPane.scrollTop = leftPane.scrollTop;
-                    }
-                }, 0);
-            } else {
-                // Horizontal scrolling with Shift+wheel
+            if (e.shiftKey) {
                 e.preventDefault();
                 leftPane.scrollLeft += e.deltaY;
                 rightPane.scrollLeft = leftPane.scrollLeft;
             }
         }, { passive: false });
-        
+
         rightPane.addEventListener('wheel', (e) => {
-            if (!e.shiftKey) {
-                // Vertical scrolling - sync immediately
-                setTimeout(() => {
-                    if (!isSyncing) {
-                        leftPane.scrollTop = rightPane.scrollTop;
-                    }
-                }, 0);
-            } else {
-                // Horizontal scrolling with Shift+wheel
+            if (e.shiftKey) {
                 e.preventDefault();
                 rightPane.scrollLeft += e.deltaY;
                 leftPane.scrollLeft = rightPane.scrollLeft;
             }
         }, { passive: false });
+
+        // Resize observer to keep proportional mapping accurate
+        const ro = new ResizeObserver(() => {
+            // Trigger a sync from the currently scrolled pane
+            if (leftPane.scrollTop >= rightPane.scrollTop) {
+                onLeftScroll();
+            } else {
+                onRightScroll();
+            }
+        });
+        ro.observe(leftPane);
+        ro.observe(rightPane);
     }
 }
 
