@@ -1992,6 +1992,47 @@ summary.prompt-group-title::-webkit-details-marker { display: none; }
     /* Uses the standard .tab-button.math-mode-tab.active.status-math-completed styles */
 }
 
+/* Deepthink Mode Tab Status Styles */
+.tab-button.deepthink-mode-tab.status-deepthink-processing:not(.active) { 
+    border-color: rgba(var(--accent-yellow-rgb), 0.3); 
+}
+.tab-button.deepthink-mode-tab.status-deepthink-completed:not(.active) { 
+    border-color: rgba(var(--accent-green-rgb), 0.3); 
+}
+.tab-button.deepthink-mode-tab.status-deepthink-error:not(.active) { 
+    border-color: rgba(var(--accent-pink-rgb), 0.3); 
+}
+
+.tab-button.deepthink-mode-tab.active.status-deepthink-processing { 
+    background: linear-gradient(135deg, rgba(var(--accent-yellow-rgb), 0.15), rgba(var(--accent-yellow-rgb), 0.08));
+    color: var(--accent-yellow);
+    border-color: rgba(var(--accent-yellow-rgb), 0.4);
+    box-shadow: 0 0 15px -3px rgba(var(--accent-yellow-rgb), 0.3), 0 2px 8px rgba(var(--bg-color-rgb), 0.2);
+}
+.tab-button.deepthink-mode-tab.active.status-deepthink-processing::after {
+    background: linear-gradient(90deg, transparent, var(--accent-yellow), transparent);
+}
+
+.tab-button.deepthink-mode-tab.active.status-deepthink-completed { 
+    background: linear-gradient(135deg, rgba(var(--accent-green-rgb), 0.15), rgba(var(--accent-green-rgb), 0.08));
+    color: var(--accent-green);
+    border-color: rgba(var(--accent-green-rgb), 0.4);
+    box-shadow: 0 0 15px -3px rgba(var(--accent-green-rgb), 0.3), 0 2px 8px rgba(var(--bg-color-rgb), 0.2);
+}
+.tab-button.deepthink-mode-tab.active.status-deepthink-completed::after {
+    background: linear-gradient(90deg, transparent, var(--accent-green), transparent);
+}
+
+.tab-button.deepthink-mode-tab.active.status-deepthink-error { 
+    background: linear-gradient(135deg, rgba(var(--accent-pink-rgb), 0.15), rgba(var(--accent-pink-rgb), 0.08));
+    color: var(--accent-pink);
+    border-color: rgba(var(--accent-pink-rgb), 0.4);
+    box-shadow: 0 0 15px -3px rgba(var(--accent-pink-rgb), 0.3), 0 2px 8px rgba(var(--bg-color-rgb), 0.2);
+}
+.tab-button.deepthink-mode-tab.active.status-deepthink-error::after {
+    background: linear-gradient(90deg, transparent, var(--accent-pink), transparent);
+}
+
 /* General Math Mode Card Style */
 .math-problem-display,
 .math-strategic-solver,
