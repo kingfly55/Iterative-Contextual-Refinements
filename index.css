@@ -3670,8 +3670,9 @@ hr.sub-divider {
 }
 
 .killed-sub-strategy {
-    background: rgba(var(--accent-pink-rgb), 0.05) !important;
-    border-left: 3px solid var(--accent-pink) !important;
+    background: rgba(var(--accent-pink-rgb), 0.15) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
     opacity: 0.8;
 }
 
