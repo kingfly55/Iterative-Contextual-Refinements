@@ -883,6 +883,11 @@ const promptNavStructure = {
         { groupTitle: "2. Hypothesis Explorer", prompts: ["math-hypothesis-generation", "math-prover", "math-disprover"] },
         { groupTitle: "3. Red Team Evaluator", prompts: ["math-red-team"] }
     ],
+    deepthink: [
+        { groupTitle: "1. Strategic Solver", prompts: ["deepthink-initial-strategy", "deepthink-sub-strategy", "deepthink-solution-attempt", "deepthink-self-improvement"] },
+        { groupTitle: "2. Hypothesis Explorer", prompts: ["deepthink-hypothesis-generation", "deepthink-prover", "deepthink-disprover"] },
+        { groupTitle: "3. Red Team Evaluator", prompts: ["deepthink-red-team"] }
+    ],
     agent: [
         { groupTitle: "Agent Configuration", prompts: ["agent-judge-llm"] }
     ],
@@ -5606,6 +5611,22 @@ function renderActiveDeepthinkPipeline() {
     redTeamContentPane.innerHTML = renderDeepthinkRedTeamEvaluator();
     pipelinesContentContainer.appendChild(redTeamContentPane);
 
+    // Add Red Team full screen modal to body if it doesn't exist
+    if (!document.getElementById('deepthink-red-team-full-modal')) {
+        const modalHtml = `
+            <div id="deepthink-red-team-full-modal" class="red-team-full-modal">
+                <div class="red-team-modal-header">
+                    <h3 class="red-team-modal-title">Full Red Team Reasoning</h3>
+                    <button class="red-team-modal-close" onclick="closeDeepthinkRedTeamModal()">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+                <div id="deepthink-red-team-modal-content" class="red-team-modal-content"></div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    }
+
     // Final Result Pane
     const finalResultContentPane = document.createElement('div');
     finalResultContentPane.id = `pipeline-content-final-result`;
@@ -5816,105 +5837,114 @@ function renderDeepthinkHypothesisExplorer(): string {
 function renderDeepthinkRedTeamEvaluator(): string {
     if (!activeDeepthinkPipeline) return '';
 
-    const redTeamAgents = activeDeepthinkPipeline.redTeamAgents || [];
-    if (redTeamAgents.length === 0) {
-        const status = activeDeepthinkPipeline.redTeamStatus || 'pending';
-        return `<div class="model-detail-card">
-            <h2>Red Team Evaluation</h2>
-            <p class="status-badge status-${status}">Status: ${status}</p>
-            <div class="loading">Initializing red team evaluation...</div>
+    const deepthinkProcess = activeDeepthinkPipeline;
+    let redTeamHtml = `<div class="math-red-team model-detail-card">`;
+
+    if (deepthinkProcess.redTeamAgents && deepthinkProcess.redTeamAgents.length > 0) {
+        redTeamHtml += `<div class="red-team-agents-grid">`;
+        deepthinkProcess.redTeamAgents.forEach((redTeamAgent, index) => {
+            let statusClass = 'status-pending';
+            let statusText = 'Pending';
+            if (redTeamAgent.status === 'processing') {
+                statusClass = 'status-processing';
+                statusText = 'Processing';
+            } else if (redTeamAgent.status === 'completed') {
+                statusClass = 'status-completed';
+                statusText = 'Completed';
+            } else if (redTeamAgent.status === 'error') {
+                statusClass = 'status-error';
+                statusText = 'Error';
+            } else if (redTeamAgent.status === 'cancelled') {
+                statusClass = 'status-cancelled';
+                statusText = 'Cancelled';
+            }
+
+            const assignedStrategy = deepthinkProcess.initialStrategies.find(s => s.id === redTeamAgent.assignedStrategyId);
+            const strategyTitle = assignedStrategy ? assignedStrategy.strategyText.substring(0, 80) + '...' : 'Unknown Strategy';
+
+            redTeamHtml += `
+                <div class="red-team-agent-card">
+                    <div class="red-team-agent-header">
+                        <h5 class="red-team-agent-title">Red Team Agent ${index + 1}</h5>
+                        <span class="status-badge ${statusClass}">${statusText}</span>
+                    </div>
+                    <div class="red-team-agent-content">
+                        <p><strong>Assigned Strategy:</strong> ${escapeHtml(strategyTitle)}</p>`;
+
+            if (redTeamAgent.status === 'completed') {
+                const killedStrategiesCount = redTeamAgent.killedStrategyIds.length;
+                const killedSubStrategiesCount = redTeamAgent.killedSubStrategyIds.length;
+                
+                redTeamHtml += `
+                    <div class="red-team-results">
+                        <div class="red-team-evaluation-summary">
+                            <div class="evaluation-metric">
+                                <span class="metric-value">${killedStrategiesCount}</span>
+                                <span class="metric-label">Killed Strategies</span>
+                            </div>
+                            <div class="evaluation-metric">
+                                <span class="metric-value">${killedSubStrategiesCount}</span>
+                                <span class="metric-label">Killed Sub-Strategies</span>
+                            </div>
+                        </div>`;
+
+                if (killedStrategiesCount > 0 || killedSubStrategiesCount > 0) {
+                    redTeamHtml += `<div class="killed-items">`;
+                    if (killedStrategiesCount > 0) {
+                        redTeamHtml += `<p><strong>Eliminated Strategies:</strong> ${redTeamAgent.killedStrategyIds.join(', ')}</p>`;
+                    }
+                    if (killedSubStrategiesCount > 0) {
+                        redTeamHtml += `<p><strong>Eliminated Sub-Strategies:</strong> ${redTeamAgent.killedSubStrategyIds.join(', ')}</p>`;
+                    }
+                    redTeamHtml += `</div>`;
+                }
+
+                redTeamHtml += `</div>`;
+            }
+
+            if (redTeamAgent.error) {
+                redTeamHtml += `<div class="status-message error"><pre>${escapeHtml(redTeamAgent.error)}</pre></div>`;
+            }
+
+            if (redTeamAgent.reasoning) {
+                redTeamHtml += `
+                    <div class="red-team-reasoning-section">
+                        <div class="red-team-reasoning-header">
+                            <div class="red-team-reasoning-toggle">
+                                <span class="code-icon">&lt;&gt;</span>
+                                <span>Reasoning</span>
+                            </div>
+                            <div class="red-team-reasoning-buttons">
+                                <button class="red-team-reasoning-btn" onclick="toggleDeepthinkRedTeamReasoning('${redTeamAgent.id}')">
+                                    <span class="material-symbols-outlined">visibility</span>
+                                </button>
+                                <button class="red-team-reasoning-btn" onclick="showFullDeepthinkRedTeamReasoning('${redTeamAgent.id}', \`${escapeHtml(redTeamAgent.evaluationResponse || redTeamAgent.reasoning || '').replace(/`/g, '\\`')}\`)">
+                                    <span class="material-symbols-outlined">fullscreen</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="deepthink-red-team-reasoning-${redTeamAgent.id}" class="red-team-reasoning-content">${escapeHtml(redTeamAgent.reasoning || '')}</div>
+                    </div>`;
+            }
+
+            redTeamHtml += `
+                    </div>
+                </div>`;
+        });
+        redTeamHtml += `</div>`;
+    } else {
+        redTeamHtml += `<div class="no-data-message">
+            <h4>Red Team Evaluator</h4>
+            <p>No Red Team agents have been generated yet. Red Team agents will appear here once the evaluation process begins.</p>
         </div>`;
     }
 
-    // Build agent sections with eliminated items and reasons
-    const strategyLookup = new Map<string, { index: number; text: string }>();
-    activeDeepthinkPipeline.initialStrategies.forEach((s, i) => {
-        strategyLookup.set(s.id, { index: i, text: s.strategyText });
-    });
+    if (deepthinkProcess.redTeamError) {
+        redTeamHtml += `<div class="status-message error"><pre>${escapeHtml(deepthinkProcess.redTeamError)}</pre></div>`;
+    }
 
-    const agentsHtml = redTeamAgents.map((agent, index) => {
-        const assigned = strategyLookup.get(agent.assignedStrategyId);
-        const assignedLabel = assigned ? `Strategy ${assigned.index + 1}` : agent.assignedStrategyId;
-        const killedReasonMap = (agent as any).killedReasonMap || {} as Record<string, string>;
-        const evalText = (agent as any).evaluation ?? (agent as any).evaluationResponse;
-
-        // Build eliminated strategies list
-        const killedStrategiesHtml = (agent.killedStrategyIds || []).map(id => {
-            const label = strategyLookup.get(id);
-            const title = label ? `Strategy ${label.index + 1}` : id;
-            const reason = killedReasonMap[id] || `Eliminated by Red Team Agent ${agent.id}`;
-            return `<li><span class="status-badge status-error">${title}</span><div class="elimination-reason">${escapeHtml(reason)}</div></li>`;
-        }).join('');
-
-        // Build eliminated sub-strategies list
-        const killedSubsHtml = (agent.killedSubStrategyIds || []).map(subId => {
-            // try to locate which main strategy it belongs to for label
-            let subLabel = subId;
-            for (const s of activeDeepthinkPipeline.initialStrategies) {
-                const sub = s.subStrategies.find(x => x.id === subId);
-                if (sub) {
-                    const sInfo = strategyLookup.get(s.id);
-                    const sTitle = sInfo ? `Strategy ${sInfo.index + 1}` : s.id;
-                    const position = s.subStrategies.indexOf(sub);
-                    subLabel = `${sTitle} • Sub ${position + 1}`;
-                    break;
-                }
-            }
-            const reason = killedReasonMap[subId] || `Eliminated by Red Team Agent ${agent.id}`;
-            return `<li><span class="status-badge status-error">${subLabel}</span><div class="elimination-reason">${escapeHtml(reason)}</div></li>`;
-        }).join('');
-
-        return `
-            <div class="red-team-agent model-detail-card">
-                <h3>Red Team Agent ${index + 1}</h3>
-                <div class="agent-assignment"><strong>Assigned Strategy:</strong> ${escapeHtml(assignedLabel)}</div>
-                ${evalText ? `
-                    <details open class="agent-evaluation">
-                        <summary>Evaluation</summary>
-                        <pre>${evalText}</pre>
-                    </details>
-                ` : '<div class="loading">Evaluating assigned strategy...</div>'}
-                ${(agent.killedStrategyIds?.length || 0) > 0 ? `
-                    <div class="agent-eliminations">
-                        <h4>Eliminated Strategies</h4>
-                        <ul class="eliminated-list">${killedStrategiesHtml}</ul>
-                    </div>
-                ` : ''}
-                ${(agent.killedSubStrategyIds?.length || 0) > 0 ? `
-                    <div class="agent-eliminations">
-                        <h4>Eliminated Sub-Strategies</h4>
-                        <ul class="eliminated-list">${killedSubsHtml}</ul>
-                    </div>
-                ` : ''}
-                ${agent.status === 'error' && agent.error ? `
-                    <div class="error-message">
-                        <strong>Error:</strong> ${escapeHtml(agent.error)}
-                    </div>
-                ` : ''}
-            </div>`;
-    }).join('');
-
-    // Summary
-    const totalKilledStrategies = redTeamAgents.reduce((acc, a) => acc + (a.killedStrategyIds?.length || 0), 0);
-    const totalKilledSubs = redTeamAgents.reduce((acc, a) => acc + (a.killedSubStrategyIds?.length || 0), 0);
-    const status = activeDeepthinkPipeline.redTeamStatus || 'pending';
-
-    return `
-        <div class="red-team-evaluator">
-            <h2>Red Team Evaluation</h2>
-            <div class="red-team-summary model-detail-card">
-                <div>
-                    <span class="status-badge status-${status}">Status: ${status}</span>
-                    <span class="status-badge status-error">Killed Strategies: ${totalKilledStrategies}</span>
-                    <span class="status-badge status-error">Killed Sub-Strategies: ${totalKilledSubs}</span>
-                </div>
-                ${activeDeepthinkPipeline.redTeamError ? `
-                    <div class="error-message"><strong>Error:</strong> ${escapeHtml(activeDeepthinkPipeline.redTeamError)}</div>
-                ` : ''}
-            </div>
-            <div class="red-team-agents">${agentsHtml}</div>
-        </div>
-    `;
+    redTeamHtml += `</div>`;
+    return redTeamHtml;
 }
 
 function renderDeepthinkFinalResult(): string {
@@ -7694,6 +7724,36 @@ function closeDiffModal() {
 
 (window as any).closeRedTeamModal = function() {
     const modal = document.getElementById('red-team-full-modal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+};
+
+// Deepthink Red Team reasoning functions
+(window as any).toggleDeepthinkRedTeamReasoning = function(agentId: string) {
+    const content = document.getElementById(`deepthink-red-team-reasoning-${agentId}`);
+    if (content) {
+        if (content.classList.contains('expanded')) {
+            // Hide content
+            content.classList.remove('expanded');
+        } else {
+            // Show content
+            content.classList.add('expanded');
+        }
+    }
+};
+
+(window as any).showFullDeepthinkRedTeamReasoning = function(agentId: string, fullContent: string) {
+    const modal = document.getElementById('deepthink-red-team-full-modal');
+    const modalContent = document.getElementById('deepthink-red-team-modal-content');
+    if (modal && modalContent) {
+        modalContent.innerHTML = `<pre>${fullContent}</pre>`;
+        modal.classList.add('active');
+    }
+};
+
+(window as any).closeDeepthinkRedTeamModal = function() {
+    const modal = document.getElementById('deepthink-red-team-full-modal');
     if (modal) {
         modal.classList.remove('active');
     }
