@@ -3850,3 +3850,159 @@ hr.sub-divider {
     border-radius: 6px;
     margin: 1rem 0;
 }
+
+/* Custom Slider Styling */
+.slider-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.slider-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-secondary-color);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+}
+
+.slider-value {
+    color: var(--accent-blue);
+    font-weight: 600;
+    font-size: var(--font-size-sm);
+}
+
+/* Slider Track */
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    background: var(--sub-panel-bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    outline: none;
+    backdrop-filter: var(--card-blur-effect);
+    transition: all var(--transition-speed) var(--easing-curve);
+    cursor: pointer;
+}
+
+input[type="range"]:hover {
+    border-color: var(--border-hover-color);
+}
+
+input[type="range"]:focus {
+    border-color: var(--accent-blue);
+}
+
+/* Temperature Slider - Pink Glow */
+#temperature-slider:hover {
+    box-shadow: 0 0 10px rgba(var(--accent-pink-rgb), 0.2);
+}
+
+#temperature-slider:focus {
+    border-color: var(--accent-pink);
+    box-shadow: 0 0 15px rgba(var(--accent-pink-rgb), 0.4);
+}
+
+#temperature-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: var(--card-bg-color);
+    border: 2px solid var(--accent-pink);
+    border-radius: 50%;
+    cursor: pointer;
+    backdrop-filter: var(--card-blur-effect);
+    transition: all var(--transition-speed) var(--easing-curve);
+    box-shadow: 0 2px 8px rgba(var(--accent-pink-rgb), 0.3);
+}
+
+#temperature-slider::-webkit-slider-thumb:hover {
+    background: var(--card-bg-hover-color);
+    border-color: var(--accent-pink);
+    box-shadow: 0 0 20px rgba(var(--accent-pink-rgb), 0.5);
+    transform: scale(1.1);
+}
+
+#temperature-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: var(--card-bg-color);
+    border: 2px solid var(--accent-pink);
+    border-radius: 50%;
+    cursor: pointer;
+    backdrop-filter: var(--card-blur-effect);
+    transition: all var(--transition-speed) var(--easing-curve);
+    box-shadow: 0 2px 8px rgba(var(--accent-pink-rgb), 0.3);
+}
+
+#temperature-slider::-moz-range-thumb:hover {
+    background: var(--card-bg-hover-color);
+    border-color: var(--accent-pink);
+    box-shadow: 0 0 20px rgba(var(--accent-pink-rgb), 0.5);
+    transform: scale(1.1);
+}
+
+/* Top P Slider - Blue Glow */
+#top-p-slider:hover {
+    box-shadow: 0 0 10px rgba(var(--accent-blue-rgb), 0.2);
+}
+
+#top-p-slider:focus {
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 15px rgba(var(--accent-blue-rgb), 0.4);
+}
+
+#top-p-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: var(--card-bg-color);
+    border: 2px solid var(--accent-blue);
+    border-radius: 50%;
+    cursor: pointer;
+    backdrop-filter: var(--card-blur-effect);
+    transition: all var(--transition-speed) var(--easing-curve);
+    box-shadow: 0 2px 8px rgba(var(--accent-blue-rgb), 0.3);
+}
+
+#top-p-slider::-webkit-slider-thumb:hover {
+    background: var(--card-bg-hover-color);
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 20px rgba(var(--accent-blue-rgb), 0.5);
+    transform: scale(1.1);
+}
+
+#top-p-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: var(--card-bg-color);
+    border: 2px solid var(--accent-blue);
+    border-radius: 50%;
+    cursor: pointer;
+    backdrop-filter: var(--card-blur-effect);
+    transition: all var(--transition-speed) var(--easing-curve);
+    box-shadow: 0 2px 8px rgba(var(--accent-blue-rgb), 0.3);
+}
+
+#top-p-slider::-moz-range-thumb:hover {
+    background: var(--card-bg-hover-color);
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 20px rgba(var(--accent-blue-rgb), 0.5);
+    transform: scale(1.1);
+}
+
+/* Slider Track - Firefox */
+input[type="range"]::-moz-range-track {
+    width: 100%;
+    height: 6px;
+    background: var(--sub-panel-bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    backdrop-filter: var(--card-blur-effect);
+}

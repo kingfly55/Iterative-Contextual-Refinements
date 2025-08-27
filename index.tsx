@@ -551,13 +551,26 @@ const TOTAL_STEPS_AGENT = 1 + 1 + 1 + NUM_AGENT_MAIN_REFINEMENT_LOOPS + 1;
 
 export const NUM_INITIAL_STRATEGIES_MATH = 3;
 export const NUM_SUB_STRATEGIES_PER_MAIN_MATH = 3;
-const MATH_MODEL_NAME = "gemini-2.5-pro";
 const MATH_FIXED_TEMPERATURE = 1.0;
 
 export const NUM_INITIAL_STRATEGIES_DEEPTHINK = 3;
 export const NUM_SUB_STRATEGIES_PER_MAIN_DEEPTHINK = 3;
-const DEEPTHINK_MODEL_NAME = "gemini-2.5-flash";
 const DEEPTHINK_FIXED_TEMPERATURE = 1.0;
+
+// Function to get selected model from dropdown
+function getSelectedModel(): string {
+    return modelSelectElement?.value || 'gemini-2.5-pro';
+}
+
+function getSelectedTemperature(): number {
+    const temp = parseFloat(temperatureSlider?.value || '0.7');
+    return Math.max(0, Math.min(2, temp)); // Clamp between 0 and 2
+}
+
+function getSelectedTopP(): number {
+    const topP = parseFloat(topPSlider?.value || '0.95');
+    return Math.max(0, Math.min(1, topP)); // Clamp between 0 and 1
+}
 
 
 const temperatures = [0, 0.7, 1.0, 1.5, 2.0];
@@ -597,7 +610,27 @@ const mathProblemImagePreview = document.getElementById('math-problem-image-prev
 
 const modelSelectionContainer = document.getElementById('model-selection-container') as HTMLElement;
 const modelSelectElement = document.getElementById('model-select') as HTMLSelectElement;
+const modelParametersContainer = document.getElementById('model-parameters-container') as HTMLElement;
+const temperatureSlider = document.getElementById('temperature-slider') as HTMLInputElement;
+const topPSlider = document.getElementById('top-p-slider') as HTMLInputElement;
+const temperatureValue = document.getElementById('temperature-value') as HTMLSpanElement;
+const topPValue = document.getElementById('top-p-value') as HTMLSpanElement;
 const temperatureSelectionContainer = document.getElementById('temperature-selection-container') as HTMLElement;
+
+// Add event listeners for sliders to update display values
+function initializeSliderEventListeners() {
+    if (temperatureSlider && temperatureValue) {
+        temperatureSlider.addEventListener('input', () => {
+            temperatureValue.textContent = temperatureSlider.value;
+        });
+    }
+    
+    if (topPSlider && topPValue) {
+        topPSlider.addEventListener('input', () => {
+            topPValue.textContent = topPSlider.value;
+        });
+    }
+}
 const generateButton = document.getElementById('generate-button') as HTMLButtonElement;
 const tabsNavContainer = document.getElementById('tabs-nav-container') as HTMLElement;
 const pipelinesContentContainer = document.getElementById('pipelines-content-container') as HTMLElement;
@@ -1000,46 +1033,58 @@ function updateUIAfterModeChange() {
     // Default UI states
     if (mathProblemImageInputContainer) mathProblemImageInputContainer.style.display = 'none';
     if (modelSelectionContainer) modelSelectionContainer.style.display = 'flex';
+    if (modelParametersContainer) modelParametersContainer.style.display = 'flex';
     if (temperatureSelectionContainer) temperatureSelectionContainer.style.display = 'block';
 
     const generateButtonText = generateButton?.querySelector('.button-text');
 
     if (currentMode === 'website') {
-        if (initialIdeaLabel) initialIdeaLabel.textContent = 'HTML Idea:';
-        if (initialIdeaInput) initialIdeaInput.placeholder = 'E.g., a personal blog about cooking, a portfolio...';
-        if (generateButtonText) generateButtonText.textContent = 'Generate HTML';
+        if (initialIdeaLabel) initialIdeaLabel.textContent = 'Website Idea:';
+        if (initialIdeaInput) initialIdeaInput.placeholder = 'E.g., "A portfolio website for a photographer", "An e-commerce site for handmade crafts"...';
+        if (generateButtonText) generateButtonText.textContent = 'Generate Website';
+        if (mathProblemImageInputContainer) mathProblemImageInputContainer.style.display = 'none';
+        if (modelSelectionContainer) modelSelectionContainer.style.display = 'flex';
+        if (modelParametersContainer) modelParametersContainer.style.display = 'none';
+        if (temperatureSelectionContainer) temperatureSelectionContainer.style.display = 'block';
     } else if (currentMode === 'creative') {
-        if (initialIdeaLabel) initialIdeaLabel.textContent = 'Writing Premise:';
-        if (initialIdeaInput) initialIdeaInput.placeholder = 'E.g., a short story about a time traveler, a poem...';
-        if (generateButtonText) generateButtonText.textContent = 'Refine Writing';
+        if (initialIdeaLabel) initialIdeaLabel.textContent = 'Creative Idea:';
+        if (initialIdeaInput) initialIdeaInput.placeholder = 'E.g., "A short story about time travel", "A poem about the ocean"...';
+        if (generateButtonText) generateButtonText.textContent = 'Create Content';
+        if (mathProblemImageInputContainer) mathProblemImageInputContainer.style.display = 'none';
+        if (modelSelectionContainer) modelSelectionContainer.style.display = 'flex';
+        if (modelParametersContainer) modelParametersContainer.style.display = 'none';
+        if (temperatureSelectionContainer) temperatureSelectionContainer.style.display = 'block';
     } else if (currentMode === 'math') {
         if (initialIdeaLabel) initialIdeaLabel.textContent = 'Math Problem:';
-        if (initialIdeaInput) initialIdeaInput.placeholder = 'E.g., "Solve for x: 2x + 5 = 11" or describe...';
+        if (initialIdeaInput) initialIdeaInput.placeholder = 'E.g., "Solve for x: 2x + 5 = 15", "Find the derivative of f(x) = x^2 + 3x"...';
         if (generateButtonText) generateButtonText.textContent = 'Solve Problem';
         if (mathProblemImageInputContainer) mathProblemImageInputContainer.style.display = 'flex';
-        if (modelSelectionContainer) modelSelectionContainer.style.display = 'none';
+        if (modelSelectionContainer) modelSelectionContainer.style.display = 'flex';
+        if (modelParametersContainer) modelParametersContainer.style.display = 'flex';
         if (temperatureSelectionContainer) temperatureSelectionContainer.style.display = 'none';
     } else if (currentMode === 'deepthink') {
         if (initialIdeaLabel) initialIdeaLabel.textContent = 'Core Challenge:';
         if (initialIdeaInput) initialIdeaInput.placeholder = 'E.g., "Design a sustainable urban transportation system", "Analyze the impact of remote work on company culture"...';
         if (generateButtonText) generateButtonText.textContent = 'Analyze Challenge';
         if (mathProblemImageInputContainer) mathProblemImageInputContainer.style.display = 'flex';
-        if (modelSelectionContainer) modelSelectionContainer.style.display = 'none';
+        if (modelSelectionContainer) modelSelectionContainer.style.display = 'flex';
+        if (modelParametersContainer) modelParametersContainer.style.display = 'flex';
         if (temperatureSelectionContainer) temperatureSelectionContainer.style.display = 'none';
     } else if (currentMode === 'agent') {
         if (initialIdeaLabel) initialIdeaLabel.textContent = 'Your Request:';
         if (initialIdeaInput) initialIdeaInput.placeholder = 'E.g., "Python snake game", "Analyze iPhone sales data"...';
         if (generateButtonText) generateButtonText.textContent = 'Start Agent Process';
+        if (modelSelectionContainer) modelSelectionContainer.style.display = 'flex';
+        if (modelParametersContainer) modelParametersContainer.style.display = 'none';
+        if (temperatureSelectionContainer) temperatureSelectionContainer.style.display = 'block';
     } else if (currentMode === 'react') { // Added for React mode
         if (initialIdeaLabel) initialIdeaLabel.textContent = 'React App Request:';
         if (initialIdeaInput) initialIdeaInput.placeholder = 'E.g., "A simple to-do list app with local storage persistence", "A weather dashboard using OpenWeatherMap API"...';
         if (generateButtonText) generateButtonText.textContent = 'Generate React App';
-        // React mode uses standard model and temperature selection like website/creative/agent
         if (modelSelectionContainer) modelSelectionContainer.style.display = 'flex';
+        if (modelParametersContainer) modelParametersContainer.style.display = 'none';
         if (temperatureSelectionContainer) temperatureSelectionContainer.style.display = 'block';
-        if (mathProblemImageInputContainer) mathProblemImageInputContainer.style.display = 'none';
     }
-
 
     if (!isGenerating) {
         pipelinesState = [];
@@ -1136,7 +1181,7 @@ function updateControlsState() {
     if (initialIdeaInput) initialIdeaInput.disabled = isGenerating;
     if (mathProblemImageInput) mathProblemImageInput.disabled = isGenerating;
 
-    if (modelSelectElement) modelSelectElement.disabled = isGenerating || currentMode === 'math' || currentMode === 'deepthink';
+    if (modelSelectElement) modelSelectElement.disabled = isGenerating;
     if (pipelineSelectorsContainer) {
         const disableSelectors = isGenerating || currentMode === 'math' || currentMode === 'deepthink' || currentMode === 'react';
         pipelineSelectorsContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => (cb as HTMLInputElement).disabled = disableSelectors);
@@ -1148,10 +1193,10 @@ function updateControlsState() {
     }
 
     if (currentMode === 'math' && modelSelectElement) {
-        modelSelectElement.value = MATH_MODEL_NAME;
+        modelSelectElement.value = "gemini-2.5-pro";
     }
     if (currentMode === 'deepthink' && modelSelectElement) {
-        modelSelectElement.value = DEEPTHINK_MODEL_NAME;
+        modelSelectElement.value = "gemini-2.5-pro";
     }
 
     if (appModeSelector) {
@@ -1722,14 +1767,13 @@ function updatePipelineStatusUI(pipelineId: number, status: PipelineState['statu
     updateControlsState();
 }
 
-async function callGemini(promptOrParts: string | Part[], temperature: number, modelToUse: string, systemInstruction?: string, isJsonOutput: boolean = false): Promise<GenerateContentResponse> {
+async function callGemini(promptOrParts: string | Part[], temperature: number, modelToUse: string, systemInstruction?: string, isJsonOutput: boolean = false, topP?: number): Promise<GenerateContentResponse> {
     if (!ai) throw new Error("Gemini API client not initialized.");
-
     const contents: Part[] = typeof promptOrParts === 'string' ? [{ text: promptOrParts }] : promptOrParts;
     const config: any = { temperature };
+    if (topP !== undefined) config.topP = topP;
     if (systemInstruction) config.systemInstruction = systemInstruction;
     if (isJsonOutput) config.responseMimeType = "application/json";
-
     const response = await ai.models.generateContent({ model: modelToUse, contents: { parts: contents }, config: config });
     return response;
 }
@@ -2712,7 +2756,7 @@ function handleImportConfiguration(event: Event) {
                 }
             }, 200);
 
-            modelSelectElement.value = importedConfig.selectedModel || (currentMode === 'math' ? MATH_MODEL_NAME : modelSelectElement.options[0].value);
+            modelSelectElement.value = importedConfig.selectedModel || "gemini-2.5-pro";
 
             activeMathPipeline = null; // Reset other mode states
             pipelinesState = [];
@@ -2870,7 +2914,7 @@ async function startMathSolvingProcess(problemText: string, imageBase64?: string
             if (attempt > 0) await new Promise(resolve => setTimeout(resolve, INITIAL_DELAY_MS * Math.pow(BACKOFF_FACTOR, attempt)));
 
             try {
-                const apiResponse = await callGemini(parts, MATH_FIXED_TEMPERATURE, MATH_MODEL_NAME, systemInstruction, isJson);
+                const apiResponse = await callGemini(parts, getSelectedTemperature(), getSelectedModel(), systemInstruction, isJson, getSelectedTopP());
                 responseText = apiResponse.text;
 
                 // Reset status to processing after successful call
@@ -3532,9 +3576,37 @@ async function runRedTeamEvaluation(
             // Parse Red Team decision
             try {
                 const redTeamDecision = JSON.parse(redTeamResponse);
-                redTeamAgent.reasoning = redTeamDecision.overall_reasoning || '';
-                redTeamAgent.killedStrategyIds = redTeamDecision.killed_strategy_ids || [];
-                redTeamAgent.killedSubStrategyIds = redTeamDecision.killed_substrategy_ids || [];
+                redTeamAgent.reasoning = redTeamDecision.challenge || '';
+                
+                // Parse new format with strategy_evaluations
+                const killedStrategyIds: string[] = [];
+                const killedSubStrategyIds: string[] = [];
+                const reasonMap: {[key: string]: string} = {};
+                
+                if (redTeamDecision.strategy_evaluations && Array.isArray(redTeamDecision.strategy_evaluations)) {
+                    redTeamDecision.strategy_evaluations.forEach((evaluation: any) => {
+                        if (evaluation.decision === 'eliminate') {
+                            const strategyId = evaluation.id;
+                            // Check if this is a main strategy or sub-strategy
+                            if (strategyId.includes('main')) {
+                                if (strategyId.includes('-sub')) {
+                                    killedSubStrategyIds.push(strategyId);
+                                } else {
+                                    killedStrategyIds.push(strategyId);
+                                }
+                            } else {
+                                // Default to sub-strategy for other formats
+                                killedSubStrategyIds.push(strategyId);
+                            }
+                            reasonMap[strategyId] = evaluation.reason || 'Eliminated by Red Team';
+                        }
+                    });
+                }
+                
+                redTeamAgent.killedStrategyIds = killedStrategyIds;
+                redTeamAgent.killedSubStrategyIds = killedSubStrategyIds;
+                (redTeamAgent as any).killedReasonMap = reasonMap;
+                
             } catch (parseError) {
                 console.warn(`Failed to parse Red Team decision for agent ${agentIndex + 1}:`, parseError);
                 // If parsing fails, try to extract useful information from text response
@@ -3874,7 +3946,7 @@ async function makeMathJudgingApiCall(
         if (attempt > 0) await new Promise(resolve => setTimeout(resolve, INITIAL_DELAY_MS * Math.pow(BACKOFF_FACTOR, attempt)));
 
         try {
-            const apiResponse = await callGemini(parts, MATH_FIXED_TEMPERATURE, MATH_MODEL_NAME, systemInstruction, isJson);
+            const apiResponse = await callGemini(parts, getSelectedTemperature(), getSelectedModel(), systemInstruction, isJson, getSelectedTopP());
             responseText = apiResponse.text;
 
             // Reset status to processing after successful call
@@ -4956,8 +5028,8 @@ async function startDeepthinkAnalysisProcess(challengeText: string, imageBase64?
                 (targetStatusField as any)[retryAttemptField] = attempt;
                 renderActiveDeepthinkPipeline();
 
-                const response = await callGemini(parts, DEEPTHINK_FIXED_TEMPERATURE, DEEPTHINK_MODEL_NAME, systemInstruction, isJson);
-                responseText = response.text || "";
+                const strategyResponse = await callGemini(parts, getSelectedTemperature(), getSelectedModel(), systemInstruction, isJson, getSelectedTopP());
+                responseText = strategyResponse.text || "";
 
                 if (responseText && responseText.trim() !== "") {
                     break;
@@ -5906,7 +5978,8 @@ function renderDeepthinkRedTeamEvaluator(): string {
                 redTeamHtml += `<div class="status-message error"><pre>${escapeHtml(redTeamAgent.error)}</pre></div>`;
             }
 
-            if (redTeamAgent.reasoning) {
+            if (redTeamAgent.reasoning || redTeamAgent.evaluationResponse) {
+                const reasoningText = redTeamAgent.reasoning || redTeamAgent.evaluationResponse || '';
                 redTeamHtml += `
                     <div class="red-team-reasoning-section">
                         <div class="red-team-reasoning-header">
@@ -5918,12 +5991,12 @@ function renderDeepthinkRedTeamEvaluator(): string {
                                 <button class="red-team-reasoning-btn" onclick="toggleDeepthinkRedTeamReasoning('${redTeamAgent.id}')">
                                     <span class="material-symbols-outlined">visibility</span>
                                 </button>
-                                <button class="red-team-reasoning-btn" onclick="showFullDeepthinkRedTeamReasoning('${redTeamAgent.id}', \`${escapeHtml(redTeamAgent.evaluationResponse || redTeamAgent.reasoning || '').replace(/`/g, '\\`')}\`)">
+                                <button class="red-team-reasoning-btn" onclick="showFullDeepthinkRedTeamReasoning('${redTeamAgent.id}', \`${escapeHtml(reasoningText).replace(/`/g, '\\`')}\`)">
                                     <span class="material-symbols-outlined">fullscreen</span>
                                 </button>
                             </div>
                         </div>
-                        <div id="deepthink-red-team-reasoning-${redTeamAgent.id}" class="red-team-reasoning-content">${escapeHtml(redTeamAgent.reasoning || '')}</div>
+                        <div id="deepthink-red-team-reasoning-${redTeamAgent.id}" class="red-team-reasoning-content">${escapeHtml(reasoningText)}</div>
                     </div>`;
             }
 
@@ -6035,7 +6108,7 @@ async function startReactModeProcess(userRequest: string) {
             try {
                 const selectedModel = modelSelectElement.value || "gemini-2.5-pro"; // Fallback if not selected
 
-                const apiResponse = await callGemini(orchestratorUserPrompt, 1.0, selectedModel, orchestratorSysPrompt, true); // Expecting JSON output
+                const apiResponse = await callGemini(orchestratorUserPrompt, getSelectedTemperature(), selectedModel, orchestratorSysPrompt, true, getSelectedTopP()); // Expecting JSON output
                 orchestratorResponseText = apiResponse.text;
                 break;
             } catch (e: any) {
@@ -7762,6 +7835,7 @@ function closeDiffModal() {
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM loaded, initializing UI...');
     initializeUI();
+    initializeSliderEventListeners();
 
     // Default to first mode if none specifically checked (e.g. after import or on fresh load)
     const appModeRadios = document.querySelectorAll('input[name="appMode"]');

@@ -96,14 +96,26 @@
                     </div>
                     
                     <details class="sidebar-section" open>
-                        <summary class="sidebar-section-header">Model & Variants</summary>
+                        <summary class="sidebar-section-header">Model & Parameters</summary>
                         <div class="sidebar-section-content">
                             <div id="model-selection-container" class="input-group-tight">
                                 <label for="model-select" class="input-label">Model:</label>
                                 <select id="model-select" class="input-base" aria-label="Select Gemini Model">
+                                    <option value="gemini-2.5-pro">Gemini 2.5 Pro (Default)</option>
                                     <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                                    <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                                    <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
                                 </select>
+                            </div>
+
+                            <div id="model-parameters-container" class="input-group-tight">
+                                <div class="input-group-tight">
+                                    <label for="temperature-slider" class="input-label">Temperature: <span id="temperature-value">0.7</span></label>
+                                    <input type="range" id="temperature-slider" class="slider" min="0" max="2" step="0.1" value="0.7" aria-label="Temperature slider">
+                                </div>
+                                <div class="input-group-tight">
+                                    <label for="top-p-slider" class="input-label">Top P: <span id="top-p-value">0.95</span></label>
+                                    <input type="range" id="top-p-slider" class="slider" min="0" max="1" step="0.05" value="0.95" aria-label="Top P slider">
+                                </div>
                             </div>
                 
                             <div id="temperature-selection-container" class="input-group-tight">
