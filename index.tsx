@@ -3393,171 +3393,81 @@ function openSolutionModal(subStrategyId: string) {
     const modalBody = document.createElement('div');
     modalBody.className = 'modal-body';
 
-    const solutionModalLayout = document.createElement('div');
-    solutionModalLayout.className = 'solution-modal-layout';
-
-    // Navigation panel (left side)
-    const solutionNav = document.createElement('nav');
-    solutionNav.className = 'solution-nav custom-scrollbar';
-    
-    const navTitle = document.createElement('div');
-    navTitle.className = 'solution-nav-title';
-    navTitle.textContent = 'Solution Components';
-    solutionNav.appendChild(navTitle);
-
-    const navItems = [
-        { id: 'side-by-side', text: 'Side by Side View', icon: 'view_column' },
-        { id: 'diff-view', text: 'Diff Analysis', icon: 'difference' }
-    ];
-
-    navItems.forEach((item, index) => {
-        const navItem = document.createElement('div');
-        navItem.className = 'solution-nav-item';
-        if (index === 0) navItem.classList.add('active');
-        navItem.dataset.target = item.id;
-        
-        const icon = document.createElement('span');
-        icon.className = 'material-symbols-outlined';
-        icon.textContent = item.icon;
-        navItem.appendChild(icon);
-        
-        const text = document.createElement('span');
-        text.textContent = item.text;
-        navItem.appendChild(text);
-        
-        navItem.addEventListener('click', () => activateSolutionTab(item.id));
-        solutionNav.appendChild(navItem);
-    });
-
-    solutionModalLayout.appendChild(solutionNav);
-
-    // Content panel (right side)
+    // Direct content without sidebar
     const solutionContent = document.createElement('div');
-    solutionContent.className = 'solution-content custom-scrollbar';
+    solutionContent.className = 'modal-direct-content';
+    solutionContent.style.height = 'calc(100vh - 120px)';
+    solutionContent.style.padding = '20px';
 
-    // Side by Side Panel (Default View)
-    const sideBySidePanel = document.createElement('div');
-    sideBySidePanel.className = 'solution-content-pane active';
-    sideBySidePanel.id = 'side-by-side';
-    
-    const sideBySideTitle = document.createElement('h3');
-    sideBySideTitle.className = 'solution-pane-title';
-    sideBySideTitle.innerHTML = '<span class="material-symbols-outlined">view_column</span>Solution Comparison';
-    sideBySidePanel.appendChild(sideBySideTitle);
+    // Direct solution content
+    const solutionDirectContent = document.createElement('div');
+    solutionDirectContent.className = 'solution-direct-content';
+    solutionDirectContent.style.height = '100%';
+    solutionDirectContent.style.display = 'flex';
+    solutionDirectContent.style.flexDirection = 'column';
     
     const solutionComparison = document.createElement('div');
     solutionComparison.className = 'solution-comparison-grid';
+    solutionComparison.style.display = 'grid';
+    solutionComparison.style.gridTemplateColumns = '1fr 1fr';
+    solutionComparison.style.gap = '20px';
+    solutionComparison.style.height = '100%';
+    solutionComparison.style.minHeight = '0';
     
     const leftPanel = document.createElement('div');
     leftPanel.className = 'comparison-panel';
+    leftPanel.style.display = 'flex';
+    leftPanel.style.flexDirection = 'column';
+    leftPanel.style.border = '1px solid #333';
+    leftPanel.style.borderRadius = '8px';
+    leftPanel.style.overflow = 'hidden';
     const leftHeader = document.createElement('h4');
     leftHeader.className = 'comparison-panel-title';
     leftHeader.innerHTML = '<span class="material-symbols-outlined">psychology</span>Attempted Solution';
+    leftHeader.style.padding = '12px 16px';
+    leftHeader.style.margin = '0';
+    leftHeader.style.background = 'rgba(15, 17, 32, 0.4)';
+    leftHeader.style.backdropFilter = 'blur(10px)';
+    leftHeader.style.borderBottom = '1px solid #333';
     leftPanel.appendChild(leftHeader);
     const leftContent = document.createElement('div');
     leftContent.className = 'comparison-content custom-scrollbar';
+    leftContent.style.flex = '1';
+    leftContent.style.overflow = 'auto';
+    leftContent.style.padding = '16px';
     leftContent.innerHTML = renderMarkdown(subStrategy.solutionAttempt || 'Solution attempt not available');
     leftPanel.appendChild(leftContent);
     
     const rightPanel = document.createElement('div');
     rightPanel.className = 'comparison-panel';
+    rightPanel.style.display = 'flex';
+    rightPanel.style.flexDirection = 'column';
+    rightPanel.style.border = '1px solid #333';
+    rightPanel.style.borderRadius = '8px';
+    rightPanel.style.overflow = 'hidden';
     const rightHeader = document.createElement('h4');
     rightHeader.className = 'comparison-panel-title';
     rightHeader.innerHTML = '<span class="material-symbols-outlined">auto_fix_high</span>Refined Solution';
+    rightHeader.style.padding = '12px 16px';
+    rightHeader.style.margin = '0';
+    rightHeader.style.background = 'rgba(15, 17, 32, 0.4)';
+    rightHeader.style.backdropFilter = 'blur(10px)';
+    rightHeader.style.borderBottom = '1px solid #333';
     rightPanel.appendChild(rightHeader);
     const rightContent = document.createElement('div');
     rightContent.className = 'comparison-content custom-scrollbar';
+    rightContent.style.flex = '1';
+    rightContent.style.overflow = 'auto';
+    rightContent.style.padding = '16px';
     rightContent.innerHTML = renderMarkdown(subStrategy.refinedSolution || 'Refined solution not available');
     rightPanel.appendChild(rightContent);
     
     solutionComparison.appendChild(leftPanel);
     solutionComparison.appendChild(rightPanel);
-    sideBySidePanel.appendChild(solutionComparison);
+    solutionDirectContent.appendChild(solutionComparison);
 
-    // Diff Analysis Panel (Full Screen Diff)
-    const diffPanel = document.createElement('div');
-    diffPanel.className = 'solution-content-pane';
-    diffPanel.id = 'diff-view';
-    
-    const diffTitle = document.createElement('h3');
-    diffTitle.className = 'solution-pane-title';
-    diffTitle.innerHTML = '<span class="material-symbols-outlined">difference</span>Detailed Diff Analysis';
-    diffPanel.appendChild(diffTitle);
-    
-    const diffCard = document.createElement('div');
-    diffCard.className = 'solution-card diff-card-fullscreen';
-    
-    const diffCardHeader = document.createElement('div');
-    diffCardHeader.className = 'solution-card-header';
-    
-    const diffCardTitle = document.createElement('span');
-    diffCardTitle.className = 'solution-card-title';
-    diffCardTitle.textContent = 'Line-by-Line Comparison';
-    diffCardHeader.appendChild(diffCardTitle);
-    
-    const diffControls = document.createElement('div');
-    diffControls.className = 'diff-controls';
-    
-    const generateDiffButton = document.createElement('button');
-    generateDiffButton.className = 'button';
-    generateDiffButton.innerHTML = '<span class="material-symbols-outlined">refresh</span><span class="button-text">Generate Diff</span>';
-    diffControls.appendChild(generateDiffButton);
-    
-    const clearDiffButton = document.createElement('button');
-    clearDiffButton.className = 'button';
-    clearDiffButton.innerHTML = '<span class="material-symbols-outlined">clear</span><span class="button-text">Clear</span>';
-    diffControls.appendChild(clearDiffButton);
-    
-    diffCardHeader.appendChild(diffControls);
-    diffCard.appendChild(diffCardHeader);
-    
-    const diffCardBody = document.createElement('div');
-    diffCardBody.className = 'solution-card-body';
-    
-    const diffOutput = document.createElement('div');
-    diffOutput.className = 'diff-output-container-fullscreen custom-scrollbar';
-    diffOutput.innerHTML = '<div class="empty-state-message">Click "Generate Diff" to see detailed line-by-line changes between the attempted and refined solutions</div>';
-    diffCardBody.appendChild(diffOutput);
-    diffCard.appendChild(diffCardBody);
-    diffPanel.appendChild(diffCard);
-
-    // Diff generation logic
-    const generateDiff = () => {
-        const diff = Diff.diffLines(subStrategy.solutionAttempt || '', subStrategy.refinedSolution || '');
-        let diffHtml = '<div class="diff-view-fullscreen">';
-        let lineNumber = 1;
-        
-        diff.forEach(part => {
-            const lines = part.value.split('\n');
-            lines.forEach((line, index) => {
-                if (index === lines.length - 1 && line === '') return; // Skip empty last line
-                
-                const colorClass = part.added ? 'diff-added' : part.removed ? 'diff-removed' : 'diff-neutral';
-                const prefix = part.added ? '+' : part.removed ? '-' : ' ';
-                
-                diffHtml += `<div class="diff-line ${colorClass}">
-                    <span class="diff-line-number">${lineNumber}</span>
-                    <span class="diff-line-prefix">${prefix}</span>
-                    <span class="diff-line-content">${escapeHtml(line)}</span>
-                </div>`;
-                
-                if (!part.removed) lineNumber++;
-            });
-        });
-        
-        diffHtml += '</div>';
-        diffOutput.innerHTML = diffHtml;
-    };
-
-    generateDiffButton.addEventListener('click', generateDiff);
-    clearDiffButton.addEventListener('click', () => {
-        diffOutput.innerHTML = '<div class="empty-state-message">Click "Generate Diff" to see detailed line-by-line changes between the attempted and refined solutions</div>';
-    });
-
-    solutionContent.appendChild(sideBySidePanel);
-    solutionContent.appendChild(diffPanel);
-    solutionModalLayout.appendChild(solutionContent);
-    modalBody.appendChild(solutionModalLayout);
+    solutionContent.appendChild(solutionDirectContent);
+    modalBody.appendChild(solutionContent);
     modalContent.appendChild(modalBody);
     modalOverlay.appendChild(modalContent);
     document.body.appendChild(modalOverlay);
@@ -3569,11 +3479,8 @@ function openSolutionModal(subStrategyId: string) {
 }
 
 function activateSolutionTab(targetId: string) {
-    // Update navigation
-    const navItems = document.querySelectorAll('.solution-nav-item');
-    navItems.forEach(item => {
-        item.classList.toggle('active', item.dataset.target === targetId);
-    });
+    // This function is no longer needed since we removed the sidebar
+    // Keeping it to avoid breaking existing references
 
     // Update content panels
     const contentPanes = document.querySelectorAll('.solution-content-pane');
@@ -3625,87 +3532,45 @@ function openArgumentModal(hypothesisId: string) {
     const modalBody = document.createElement('div');
     modalBody.className = 'modal-body';
 
-    const argumentModalLayout = document.createElement('div');
-    argumentModalLayout.className = 'solution-modal-layout';
-
-    // Navigation panel (left side) - no diff analysis for arguments
-    const argumentNav = document.createElement('nav');
-    argumentNav.className = 'solution-nav custom-scrollbar';
-    
-    const navTitle = document.createElement('div');
-    navTitle.className = 'solution-nav-title';
-    navTitle.textContent = 'Argument Components';
-    argumentNav.appendChild(navTitle);
-
-    const navItems = [
-        { id: 'side-by-side-args', text: 'Side by Side View', icon: 'view_column' }
-    ];
-
-    navItems.forEach((item, index) => {
-        const navItem = document.createElement('div');
-        navItem.className = 'solution-nav-item';
-        if (index === 0) navItem.classList.add('active');
-        navItem.dataset.target = item.id;
-        
-        const icon = document.createElement('span');
-        icon.className = 'material-symbols-outlined';
-        icon.textContent = item.icon;
-        navItem.appendChild(icon);
-        
-        const text = document.createElement('span');
-        text.textContent = item.text;
-        navItem.appendChild(text);
-        
-        navItem.addEventListener('click', () => activateArgumentTab(item.id));
-        argumentNav.appendChild(navItem);
-    });
-
-    argumentModalLayout.appendChild(argumentNav);
-
-    // Content panel (right side)
+    // Direct content without sidebar
     const argumentContent = document.createElement('div');
-    argumentContent.className = 'solution-content custom-scrollbar';
+    argumentContent.className = 'modal-direct-content';
+    argumentContent.style.height = 'calc(100vh - 120px)';
+    argumentContent.style.display = 'flex';
+    argumentContent.style.flexDirection = 'column';
 
-    // Side by Side Panel (Default View)
-    const sideBySidePanel = document.createElement('div');
-    sideBySidePanel.className = 'solution-content-pane active';
-    sideBySidePanel.id = 'side-by-side-args';
-    
-    const sideBySideTitle = document.createElement('h3');
-    sideBySideTitle.className = 'solution-pane-title';
-    sideBySideTitle.innerHTML = '<span class="material-symbols-outlined">view_column</span>Hypothesis Proving vs Testing';
-    sideBySidePanel.appendChild(sideBySideTitle);
+    // Direct hypothesis investigation content
+    const hypothesisContent = document.createElement('div');
+    hypothesisContent.className = 'hypothesis-direct-content';
+    hypothesisContent.style.flex = '1';
+    hypothesisContent.style.display = 'flex';
+    hypothesisContent.style.flexDirection = 'column';
+    hypothesisContent.style.minHeight = '0';
     
     const argumentComparison = document.createElement('div');
-    argumentComparison.className = 'solution-comparison-grid';
+    argumentComparison.className = 'solution-single-panel';
+    argumentComparison.style.flex = '1';
+    argumentComparison.style.display = 'flex';
+    argumentComparison.style.flexDirection = 'column';
+    argumentComparison.style.minHeight = '0';
     
-    const leftPanel = document.createElement('div');
-    leftPanel.className = 'comparison-panel';
-    const leftHeader = document.createElement('h4');
-    leftHeader.className = 'comparison-panel-title';
-    leftHeader.innerHTML = '<span class="material-symbols-outlined">check_circle</span>Hypothesis Proving Agent';
-    leftPanel.appendChild(leftHeader);
-    const leftContent = document.createElement('div');
-    leftContent.className = 'comparison-content custom-scrollbar';
-    leftContent.innerHTML = renderMarkdown(hypothesis.testerAttempt || 'Hypothesis tester attempt not available');
-    leftPanel.appendChild(leftContent);
+    const singlePanel = document.createElement('div');
+    singlePanel.className = 'hypothesis-content-panel';
+    singlePanel.style.flex = '1';
+    singlePanel.style.display = 'flex';
+    singlePanel.style.flexDirection = 'column';
+    singlePanel.style.minHeight = '0';
+    const singleContent = document.createElement('div');
+    singleContent.className = 'hypothesis-content custom-scrollbar';
+    singleContent.style.flex = '1';
+    singleContent.style.overflow = 'auto';
+    singleContent.style.padding = '20px';
     
-    const rightPanel = document.createElement('div');
-    rightPanel.className = 'comparison-panel';
-    const rightHeader = document.createElement('h4');
-    rightHeader.className = 'comparison-panel-title';
-    rightHeader.innerHTML = '<span class="material-symbols-outlined">science</span>Hypothesis Tester Agent';
-    rightPanel.appendChild(rightHeader);
-    const rightContent = document.createElement('div');
-    rightContent.className = 'comparison-content custom-scrollbar';
-    rightContent.innerHTML = renderMarkdown(hypothesis.testerAttempt || 'Hypothesis tester attempt not available');
-    rightPanel.appendChild(rightContent);
+    // Create a container for both the hypothesis content and knowledge packet
+    const contentContainer = document.createElement('div');
+    contentContainer.innerHTML = renderMarkdown(hypothesis.testerAttempt || 'Hypothesis investigation not available');
     
-    argumentComparison.appendChild(leftPanel);
-    argumentComparison.appendChild(rightPanel);
-    sideBySidePanel.appendChild(argumentComparison);
-
-    // Knowledge Packet Section
+    // Knowledge Packet Section - now inside the scrollable content
     const knowledgePacketSection = document.createElement('div');
     knowledgePacketSection.className = 'knowledge-packet-section';
     
@@ -3761,11 +3626,16 @@ function openArgumentModal(hypothesisId: string) {
     `;
     
     knowledgePacketSection.appendChild(knowledgePacketContent);
-    sideBySidePanel.appendChild(knowledgePacketSection);
+    contentContainer.appendChild(knowledgePacketSection);
+    
+    singleContent.appendChild(contentContainer);
+    singlePanel.appendChild(singleContent);
+    
+    argumentComparison.appendChild(singlePanel);
+    hypothesisContent.appendChild(argumentComparison);
 
-    argumentContent.appendChild(sideBySidePanel);
-    argumentModalLayout.appendChild(argumentContent);
-    modalBody.appendChild(argumentModalLayout);
+    argumentContent.appendChild(hypothesisContent);
+    modalBody.appendChild(argumentContent);
     modalContent.appendChild(modalBody);
     modalOverlay.appendChild(modalContent);
     document.body.appendChild(modalOverlay);
@@ -4259,7 +4129,7 @@ let redTeamHtml = `<div class="math-red-team model-detail-card">`;
                                 </button>
                             </div>
                         </div>
-                        <div id="red-team-reasoning-${redTeamAgent.id}" class="red-team-reasoning-content"></div>
+                        <div id="red-team-reasoning-${redTeamAgent.id}" class="red-team-reasoning-content">${escapeHtml(redTeamAgent.reasoning || '')}</div>
                     </div>`;
             }
 
@@ -6054,19 +5924,12 @@ function closeDiffModal() {
 (window as any).toggleRedTeamReasoning = function(agentId: string) {
     const content = document.getElementById(`red-team-reasoning-${agentId}`);
     if (content) {
-        if (!content.classList.contains('expanded')) {
-            // Load content on first expand
-            if (activeMathPipeline) {
-                const agent = activeMathPipeline.redTeamAgents.find((a: any) => a.id === agentId);
-                if (agent && agent.reasoning) {
-                    content.innerHTML = escapeHtml(agent.reasoning);
-                }
-            }
-            content.classList.add('expanded');
-        } else {
-            // Clear content and collapse
-            content.innerHTML = '';
+        if (content.classList.contains('expanded')) {
+            // Hide content
             content.classList.remove('expanded');
+        } else {
+            // Show content
+            content.classList.add('expanded');
         }
     }
 };
