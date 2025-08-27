@@ -644,7 +644,6 @@ const customPromptTextareasWebsite: { [K in keyof CustomizablePromptsWebsite]: H
     sys_finalPolish: document.getElementById('sys-final-polish') as HTMLTextAreaElement,
     user_finalPolish: document.getElementById('user-final-polish') as HTMLTextAreaElement,
 };
-
 const customPromptTextareasCreative: { [K in keyof CustomizablePromptsCreative]: HTMLTextAreaElement | null } = {
     sys_creative_initialDraft: document.getElementById('sys-creative-initial-draft') as HTMLTextAreaElement,
     user_creative_initialDraft: document.getElementById('user-creative-initial-draft') as HTMLTextAreaElement,
@@ -1288,8 +1287,6 @@ function activateTab(idToActivate: number | string) {
         });
     }
 }
-
-
 function renderPipelines() {
     if (currentMode === 'math' || currentMode === 'deepthink' || currentMode === 'react') { // These modes have their own renderers
         tabsNavContainer.innerHTML = '';
@@ -1800,13 +1797,66 @@ function cleanOutputByType(rawOutput: string, type: string = 'text'): string {
         return cleanHtmlOutput(textToClean); // textToClean here is already fence-stripped and trimmed
     }
 
-    // For 'json', 'text', 'markdown', 'python', etc., after the above fence removal and trimming,
+    if (type === 'json') {
+        // Special handling for JSON to fix newline and special character issues
+        return cleanJsonOutput(textToClean);
+    }
+
+    // For 'text', 'markdown', 'python', etc., after the above fence removal and trimming,
     // return the result. The caller is responsible for further processing like JSON.parse().
-    // This simplified approach for 'json' ensures that if the LLM includes preamble/postamble
-    // outside of fences (despite responseMimeType: "application/json"), JSON.parse will
-    // operate on that malformed string and fail correctly, rather than this function
-    // trying to guess and potentially mis-extracting a non-JSON fragment.
     return textToClean;
+}
+
+// New function to properly clean JSON output
+function cleanJsonOutput(jsonString: string): string {
+    if (!jsonString || typeof jsonString !== 'string') return jsonString;
+    
+    let cleaned = jsonString.trim();
+    
+    // Remove any leading/trailing non-JSON content
+    const jsonStart = cleaned.indexOf('{');
+    const jsonEnd = cleaned.lastIndexOf('}');
+    
+    if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+        cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
+    }
+    
+    // Try to fix common JSON issues
+    try {
+        // First, try to parse as-is to see if it's already valid
+        JSON.parse(cleaned);
+        return cleaned;
+    } catch (e) {
+        // If parsing fails, try to fix common issues
+        console.log("JSON parsing failed, attempting to fix common issues...");
+        
+        // Fix newlines within strings by replacing them with escaped newlines
+        // This regex finds strings in JSON and preserves their content while fixing newlines
+        let fixed = cleaned.replace(/"([^"]*?)"/g, (match, content) => {
+            // Replace newlines and other problematic characters within the string content
+            const fixedContent = content
+                .replace(/\n/g, '\\n')
+                .replace(/\r/g, '\\r')
+                .replace(/\t/g, '\\t')
+                .replace(/\\/g, '\\\\')
+                .replace(/"/g, '\\"');
+            return `"${fixedContent}"`;
+        });
+        
+        // Try parsing again
+        try {
+            JSON.parse(fixed);
+            console.log("JSON fixed successfully");
+            return fixed;
+        } catch (e2) {
+            console.warn("Failed to fix JSON, returning original with basic cleanup");
+            // Last resort: basic cleanup
+            return cleaned
+                .replace(/\n/g, '\\n')
+                .replace(/\r/g, '\\r')
+                .replace(/\t/g, '\\t');
+        }
+    }
 }
 
 // ---------- HTML PATCHING (Website mode) ----------
@@ -2469,7 +2519,6 @@ function downloadFile(content: string | Blob, fileName: string, contentType: str
     URL.revokeObjectURL(a.href);
     document.body.removeChild(a);
 }
-
 async function createAndDownloadReactProjectZip() {
     if (!activeReactPipeline || !activeReactPipeline.finalAppendedCode) {
         alert("No React project code available to download.");
@@ -2863,7 +2912,6 @@ async function startMathSolvingProcess(problemText: string, imageBase64?: string
         }
         throw new Error(`API call for ${stepDescription} failed all retries.`);
     };
-
     try {
         // Phase 1: Parallel Generation (The "Race")
         // Track A (Strategic Solver) and Track B (Hypothesis Explorer) begin simultaneously
@@ -3390,7 +3438,6 @@ async function startMathSolvingProcess(problemText: string, imageBase64?: string
         }
     }
 }
-
 // Helper function to run Red Team evaluation for completed strategies
 async function runRedTeamEvaluation(
     currentProcess: MathPipelineState, 
@@ -3510,7 +3557,9 @@ async function runRedTeamEvaluation(
                 const strategy = currentProcess.initialStrategies.find(s => s.id === strategyId);
                 if (strategy) {
                     strategy.isKilledByRedTeam = true;
-                    strategy.redTeamReason = `Eliminated by Red Team Agent ${redTeamAgent.id}`;
+                    const reasonMap = (redTeamAgent as any).killedReasonMap || {};
+                    const fallback = (redTeamAgent as any).fallbackReason || `Eliminated by Red Team Agent ${redTeamAgent.id}`;
+                    strategy.redTeamReason = reasonMap[strategyId] || fallback;
                 }
             });
 
@@ -3520,7 +3569,9 @@ async function runRedTeamEvaluation(
                     const subStrategy = strategy.subStrategies.find(sub => sub.id === subStrategyId);
                     if (subStrategy) {
                         subStrategy.isKilledByRedTeam = true;
-                        subStrategy.redTeamReason = `Eliminated by Red Team Agent ${redTeamAgent.id}`;
+                        const reasonMap = (redTeamAgent as any).killedReasonMap || {};
+                        const fallback = (redTeamAgent as any).fallbackReason || `Eliminated by Red Team Agent ${redTeamAgent.id}`;
+                        subStrategy.redTeamReason = reasonMap[subStrategyId] || fallback;
                     }
                 });
             });
@@ -3540,7 +3591,7 @@ async function runRedTeamEvaluation(
 
     currentProcess.redTeamStatus = 'completed';
     currentProcess.redTeamComplete = true;
-    renderActiveMathPipeline();
+    renderActiveDeepthinkPipeline();
 
     console.log(`Red Team evaluation complete for ${validStrategies.length} strategies.`);
 }
@@ -3640,19 +3691,57 @@ async function runDeepthinkRedTeamEvaluation(
 
             redTeamAgent.evaluationResponse = cleanTextOutput(redTeamResponse);
             
-            // Parse Red Team decision (matching math mode)
+            // Parse Red Team decision (robust: accept multiple key variants like math mode)
             try {
-                const redTeamDecision = JSON.parse(redTeamResponse);
-                redTeamAgent.reasoning = redTeamDecision.overall_reasoning || '';
-                redTeamAgent.killedStrategyIds = redTeamDecision.killed_strategy_ids || [];
-                redTeamAgent.killedSubStrategyIds = redTeamDecision.killed_substrategy_ids || [];
+                const redTeamDecision = JSON.parse(redTeamAgent.evaluationResponse);
+                redTeamAgent.reasoning = redTeamDecision.overall_reasoning || redTeamDecision.summary || '';
+
+                // Normalize IDs arrays
+                const killedStrategyIds = redTeamDecision.killed_strategy_ids
+                    || redTeamDecision.eliminated_strategies
+                    || redTeamDecision.killedStrategies
+                    || [];
+                const killedSubIds = redTeamDecision.killed_substrategy_ids
+                    || redTeamDecision.eliminated_sub_strategies
+                    || redTeamDecision.killedSubStrategies
+                    || [];
+
+                // If decisions come as objects with id/reason, separate
+                const toIds = (arr: any): string[] => {
+                    if (!Array.isArray(arr)) return [];
+                    return arr.map((x: any) => typeof x === 'string' ? x : (x?.id ?? '')).filter(Boolean);
+                };
+
+                // Per-id reasons map
+                const reasonMap: Record<string, string> = {};
+                const collectReasons = (arr: any) => {
+                    if (!Array.isArray(arr)) return;
+                    arr.forEach((x: any) => {
+                        if (x && typeof x === 'object' && x.id && x.reason) {
+                            reasonMap[x.id] = String(x.reason);
+                        }
+                    });
+                };
+                collectReasons(redTeamDecision.killed_strategy_details || redTeamDecision.eliminated_strategy_details || []);
+                collectReasons(redTeamDecision.killed_substrategy_details || redTeamDecision.eliminated_substrategy_details || redTeamDecision.eliminated_sub_strategy_details || []);
+
+                // Fallback global reason
+                const fallbackReason = redTeamAgent.reasoning || 'Eliminated by Red Team';
+
+                redTeamAgent.killedStrategyIds = Array.isArray(killedStrategyIds) ? toIds(killedStrategyIds) : [];
+                redTeamAgent.killedSubStrategyIds = Array.isArray(killedSubIds) ? toIds(killedSubIds) : [];
+                // attach reasons map for UI and application
+                (redTeamAgent as any).killedReasonMap = reasonMap;
+                (redTeamAgent as any).fallbackReason = fallbackReason;
             } catch (parseError) {
                 console.warn(`Failed to parse Red Team decision for agent ${agentIndex + 1}:`, parseError);
                 // If parsing fails, try to extract useful information from text response
-                redTeamAgent.reasoning = `JSON parsing failed. Raw response: ${redTeamResponse.substring(0, 500)}...`;
+                redTeamAgent.reasoning = `JSON parsing failed. Raw response: ${redTeamAgent.evaluationResponse.substring(0, 500)}...`;
                 // Conservative approach: assume no strategies are killed if we can't parse
                 redTeamAgent.killedStrategyIds = [];
                 redTeamAgent.killedSubStrategyIds = [];
+                (redTeamAgent as any).killedReasonMap = {};
+                (redTeamAgent as any).fallbackReason = 'Eliminated by Red Team';
             }
 
             redTeamAgent.status = 'completed';
@@ -3954,7 +4043,6 @@ function closeSolutionModal() {
         modalOverlay.remove();
     }
 }
-
 function openDeepthinkSolutionModal(subStrategyId: string) {
     const subStrategy = activeDeepthinkPipeline?.initialStrategies.flatMap(ms => ms.subStrategies).find(ss => ss.id === subStrategyId);
     if (!subStrategy) return;
@@ -4812,8 +4900,6 @@ let redTeamHtml = `<div class="math-red-team model-detail-card">`;
     }
     updateControlsState();
 }
-
-
 // ----- END MATH MODE SPECIFIC FUNCTIONS -----
 
 // ---------- DEEPTHINK MODE SPECIFIC FUNCTIONS ----------
@@ -4844,7 +4930,8 @@ async function startDeepthinkAnalysisProcess(challengeText: string, imageBase64?
     };
     renderActiveDeepthinkPipeline();
 
-    const currentProcess = activeDeepthinkPipeline;
+    // activeDeepthinkPipeline is initialized immediately above; assert non-null for this scope
+    const currentProcess = activeDeepthinkPipeline as DeepthinkPipelineState;
 
     const makeDeepthinkApiCall = async (
         parts: Part[],
@@ -4977,8 +5064,37 @@ async function startDeepthinkAnalysisProcess(challengeText: string, imageBase64?
                     mainStrategy.status = 'completed';
                     renderActiveDeepthinkPipeline();
                 }
+                // Step 2.5: Run Red Team evaluation BEFORE any solution attempts (mirror Math mode)
+                console.log("Sub-strategy generation complete - starting Red Team evaluation BEFORE solution attempts");
+                try {
+                    await runDeepthinkRedTeamEvaluation(currentProcess, challengeText, imageBase64, imageMimeType, makeDeepthinkApiCall);
+                } catch (e: any) {
+                    console.error("Red Team evaluation failed:", e);
+                    currentProcess.redTeamStatus = 'error';
+                    currentProcess.redTeamError = e.message || "Red Team evaluation failed";
+                    currentProcess.redTeamComplete = true;
+                    renderActiveDeepthinkPipeline();
+                }
 
-                // Step 3: Execute solution attempts for all sub-strategies
+                // Early exit if Red Team eliminated everything
+                const remainingStrategies = currentProcess.initialStrategies.filter(s => !s.isKilledByRedTeam);
+                const remainingSubStrategies = currentProcess.initialStrategies.flatMap(s => s.subStrategies.filter(sub => !sub.isKilledByRedTeam));
+                if (remainingStrategies.length === 0) {
+                    console.warn("All main strategies were eliminated by Red Team evaluation");
+                    currentProcess.status = 'completed';
+                    currentProcess.error = "All strategies were eliminated by Red Team evaluation. No solution attempts can be made.";
+                    renderActiveDeepthinkPipeline();
+                    return;
+                }
+                if (remainingSubStrategies.length === 0) {
+                    console.warn("All sub-strategies were eliminated by Red Team evaluation");
+                    currentProcess.status = 'completed';
+                    currentProcess.error = "All sub-strategies were eliminated by Red Team evaluation. No solution attempts can be made.";
+                    renderActiveDeepthinkPipeline();
+                    return;
+                }
+
+                // Step 3: Execute solution attempts for all sub-strategies (skip any killed by Red Team)
                 for (const mainStrategy of currentProcess.initialStrategies) {
                     for (const subStrategy of mainStrategy.subStrategies) {
                         if (currentProcess.isStopRequested) throw new PipelineStopRequestedError("Stop requested during solution attempt");
@@ -5009,7 +5125,7 @@ async function startDeepthinkAnalysisProcess(challengeText: string, imageBase64?
                     }
                 }
 
-                // Step 4: Self-improvement for all solution attempts
+                // Step 4: Self-improvement for all solution attempts (skip any killed by Red Team)
                 for (const mainStrategy of currentProcess.initialStrategies) {
                     for (const subStrategy of mainStrategy.subStrategies) {
                         if (currentProcess.isStopRequested) throw new PipelineStopRequestedError("Stop requested during self-improvement");
@@ -5043,18 +5159,6 @@ async function startDeepthinkAnalysisProcess(challengeText: string, imageBase64?
 
                 currentProcess.strategicSolverComplete = true;
                 renderActiveDeepthinkPipeline();
-
-                // Start Red Team evaluation immediately after strategic solver completes
-                console.log("Strategic Solver complete - starting Red Team evaluation");
-                try {
-                    await runDeepthinkRedTeamEvaluation(currentProcess, challengeText, imageBase64, imageMimeType, makeDeepthinkApiCall);
-                } catch (e: any) {
-                    console.error("Red Team evaluation failed:", e);
-                    currentProcess.redTeamStatus = 'error';
-                    currentProcess.redTeamError = e.message || "Red Team evaluation failed";
-                    currentProcess.redTeamComplete = true;
-                    renderActiveDeepthinkPipeline();
-                }
 
             } catch (error: any) {
                 console.error('Track A (Strategic Solver) error:', error);
@@ -5203,75 +5307,7 @@ async function startDeepthinkAnalysisProcess(challengeText: string, imageBase64?
         // Wait for both tracks to complete
         await Promise.all([trackAPromise, trackBPromise]);
 
-        // Red Team Evaluation
-        if (!currentProcess.isStopRequested) {
-            currentProcess.redTeamStatus = 'processing';
-            renderActiveDeepthinkPipeline();
-
-            // Create red team agents for each main strategy
-            for (let i = 0; i < currentProcess.initialStrategies.length; i++) {
-                const strategy = currentProcess.initialStrategies[i];
-                const redTeamAgent: DeepthinkRedTeamData = {
-                    id: `redteam-${i + 1}`,
-                    assignedStrategyId: strategy.id,
-                    killedStrategyIds: [],
-                    killedSubStrategyIds: [],
-                    status: 'pending',
-                    isDetailsOpen: false
-                };
-                currentProcess.redTeamAgents.push(redTeamAgent);
-            }
-
-            // Execute red team evaluation
-            for (const redTeam of currentProcess.redTeamAgents) {
-                if (currentProcess.isStopRequested) throw new PipelineStopRequestedError("Stop requested during red team evaluation");
-
-                redTeam.status = 'processing';
-                renderActiveDeepthinkPipeline();
-
-                const assignedStrategy = currentProcess.initialStrategies.find(s => s.id === redTeam.assignedStrategyId);
-                if (!assignedStrategy) continue;
-
-                const subStrategiesText = assignedStrategy.subStrategies.map(sub => sub.subStrategyText).join('\n\n');
-
-                const redTeamPrompt = customPromptsDeepthinkState.user_deepthink_redTeam
-                    .replace('{{originalProblemText}}', challengeText)
-                    .replace('{{assignedStrategy}}', assignedStrategy.strategyText)
-                    .replace('{{subStrategies}}', subStrategiesText);
-
-                redTeam.requestPrompt = redTeamPrompt;
-
-                const parts: Part[] = [{ text: challengeText }];
-                if (imageBase64 && imageMimeType) {
-                    parts.push({
-                        inlineData: {
-                            data: imageBase64,
-                            mimeType: imageMimeType
-                        }
-                    });
-                }
-
-                const redTeamResponse = await makeDeepthinkApiCall(
-                    parts.concat([{ text: redTeamPrompt }]),
-                    customPromptsDeepthinkState.sys_deepthink_redTeam,
-                    true,
-                    `Red Team Evaluation for ${redTeam.assignedStrategyId}`,
-                    redTeam,
-                    'retryAttempt'
-                );
-
-                redTeam.evaluationResponse = redTeamResponse;
-                redTeam.status = 'completed';
-
-                // Process red team decisions (simplified - in real implementation would parse JSON response)
-                // For now, we'll keep all strategies alive
-                renderActiveDeepthinkPipeline();
-            }
-
-            currentProcess.redTeamComplete = true;
-            currentProcess.redTeamStatus = 'completed';
-            renderActiveDeepthinkPipeline();
-        }
+        // Red Team Evaluation has already been performed earlier; skip legacy block here
 
         // Final judging - select best strategy and solution
         if (!currentProcess.isStopRequested) {
@@ -5332,7 +5368,6 @@ async function startDeepthinkAnalysisProcess(challengeText: string, imageBase64?
         updateControlsState();
     }
 }
-
 function renderActiveDeepthinkPipeline() {
     if (currentMode !== 'deepthink' || !pipelinesContentContainer || !tabsNavContainer) {
         if (currentMode !== 'deepthink' && tabsNavContainer && pipelinesContentContainer) {
@@ -5783,43 +5818,101 @@ function renderDeepthinkRedTeamEvaluator(): string {
 
     const redTeamAgents = activeDeepthinkPipeline.redTeamAgents || [];
     if (redTeamAgents.length === 0) {
-        return '<div class="loading">Initializing red team evaluation...</div>';
+        const status = activeDeepthinkPipeline.redTeamStatus || 'pending';
+        return `<div class="model-detail-card">
+            <h2>Red Team Evaluation</h2>
+            <p class="status-badge status-${status}">Status: ${status}</p>
+            <div class="loading">Initializing red team evaluation...</div>
+        </div>`;
     }
+
+    // Build agent sections with eliminated items and reasons
+    const strategyLookup = new Map<string, { index: number; text: string }>();
+    activeDeepthinkPipeline.initialStrategies.forEach((s, i) => {
+        strategyLookup.set(s.id, { index: i, text: s.strategyText });
+    });
+
+    const agentsHtml = redTeamAgents.map((agent, index) => {
+        const assigned = strategyLookup.get(agent.assignedStrategyId);
+        const assignedLabel = assigned ? `Strategy ${assigned.index + 1}` : agent.assignedStrategyId;
+        const killedReasonMap = (agent as any).killedReasonMap || {} as Record<string, string>;
+        const evalText = (agent as any).evaluation ?? (agent as any).evaluationResponse;
+
+        // Build eliminated strategies list
+        const killedStrategiesHtml = (agent.killedStrategyIds || []).map(id => {
+            const label = strategyLookup.get(id);
+            const title = label ? `Strategy ${label.index + 1}` : id;
+            const reason = killedReasonMap[id] || `Eliminated by Red Team Agent ${agent.id}`;
+            return `<li><span class="status-badge status-error">${title}</span><div class="elimination-reason">${escapeHtml(reason)}</div></li>`;
+        }).join('');
+
+        // Build eliminated sub-strategies list
+        const killedSubsHtml = (agent.killedSubStrategyIds || []).map(subId => {
+            // try to locate which main strategy it belongs to for label
+            let subLabel = subId;
+            for (const s of activeDeepthinkPipeline.initialStrategies) {
+                const sub = s.subStrategies.find(x => x.id === subId);
+                if (sub) {
+                    const sInfo = strategyLookup.get(s.id);
+                    const sTitle = sInfo ? `Strategy ${sInfo.index + 1}` : s.id;
+                    const position = s.subStrategies.indexOf(sub);
+                    subLabel = `${sTitle} • Sub ${position + 1}`;
+                    break;
+                }
+            }
+            const reason = killedReasonMap[subId] || `Eliminated by Red Team Agent ${agent.id}`;
+            return `<li><span class="status-badge status-error">${subLabel}</span><div class="elimination-reason">${escapeHtml(reason)}</div></li>`;
+        }).join('');
+
+        return `
+            <div class="red-team-agent model-detail-card">
+                <h3>Red Team Agent ${index + 1}</h3>
+                <div class="agent-assignment"><strong>Assigned Strategy:</strong> ${escapeHtml(assignedLabel)}</div>
+                ${evalText ? `
+                    <details open class="agent-evaluation">
+                        <summary>Evaluation</summary>
+                        <pre>${evalText}</pre>
+                    </details>
+                ` : '<div class="loading">Evaluating assigned strategy...</div>'}
+                ${(agent.killedStrategyIds?.length || 0) > 0 ? `
+                    <div class="agent-eliminations">
+                        <h4>Eliminated Strategies</h4>
+                        <ul class="eliminated-list">${killedStrategiesHtml}</ul>
+                    </div>
+                ` : ''}
+                ${(agent.killedSubStrategyIds?.length || 0) > 0 ? `
+                    <div class="agent-eliminations">
+                        <h4>Eliminated Sub-Strategies</h4>
+                        <ul class="eliminated-list">${killedSubsHtml}</ul>
+                    </div>
+                ` : ''}
+                ${agent.status === 'error' && agent.error ? `
+                    <div class="error-message">
+                        <strong>Error:</strong> ${escapeHtml(agent.error)}
+                    </div>
+                ` : ''}
+            </div>`;
+    }).join('');
+
+    // Summary
+    const totalKilledStrategies = redTeamAgents.reduce((acc, a) => acc + (a.killedStrategyIds?.length || 0), 0);
+    const totalKilledSubs = redTeamAgents.reduce((acc, a) => acc + (a.killedSubStrategyIds?.length || 0), 0);
+    const status = activeDeepthinkPipeline.redTeamStatus || 'pending';
 
     return `
         <div class="red-team-evaluator">
             <h2>Red Team Evaluation</h2>
-            <div class="red-team-agents">
-                ${redTeamAgents.map((agent, index) => `
-                    <div class="red-team-agent">
-                        <h3>Red Team Agent ${index + 1}</h3>
-                        <div class="agent-assignment">
-                            <strong>Assigned Strategy:</strong> ${agent.assignedStrategyId}
-                        </div>
-                        ${(agent as any).evaluation || (agent as any).evaluationResponse ? `
-                            <div class="agent-evaluation">
-                                <h4>Evaluation</h4>
-                                <pre>${(agent as any).evaluation ?? (agent as any).evaluationResponse}</pre>
-                            </div>
-                        ` : '<div class="loading">Evaluating assigned strategy...</div>'}
-                        ${agent.status === 'error' && agent.error ? `
-                            <div class="error-message">
-                                <strong>Error:</strong> ${agent.error}
-                            </div>
-                        ` : ''}
-                    </div>
-                `).join('')}
-            </div>
-            
-            <div class="red-team-summary">
-                <h3>Red Team Summary</h3>
-                <p>Status: <span class="status-${activeDeepthinkPipeline.redTeamStatus}">${activeDeepthinkPipeline.redTeamStatus}</span></p>
+            <div class="red-team-summary model-detail-card">
+                <div>
+                    <span class="status-badge status-${status}">Status: ${status}</span>
+                    <span class="status-badge status-error">Killed Strategies: ${totalKilledStrategies}</span>
+                    <span class="status-badge status-error">Killed Sub-Strategies: ${totalKilledSubs}</span>
+                </div>
                 ${activeDeepthinkPipeline.redTeamError ? `
-                    <div class="error-message">
-                        <strong>Error:</strong> ${activeDeepthinkPipeline.redTeamError}
-                    </div>
+                    <div class="error-message"><strong>Error:</strong> ${escapeHtml(activeDeepthinkPipeline.redTeamError)}</div>
                 ` : ''}
             </div>
+            <div class="red-team-agents">${agentsHtml}</div>
         </div>
     `;
 }
@@ -5975,7 +6068,6 @@ async function startReactModeProcess(userRequest: string) {
         renderReactModePipeline();
     }
 }
-
 function renderReactModePipeline() {
     if (currentMode !== 'react' || !tabsNavContainer || !pipelinesContentContainer) {
         if (currentMode !== 'react' && tabsNavContainer && pipelinesContentContainer) {
@@ -6567,7 +6659,6 @@ function extractHtmlFromRequestPrompt(requestPrompt: string): string | null {
     
     return null;
 }
-
 function renderDiff(sourceText: string, targetText: string) {
     // Store content in global variables for toggle functionality
     currentSourceContent = sourceText;
@@ -7127,9 +7218,6 @@ function renderDiffSideBySide(sourceText: string, targetText: string) {
         ro.observe(rightPane);
     }
 }
-
-
-
 function activateInstantFixesView(view: 'side-by-side' | 'diff-analysis' | 'preview') {
     const diffAnalysisButton = document.getElementById('diff-analysis-view-button');
     const previewButton = document.getElementById('preview-button');
