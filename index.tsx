@@ -2789,6 +2789,12 @@ function handleImportConfiguration(event: Event) {
                     activeTabId: importedConfig.activeMathProblemTabId || 'problem-details',
                 } : null;
                 activePipelineId = null;
+                
+                // Apply red team eliminations if they exist
+                if (activeMathPipeline && activeMathPipeline.redTeamAgents) {
+                    applyRedTeamEliminations(activeMathPipeline);
+                }
+                
                 renderActiveMathPipeline();
                 if (activeMathPipeline && activeMathPipeline.activeTabId) {
                     activateTab(activeMathPipeline.activeTabId);
@@ -3487,6 +3493,68 @@ async function startMathSolvingProcess(problemText: string, imageBase64?: string
         }
     }
 }
+// Helper function to apply red team eliminations from imported data
+function applyRedTeamEliminations(currentProcess: MathPipelineState): void {
+    if (!currentProcess.redTeamAgents) return;
+    
+    currentProcess.redTeamAgents.forEach(redTeamAgent => {
+        if (redTeamAgent.status === 'completed' && redTeamAgent.evaluationResponse) {
+            try {
+                // Parse the red team response
+                const redTeamDecision = JSON.parse(redTeamAgent.evaluationResponse);
+                
+                // Parse new format with strategy_evaluations
+                const killedStrategyIds: string[] = [];
+                const killedSubStrategyIds: string[] = [];
+                const reasonMap: {[key: string]: string} = {};
+                
+                if (redTeamDecision.strategy_evaluations && Array.isArray(redTeamDecision.strategy_evaluations)) {
+                    redTeamDecision.strategy_evaluations.forEach((evaluation: any) => {
+                        if (evaluation.decision === 'eliminate') {
+                            const strategyId = evaluation.id;
+                            // Check if this is a main strategy or sub-strategy
+                            if (strategyId.includes('main')) {
+                                if (strategyId.includes('-sub')) {
+                                    killedSubStrategyIds.push(strategyId);
+                                } else {
+                                    killedStrategyIds.push(strategyId);
+                                }
+                            } else {
+                                // Default to sub-strategy for other formats
+                                killedSubStrategyIds.push(strategyId);
+                            }
+                            reasonMap[strategyId] = evaluation.reason || 'Eliminated by Red Team';
+                        }
+                    });
+                }
+                
+                // Apply eliminations to strategies
+                killedStrategyIds.forEach(strategyId => {
+                    const strategy = currentProcess.initialStrategies.find(s => s.id === strategyId);
+                    if (strategy) {
+                        strategy.isKilledByRedTeam = true;
+                        strategy.redTeamReason = reasonMap[strategyId] || `Eliminated by Red Team Agent ${redTeamAgent.id}`;
+                    }
+                });
+
+                // Apply eliminations to sub-strategies
+                killedSubStrategyIds.forEach(subStrategyId => {
+                    currentProcess.initialStrategies.forEach(strategy => {
+                        const subStrategy = strategy.subStrategies.find(sub => sub.id === subStrategyId);
+                        if (subStrategy) {
+                            subStrategy.isKilledByRedTeam = true;
+                            subStrategy.redTeamReason = reasonMap[subStrategyId] || `Eliminated by Red Team Agent ${redTeamAgent.id}`;
+                        }
+                    });
+                });
+                
+            } catch (parseError) {
+                console.warn(`Failed to parse Red Team decision for agent ${redTeamAgent.id}:`, parseError);
+            }
+        }
+    });
+}
+
 // Helper function to run Red Team evaluation for completed strategies
 async function runRedTeamEvaluation(
     currentProcess: MathPipelineState, 
@@ -3573,47 +3641,187 @@ async function runRedTeamEvaluation(
 
             redTeamAgent.evaluationResponse = cleanTextOutput(redTeamResponse);
             
-            // Parse Red Team decision
+            // Parse Red Team decision with enhanced error handling and validation
             try {
-                const redTeamDecision = JSON.parse(redTeamResponse);
-                redTeamAgent.reasoning = redTeamDecision.challenge || '';
+                console.log(`Red Team agent ${agentIndex + 1} raw response length: ${redTeamResponse.length}`);
                 
-                // Parse new format with strategy_evaluations
+                // Clean the response to ensure it's valid JSON
+                let cleanedResponse = redTeamResponse.trim();
+                
+                // Remove any markdown code blocks, extra text, and common prefixes
+                cleanedResponse = cleanedResponse.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+                cleanedResponse = cleanedResponse.replace(/^[^{]*/, '').replace(/[^}]*$/, '');
+                
+                // Find the JSON object boundaries with better validation
+                const jsonStart = cleanedResponse.indexOf('{');
+                const jsonEnd = cleanedResponse.lastIndexOf('}');
+                
+                if (jsonStart === -1 || jsonEnd === -1 || jsonStart >= jsonEnd) {
+                    throw new Error(`No valid JSON object boundaries found. Start: ${jsonStart}, End: ${jsonEnd}`);
+                }
+                
+                cleanedResponse = cleanedResponse.substring(jsonStart, jsonEnd + 1);
+                console.log(`Red Team agent ${agentIndex + 1} cleaned JSON: ${cleanedResponse.substring(0, 200)}...`);
+                
+                // Validate JSON structure before parsing
+                if (!cleanedResponse.includes('"strategy_evaluations"')) {
+                    throw new Error('Missing required "strategy_evaluations" field in JSON response');
+                }
+                
+                const redTeamDecision = JSON.parse(cleanedResponse);
+                
+                // Validate the parsed JSON structure
+                if (!redTeamDecision || typeof redTeamDecision !== 'object') {
+                    throw new Error('Parsed JSON is not a valid object');
+                }
+                
+                if (!Array.isArray(redTeamDecision.strategy_evaluations)) {
+                    throw new Error('strategy_evaluations is not an array or is missing');
+                }
+                redTeamAgent.reasoning = redTeamDecision.challenge || redTeamDecision.evaluation_summary || redTeamDecision.summary || '';
+                
+                // Parse strategy evaluations with comprehensive validation
                 const killedStrategyIds: string[] = [];
                 const killedSubStrategyIds: string[] = [];
                 const reasonMap: {[key: string]: string} = {};
+                let validEvaluations = 0;
+                let eliminationCount = 0;
                 
-                if (redTeamDecision.strategy_evaluations && Array.isArray(redTeamDecision.strategy_evaluations)) {
-                    redTeamDecision.strategy_evaluations.forEach((evaluation: any) => {
-                        if (evaluation.decision === 'eliminate') {
-                            const strategyId = evaluation.id;
-                            // Check if this is a main strategy or sub-strategy
-                            if (strategyId.includes('main')) {
-                                if (strategyId.includes('-sub')) {
-                                    killedSubStrategyIds.push(strategyId);
-                                } else {
-                                    killedStrategyIds.push(strategyId);
-                                }
-                            } else {
-                                // Default to sub-strategy for other formats
+                redTeamDecision.strategy_evaluations.forEach((evaluation: any, evalIndex: number) => {
+                    // Validate each evaluation object
+                    if (!evaluation || typeof evaluation !== 'object') {
+                        console.warn(`Red Team agent ${agentIndex + 1}: Invalid evaluation object at index ${evalIndex}`);
+                        return;
+                    }
+                    
+                    if (!evaluation.id || typeof evaluation.id !== 'string') {
+                        console.warn(`Red Team agent ${agentIndex + 1}: Missing or invalid ID in evaluation ${evalIndex}`);
+                        return;
+                    }
+                    
+                    if (!evaluation.decision || typeof evaluation.decision !== 'string') {
+                        console.warn(`Red Team agent ${agentIndex + 1}: Missing or invalid decision in evaluation ${evalIndex}`);
+                        return;
+                    }
+                    
+                    validEvaluations++;
+                    
+                    if (evaluation.decision.toLowerCase() === 'eliminate') {
+                        eliminationCount++;
+                        const strategyId = evaluation.id;
+                        
+                        // Improved strategy type detection
+                        if (strategyId.includes('main')) {
+                            if (strategyId.includes('-sub')) {
                                 killedSubStrategyIds.push(strategyId);
+                            } else {
+                                killedStrategyIds.push(strategyId);
                             }
-                            reasonMap[strategyId] = evaluation.reason || 'Eliminated by Red Team';
+                        } else {
+                            // Default to sub-strategy for other formats
+                            killedSubStrategyIds.push(strategyId);
                         }
-                    });
-                }
+                        
+                        reasonMap[strategyId] = evaluation.reason || evaluation.reasoning || 'Eliminated by Red Team';
+                        console.log(`Red Team agent ${agentIndex + 1}: Eliminated ${strategyId} - ${reasonMap[strategyId]}`);
+                    }
+                });
+                
+                console.log(`Red Team agent ${agentIndex + 1}: Processed ${validEvaluations} valid evaluations, ${eliminationCount} eliminations`);
                 
                 redTeamAgent.killedStrategyIds = killedStrategyIds;
                 redTeamAgent.killedSubStrategyIds = killedSubStrategyIds;
                 (redTeamAgent as any).killedReasonMap = reasonMap;
                 
+                // Final validation of results
+                if (validEvaluations === 0) {
+                    throw new Error('No valid strategy evaluations found in response');
+                }
+                
+                console.log(`Red Team agent ${agentIndex + 1} successfully parsed: ${killedStrategyIds.length} strategies, ${killedSubStrategyIds.length} sub-strategies eliminated from ${validEvaluations} evaluations`);
+                
             } catch (parseError) {
-                console.warn(`Failed to parse Red Team decision for agent ${agentIndex + 1}:`, parseError);
-                // If parsing fails, try to extract useful information from text response
-                redTeamAgent.reasoning = `JSON parsing failed. Raw response: ${redTeamResponse.substring(0, 500)}...`;
-                // Conservative approach: assume no strategies are killed if we can't parse
-                redTeamAgent.killedStrategyIds = [];
-                redTeamAgent.killedSubStrategyIds = [];
+                console.error(`CRITICAL: Failed to parse Red Team decision for agent ${agentIndex + 1}:`, parseError);
+                console.error('Raw response length:', redTeamResponse.length);
+                console.error('Raw response preview:', redTeamResponse.substring(0, 500));
+                
+                // Enhanced fallback with multiple parsing strategies
+                redTeamAgent.reasoning = `JSON parsing failed. Error: ${parseError}. Attempting fallback text analysis.`;
+                
+                const killedStrategyIds: string[] = [];
+                const killedSubStrategyIds: string[] = [];
+                let fallbackSuccess = false;
+                
+                // Strategy 1: Try to find and fix common JSON issues
+                try {
+                    let fixedResponse = redTeamResponse.trim();
+                    // Remove markdown and common prefixes
+                    fixedResponse = fixedResponse.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+                    fixedResponse = fixedResponse.replace(/^[^{]*/, '').replace(/[^}]*$/, '');
+                    
+                    // Try to fix common JSON issues
+                    fixedResponse = fixedResponse.replace(/,\s*}/g, '}'); // Remove trailing commas
+                    fixedResponse = fixedResponse.replace(/,\s*]/g, ']'); // Remove trailing commas in arrays
+                    
+                    const fixedDecision = JSON.parse(fixedResponse);
+                    if (fixedDecision.strategy_evaluations && Array.isArray(fixedDecision.strategy_evaluations)) {
+                        fixedDecision.strategy_evaluations.forEach((evaluation: any) => {
+                            if (evaluation.decision === 'eliminate' && evaluation.id) {
+                                if (evaluation.id.includes('-sub')) {
+                                    killedSubStrategyIds.push(evaluation.id);
+                                } else {
+                                    killedStrategyIds.push(evaluation.id);
+                                }
+                            }
+                        });
+                        fallbackSuccess = true;
+                        console.log(`Red Team agent ${agentIndex + 1}: JSON fix strategy succeeded`);
+                    }
+                } catch (fixError) {
+                    console.log(`Red Team agent ${agentIndex + 1}: JSON fix strategy failed, trying pattern extraction`);
+                }
+                
+                // Strategy 2: Pattern-based extraction if JSON fix failed
+                if (!fallbackSuccess) {
+                    const eliminatePattern = /"decision":\s*"eliminate"/gi;
+                    const idPattern = /"id":\s*"([^"]+)"/gi;
+                    
+                    let match;
+                    const eliminateMatches = [];
+                    while ((match = eliminatePattern.exec(redTeamResponse)) !== null) {
+                        eliminateMatches.push(match.index);
+                    }
+                    
+                    eliminateMatches.forEach(eliminateIndex => {
+                        // Look backwards for the nearest ID
+                        const beforeText = redTeamResponse.substring(Math.max(0, eliminateIndex - 300), eliminateIndex);
+                        const idMatch = beforeText.match(/"id":\s*"([^"]+)"/);  
+                        if (idMatch) {
+                            const strategyId = idMatch[1];
+                            if (strategyId.includes('-sub')) {
+                                killedSubStrategyIds.push(strategyId);
+                            } else {
+                                killedStrategyIds.push(strategyId);
+                            }
+                        }
+                    });
+                    
+                    if (eliminateMatches.length > 0) {
+                        fallbackSuccess = true;
+                        console.log(`Red Team agent ${agentIndex + 1}: Pattern extraction succeeded`);
+                    }
+                }
+                
+                redTeamAgent.killedStrategyIds = killedStrategyIds;
+                redTeamAgent.killedSubStrategyIds = killedSubStrategyIds;
+                (redTeamAgent as any).fallbackReason = 'Extracted via fallback parsing due to JSON format issues';
+                
+                if (fallbackSuccess) {
+                    console.log(`Red Team agent ${agentIndex + 1} fallback parsing succeeded: ${killedStrategyIds.length} strategies, ${killedSubStrategyIds.length} sub-strategies eliminated`);
+                } else {
+                    console.error(`Red Team agent ${agentIndex + 1} fallback parsing completely failed - no eliminations extracted`);
+                    redTeamAgent.reasoning += ' All fallback strategies failed.';
+                }
             }
 
             redTeamAgent.status = 'completed';

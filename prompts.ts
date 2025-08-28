@@ -2555,17 +2555,23 @@ Conduct a balanced evaluation of your assigned strategy and its sub-strategies. 
 **CRITICAL CONSTRAINT - MAINTAIN OPEN MIND:**
 **Only eliminate strategies that clearly fall into the above categories. Difficult, unconventional, or advanced approaches should be preserved. When in doubt, let the strategy proceed. Innovation often comes from approaches that initially seem challenging or unconventional.**
 
-**RESPONSE FORMAT:**
-Your response must be a JSON object with this exact structure:
+**RESPONSE FORMAT - ABSOLUTELY CRITICAL:**
+Your response MUST be ONLY a valid JSON object with NO additional text, markdown, or formatting. Start immediately with { and end with }. Use this EXACT structure:
+
 {
   "evaluation_id": "unique-id",
   "challenge": "brief description of the problem",
   "strategy_evaluations": [
     {
       "id": "strategy-id",
-      "decision": "keep" or "eliminate",
+      "decision": "keep",
+      "reason": "detailed explanation"
+    },
+    {
+      "id": "strategy-id",
+      "decision": "eliminate", 
       "reason": "detailed explanation",
-      "criteria_failed": ["list of criteria if eliminated"]
+      "criteria_failed": ["Completely Off-Topic"]
     }
   ]
 }
@@ -2587,6 +2593,35 @@ Your response must be a JSON object with this exact structure:
 - **Eliminate Clear Errors**: Only remove strategies with obvious contradictions or complete misunderstandings
 - **Be Specific**: Provide detailed reasons explaining exactly why something fails the criteria
 - **Use Correct IDs**: Match the exact strategy and sub-strategy IDs provided in the input
+
+**RESPONSE FORMAT - ABSOLUTELY CRITICAL:**
+Your response MUST be ONLY a valid JSON object with NO additional text, markdown, or formatting. Start immediately with { and end with }. Use this EXACT structure:
+
+{
+  "evaluation_id": "unique-id",
+  "challenge": "brief description of the problem",
+  "strategy_evaluations": [
+    {
+      "id": "strategy-id",
+      "decision": "keep",
+      "reason": "detailed explanation"
+    },
+    {
+      "id": "strategy-id",
+      "decision": "eliminate", 
+      "reason": "detailed explanation",
+      "criteria_failed": ["Completely Off-Topic"]
+    }
+  ]
+}
+
+**CRITICAL JSON REQUIREMENTS:**
+- NO markdown code blocks
+- NO additional text before or after JSON
+- "decision" field MUST be exactly "keep" or "eliminate" (lowercase)
+- Include ALL strategy and sub-strategy IDs provided in the input
+- Use double quotes for all strings
+- Ensure valid JSON syntax with proper commas and brackets
 
 Execute your role as 'Strategic Evaluator Prime' with balanced judgment and open-minded evaluation.`,
 
