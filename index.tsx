@@ -1401,10 +1401,8 @@ function getEmptyStateMessage(status: IterationData['status'], contentType: stri
 
 function renderMarkdown(content: string): string {
     if (typeof content !== 'string') return '';
-    console.log('renderMarkdown called with mode:', currentMode, 'Content preview:', content.substring(0, 50));
-    // For Math and Deepthink modes, use LaTeX rendering
+     // For Math and Deepthink modes, use LaTeX rendering
     if (currentMode === 'math' || currentMode === 'deepthink') {
-        console.log('Using LaTeX rendering for mode:', currentMode);
         return renderMathContent(content);
     }
     // Use DOMPurify to prevent XSS attacks after rendering markdown.
@@ -1959,7 +1957,6 @@ function cleanJsonOutput(jsonString: string): string {
         return cleaned;
     } catch (e) {
         // If parsing fails, try to fix common issues
-        console.log("JSON parsing failed, attempting to fix common issues...");
         
         // Fix newlines within strings by replacing them with escaped newlines
         // This regex finds strings in JSON and preserves their content while fixing newlines
@@ -1977,7 +1974,6 @@ function cleanJsonOutput(jsonString: string): string {
         // Try parsing again
         try {
             JSON.parse(fixed);
-            console.log("JSON fixed successfully");
             return fixed;
         } catch (e2) {
             console.warn("Failed to fix JSON, returning original with basic cleanup");
@@ -3138,7 +3134,6 @@ async function startMathSolvingProcess(problemText: string, imageBase64?: string
             renderActiveMathPipeline();
 
             // Start Red Team evaluation immediately after strategic solver completes
-            console.log("Strategic Solver complete - starting Red Team evaluation");
             try {
                 await runRedTeamEvaluation(currentProcess, problemText, imageBase64, imageMimeType, makeMathApiCall);
             } catch (e: any) {
@@ -3332,9 +3327,7 @@ async function startMathSolvingProcess(problemText: string, imageBase64?: string
                 return;
             }
 
-            console.log(`Red Team evaluation complete. Remaining: ${remainingStrategies.length} strategies, ${remainingSubStrategies.length} sub-strategies.`);
         } else {
-            console.log("Red Team evaluation skipped - proceeding with all strategies.");
         }
 
         // Phase 3: Knowledge Packet Synthesis
@@ -3349,7 +3342,6 @@ async function startMathSolvingProcess(problemText: string, imageBase64?: string
         currentProcess.initialStrategies.forEach((mainStrategy, mainIndex) => {
             // Skip killed main strategies
             if (mainStrategy.isKilledByRedTeam) {
-                console.log(`Skipping killed strategy: ${mainStrategy.id}`);
                 return;
             }
 
@@ -3362,7 +3354,6 @@ async function startMathSolvingProcess(problemText: string, imageBase64?: string
 
                 // Skip killed sub-strategies
                 if (subStrategy.isKilledByRedTeam) {
-                    console.log(`Skipping killed sub-strategy: ${subStrategy.id}`);
                     subStrategy.status = 'cancelled';
                     subStrategy.error = subStrategy.redTeamReason || "Eliminated by Red Team evaluation.";
                     return;
@@ -3653,7 +3644,6 @@ async function runRedTeamEvaluation(
     );
 
     if (validStrategies.length === 0) {
-        console.log("No valid strategies with sub-strategies found, skipping Red Team evaluation");
         currentProcess.redTeamStatus = 'completed';
         currentProcess.redTeamComplete = true;
         currentProcess.redTeamAgents = [];
@@ -3725,7 +3715,6 @@ async function runRedTeamEvaluation(
             
             // Parse Red Team decision with enhanced error handling and validation
             try {
-                console.log(`Red Team agent ${agentIndex + 1} raw response length: ${redTeamResponse.length}`);
                 
                 // Clean the response to ensure it's valid JSON
                 let cleanedResponse = redTeamResponse.trim();
@@ -3743,7 +3732,6 @@ async function runRedTeamEvaluation(
                 }
                 
                 cleanedResponse = cleanedResponse.substring(jsonStart, jsonEnd + 1);
-                console.log(`Red Team agent ${agentIndex + 1} cleaned JSON: ${cleanedResponse.substring(0, 200)}...`);
                 
                 // Validate JSON structure before parsing
                 if (!cleanedResponse.includes('"strategy_evaluations"')) {
@@ -3805,11 +3793,9 @@ async function runRedTeamEvaluation(
                         }
                         
                         reasonMap[strategyId] = evaluation.reason || evaluation.reasoning || 'Eliminated by Red Team';
-                        console.log(`Red Team agent ${agentIndex + 1}: Eliminated ${strategyId} - ${reasonMap[strategyId]}`);
                     }
                 });
                 
-                console.log(`Red Team agent ${agentIndex + 1}: Processed ${validEvaluations} valid evaluations, ${eliminationCount} eliminations`);
                 
                 redTeamAgent.killedStrategyIds = killedStrategyIds;
                 redTeamAgent.killedSubStrategyIds = killedSubStrategyIds;
@@ -3820,7 +3806,6 @@ async function runRedTeamEvaluation(
                     throw new Error('No valid strategy evaluations found in response');
                 }
                 
-                console.log(`Red Team agent ${agentIndex + 1} successfully parsed: ${killedStrategyIds.length} strategies, ${killedSubStrategyIds.length} sub-strategies eliminated from ${validEvaluations} evaluations`);
                 
             } catch (parseError) {
                 console.error(`CRITICAL: Failed to parse Red Team decision for agent ${agentIndex + 1}:`, parseError);
@@ -3857,10 +3842,8 @@ async function runRedTeamEvaluation(
                             }
                         });
                         fallbackSuccess = true;
-                        console.log(`Red Team agent ${agentIndex + 1}: JSON fix strategy succeeded`);
                     }
                 } catch (fixError) {
-                    console.log(`Red Team agent ${agentIndex + 1}: JSON fix strategy failed, trying pattern extraction`);
                 }
                 
                 // Strategy 2: Pattern-based extraction if JSON fix failed
@@ -3890,7 +3873,6 @@ async function runRedTeamEvaluation(
                     
                     if (eliminateMatches.length > 0) {
                         fallbackSuccess = true;
-                        console.log(`Red Team agent ${agentIndex + 1}: Pattern extraction succeeded`);
                     }
                 }
                 
@@ -3899,10 +3881,8 @@ async function runRedTeamEvaluation(
                 (redTeamAgent as any).fallbackReason = 'Extracted via fallback parsing due to JSON format issues';
                 
                 if (fallbackSuccess) {
-                    console.log(`Red Team agent ${agentIndex + 1} fallback parsing succeeded: ${killedStrategyIds.length} strategies, ${killedSubStrategyIds.length} sub-strategies eliminated`);
                 } else {
-                    console.error(`Red Team agent ${agentIndex + 1} fallback parsing completely failed - no eliminations extracted`);
-                    redTeamAgent.reasoning += ' All fallback strategies failed.';
+                        redTeamAgent.reasoning += ' All fallback strategies failed.';
                 }
             }
 
@@ -3960,7 +3940,6 @@ async function runRedTeamEvaluation(
     currentProcess.redTeamComplete = true;
     renderActiveDeepthinkPipeline();
 
-    console.log(`Red Team evaluation complete for ${validStrategies.length} strategies.`);
 }
 
 // Helper function to run Red Team evaluation for completed deepthink strategies
@@ -3974,20 +3953,15 @@ async function runDeepthinkRedTeamEvaluation(
     if (!currentProcess || !makeDeepthinkApiCall) return;
 
     // Debug: Log all strategies and their status
-    console.log("Red Team Evaluation - Checking strategies:");
-    currentProcess.initialStrategies.forEach((strategy, index) => {
-        console.log(`Strategy ${index + 1} (${strategy.id}): status='${strategy.status}', subStrategies=${strategy.subStrategies?.length || 0}`);
-    });
+    // Iterate through strategies (intentionally empty for now)
 
     // Ensure we have valid strategies with sub-strategies before proceeding
     const validStrategies = currentProcess.initialStrategies.filter(s => 
         s.status === 'completed' && s.subStrategies && s.subStrategies.length > 0
     );
 
-    console.log(`Found ${validStrategies.length} valid strategies for Red Team evaluation`);
 
     if (validStrategies.length === 0) {
-        console.log("No valid strategies with sub-strategies found, skipping Red Team evaluation");
         currentProcess.redTeamStatus = 'completed';
         currentProcess.redTeamComplete = true;
         currentProcess.redTeamAgents = [];
@@ -4161,7 +4135,6 @@ async function runDeepthinkRedTeamEvaluation(
     currentProcess.redTeamComplete = true;
     renderActiveDeepthinkPipeline();
 
-    console.log(`Red Team evaluation complete for ${validStrategies.length} strategies.`);
 }
 
 // Helper function to synthesize knowledge packet from hypothesis exploration results
@@ -5782,7 +5755,6 @@ async function startDeepthinkAnalysisProcess(challengeText: string, imageBase64?
                     renderActiveDeepthinkPipeline();
                 }
                 // Step 2.5: Run Red Team evaluation BEFORE any solution attempts (mirror Math mode)
-                console.log("Sub-strategy generation complete - starting Red Team evaluation BEFORE solution attempts");
                 try {
                     await runDeepthinkRedTeamEvaluation(currentProcess, challengeText, imageBase64, imageMimeType, makeDeepthinkApiCall);
                 } catch (e: any) {
@@ -7230,7 +7202,6 @@ function aggregateReactOutputs() {
         }
     });
     activeReactPipeline.finalAppendedCode = combinedCode;
-    console.log("Final appended code generated:", activeReactPipeline.finalAppendedCode.substring(0, 1000) + "...");
 }
 // ----- END REACT MODE SPECIFIC FUNCTIONS -----
 
@@ -8561,7 +8532,6 @@ function closeDiffModal() {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM loaded, initializing UI...');
     initializeUI();
     initializeSliderEventListeners();
 
@@ -8613,7 +8583,6 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Add click listener
             expandButton.addEventListener('click', (e) => {
-                console.log('Expand button clicked');
                 e.preventDefault();
                 e.stopPropagation();
                 const controlsSidebar = document.getElementById('controls-sidebar');
@@ -8660,7 +8629,6 @@ document.addEventListener('DOMContentLoaded', () => {
             sidebarCollapseButton.replaceWith(newCollapseButton);
             
             newCollapseButton.addEventListener('click', (e) => {
-                console.log('Collapse button clicked');
                 e.preventDefault();
                 e.stopPropagation();
                 
@@ -8690,12 +8658,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
             
-            console.log('Sidebar event listeners attached successfully');
-        } else {
-            console.error('Failed to find sidebar elements:', {
-                collapseButton: !!sidebarCollapseButton,
-                sidebar: !!controlsSidebar
-            });
         }
     }
 
