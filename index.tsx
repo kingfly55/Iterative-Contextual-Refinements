@@ -1154,8 +1154,10 @@ function getSelectedTemperatures(): { temp: number, originalIndex: number }[] {
 function updateControlsState() {
     const anyPipelineRunningOrStopping = pipelinesState.some(p => p.status === 'running' || p.status === 'stopping');
     const mathPipelineRunningOrStopping = activeMathPipeline?.status === 'processing' || activeMathPipeline?.status === 'stopping';
+    // Fix: Only consider deepthink pipeline as running if status is 'processing' or 'stopping', not 'completed', 'error', or 'stopped'
+    const deepthinkPipelineRunningOrStopping = activeDeepthinkPipeline?.status === 'processing' || activeDeepthinkPipeline?.status === 'stopping';
     const reactPipelineRunningOrStopping = activeReactPipeline?.status === 'orchestrating' || activeReactPipeline?.status === 'processing_workers' || activeReactPipeline?.status === 'stopping'; // Added for React
-    isGenerating = anyPipelineRunningOrStopping || mathPipelineRunningOrStopping || reactPipelineRunningOrStopping; // Added reactPipeline
+    isGenerating = anyPipelineRunningOrStopping || mathPipelineRunningOrStopping || deepthinkPipelineRunningOrStopping || reactPipelineRunningOrStopping;
 
     const isApiKeyReady = !!ai;
 
@@ -1183,6 +1185,8 @@ function updateControlsState() {
     if (mathProblemImageInput) mathProblemImageInput.disabled = isGenerating;
 
     if (modelSelectElement) modelSelectElement.disabled = isGenerating;
+    if (temperatureSlider) temperatureSlider.disabled = isGenerating;
+    if (topPSlider) topPSlider.disabled = isGenerating;
     if (pipelineSelectorsContainer) {
         const disableSelectors = isGenerating || currentMode === 'math' || currentMode === 'deepthink' || currentMode === 'react';
         pipelineSelectorsContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => (cb as HTMLInputElement).disabled = disableSelectors);
@@ -1193,21 +1197,40 @@ function updateControlsState() {
         }
     }
 
-    if (currentMode === 'math' && modelSelectElement) {
-        modelSelectElement.value = "gemini-2.5-pro";
-    }
-    if (currentMode === 'deepthink' && modelSelectElement) {
-        modelSelectElement.value = "gemini-2.5-pro";
-    }
+    // Allow user to select any model for math and deepthink modes
+    // Removed forced model selection override
 
+    // Block ALL sidebar controls during generation in ANY mode
     if (appModeSelector) {
         appModeSelector.querySelectorAll('input[type="radio"]').forEach(rb => (rb as HTMLInputElement).disabled = isGenerating);
+        appModeSelector.style.pointerEvents = isGenerating ? 'none' : 'auto';
+        appModeSelector.style.opacity = isGenerating ? '0.6' : '1';
     }
 
     if (customizePromptsTrigger) {
         const parentSection = customizePromptsTrigger.closest('.sidebar-section');
         parentSection?.classList.toggle('disabled', isGenerating);
         customizePromptsTrigger.style.pointerEvents = isGenerating ? 'none' : 'auto';
+        customizePromptsTrigger.style.opacity = isGenerating ? '0.6' : '1';
+    }
+
+    // Block model selection container
+    if (modelSelectionContainer) {
+        modelSelectionContainer.style.pointerEvents = isGenerating ? 'none' : 'auto';
+        modelSelectionContainer.style.opacity = isGenerating ? '0.6' : '1';
+    }
+
+    // Block temperature selection container
+    if (temperatureSelectionContainer) {
+        temperatureSelectionContainer.style.pointerEvents = isGenerating ? 'none' : 'auto';
+        temperatureSelectionContainer.style.opacity = isGenerating ? '0.6' : '1';
+    }
+
+    // Block entire sidebar during generation
+    const controlsSidebar = document.getElementById('controls-sidebar');
+    if (controlsSidebar) {
+        controlsSidebar.style.pointerEvents = isGenerating ? 'none' : 'auto';
+        controlsSidebar.style.opacity = isGenerating ? '0.6' : '1';
     }
 }
 
@@ -5616,7 +5639,8 @@ async function startDeepthinkAnalysisProcess(challengeText: string, imageBase64?
         strategicSolverComplete: false,
         hypothesisExplorerComplete: false,
         redTeamComplete: false,
-        knowledgePacket: ''
+        knowledgePacket: '',
+        finalJudgingStatus: 'pending'
     };
     renderActiveDeepthinkPipeline();
 
@@ -5709,51 +5733,64 @@ async function startDeepthinkAnalysisProcess(challengeText: string, imageBase64?
 
                 renderActiveDeepthinkPipeline();
 
-                // Step 2: Generate sub-strategies for each main strategy
-                for (const mainStrategy of currentProcess.initialStrategies) {
-                    if (currentProcess.isStopRequested) throw new PipelineStopRequestedError("Stop requested during sub-strategy generation");
-
-                    mainStrategy.status = 'processing';
-                    renderActiveDeepthinkPipeline();
-
-                    const otherStrategies = currentProcess.initialStrategies
-                        .filter(s => s.id !== mainStrategy.id)
-                        .map(s => s.strategyText);
-                    const otherMainStrategiesStr = otherStrategies.length > 0 
-                        ? otherStrategies.map((s, idx) => `Strategy ${idx + 1}: ${s}`).join('\n\n')
-                        : "No other strategies.";
-
-                    const subStrategyPrompt = customPromptsDeepthinkState.user_deepthink_subStrategy
-                        .replace('{{originalProblemText}}', challengeText)
-                        .replace('{{currentMainStrategy}}', mainStrategy.strategyText)
-                        .replace('{{otherMainStrategiesStr}}', otherMainStrategiesStr);
-
-                    mainStrategy.requestPromptSubStrategyGen = subStrategyPrompt;
-
-                    const subStrategyResponse = await makeDeepthinkApiCall(
-                        parts.concat([{ text: subStrategyPrompt }]),
-                        customPromptsDeepthinkState.sys_deepthink_subStrategy,
-                        true,
-                        `Sub-Strategy Generation for ${mainStrategy.id}`,
-                        mainStrategy,
-                        'retryAttempt'
-                    );
-
-                    const subStrategies = parseJsonSuggestions(subStrategyResponse, 'sub_strategies', NUM_SUB_STRATEGIES_PER_MAIN_DEEPTHINK);
-
-                    for (let j = 0; j < subStrategies.length; j++) {
-                        const subStrategy: DeepthinkSubStrategyData = {
-                            id: `${mainStrategy.id}-sub${j + 1}`,
-                            subStrategyText: subStrategies[j],
-                            status: 'pending',
-                            isDetailsOpen: false
-                        };
-                        mainStrategy.subStrategies.push(subStrategy);
+                // Step 2: Generate sub-strategies for each main strategy IN PARALLEL
+                await Promise.allSettled(currentProcess.initialStrategies.map(async (mainStrategy) => {
+                    if (currentProcess.isStopRequested) {
+                        mainStrategy.status = 'cancelled';
+                        mainStrategy.error = "Process stopped by user.";
+                        return;
                     }
 
-                    mainStrategy.status = 'completed';
-                    renderActiveDeepthinkPipeline();
-                }
+                    try {
+                        mainStrategy.status = 'processing';
+                        renderActiveDeepthinkPipeline();
+
+                        const otherStrategies = currentProcess.initialStrategies
+                            .filter(s => s.id !== mainStrategy.id)
+                            .map(s => s.strategyText);
+                        const otherMainStrategiesStr = otherStrategies.length > 0 
+                            ? otherStrategies.map((s, idx) => `Strategy ${idx + 1}: ${s}`).join('\n\n')
+                            : "No other strategies.";
+
+                        const subStrategyPrompt = customPromptsDeepthinkState.user_deepthink_subStrategy
+                            .replace('{{originalProblemText}}', challengeText)
+                            .replace('{{currentMainStrategy}}', mainStrategy.strategyText)
+                            .replace('{{otherMainStrategiesStr}}', otherMainStrategiesStr);
+
+                        mainStrategy.requestPromptSubStrategyGen = subStrategyPrompt;
+
+                        const subStrategyResponse = await makeDeepthinkApiCall(
+                            parts.concat([{ text: subStrategyPrompt }]),
+                            customPromptsDeepthinkState.sys_deepthink_subStrategy,
+                            true,
+                            `Sub-Strategy Generation for ${mainStrategy.id}`,
+                            mainStrategy,
+                            'retryAttempt'
+                        );
+
+                        const subStrategies = parseJsonSuggestions(subStrategyResponse, 'sub_strategies', NUM_SUB_STRATEGIES_PER_MAIN_DEEPTHINK);
+
+                        for (let j = 0; j < subStrategies.length; j++) {
+                            const subStrategy: DeepthinkSubStrategyData = {
+                                id: `${mainStrategy.id}-sub${j + 1}`,
+                                subStrategyText: subStrategies[j],
+                                status: 'pending',
+                                isDetailsOpen: false
+                            };
+                            mainStrategy.subStrategies.push(subStrategy);
+                        }
+
+                        mainStrategy.status = 'completed';
+                        renderActiveDeepthinkPipeline();
+                    } catch (error: any) {
+                        console.error(`Sub-strategy generation failed for ${mainStrategy.id}:`, error);
+                        mainStrategy.status = 'error';
+                        mainStrategy.error = error.message || "Sub-strategy generation failed";
+                        renderActiveDeepthinkPipeline();
+                    }
+                }));
+
+                if (currentProcess.isStopRequested) throw new PipelineStopRequestedError("Stopped after sub-strategy generation.");
                 // Step 2.5: Run Red Team evaluation BEFORE any solution attempts (mirror Math mode)
                 try {
                     await runDeepthinkRedTeamEvaluation(currentProcess, challengeText, imageBase64, imageMimeType, makeDeepthinkApiCall);
@@ -5783,68 +5820,104 @@ async function startDeepthinkAnalysisProcess(challengeText: string, imageBase64?
                     return;
                 }
 
-                // Step 3: Execute solution attempts for all sub-strategies (skip any killed by Red Team)
-                for (const mainStrategy of currentProcess.initialStrategies) {
-                    for (const subStrategy of mainStrategy.subStrategies) {
-                        if (currentProcess.isStopRequested) throw new PipelineStopRequestedError("Stop requested during solution attempt");
-                        if (subStrategy.isKilledByRedTeam) continue;
+                // Step 3: Execute solution attempts for all sub-strategies IN PARALLEL (skip any killed by Red Team)
+                const solutionPromises: Promise<void>[] = [];
+                currentProcess.initialStrategies.forEach((mainStrategy) => {
+                    mainStrategy.subStrategies.forEach((subStrategy) => {
+                        if (subStrategy.isKilledByRedTeam) return;
+                        
+                        solutionPromises.push((async () => {
+                            if (currentProcess.isStopRequested) {
+                                subStrategy.status = 'cancelled';
+                                subStrategy.error = "Process stopped by user.";
+                                return;
+                            }
 
-                        subStrategy.status = 'processing';
-                        renderActiveDeepthinkPipeline();
+                            try {
+                                subStrategy.status = 'processing';
+                                renderActiveDeepthinkPipeline();
 
-                        const solutionPrompt = customPromptsDeepthinkState.user_deepthink_solutionAttempt
-                            .replace('{{originalProblemText}}', challengeText)
-                            .replace('{{currentSubStrategy}}', subStrategy.subStrategyText)
-                            .replace('{{knowledgePacket}}', currentProcess.knowledgePacket || 'No hypothesis exploration results available yet.');
+                                const solutionPrompt = customPromptsDeepthinkState.user_deepthink_solutionAttempt
+                                    .replace('{{originalProblemText}}', challengeText)
+                                    .replace('{{currentSubStrategy}}', subStrategy.subStrategyText)
+                                    .replace('{{knowledgePacket}}', currentProcess.knowledgePacket || 'No hypothesis exploration results available yet.');
 
-                        subStrategy.requestPromptSolutionAttempt = solutionPrompt;
+                                subStrategy.requestPromptSolutionAttempt = solutionPrompt;
 
-                        const solutionResponse = await makeDeepthinkApiCall(
-                            parts.concat([{ text: solutionPrompt }]),
-                            customPromptsDeepthinkState.sys_deepthink_solutionAttempt,
-                            false,
-                            `Solution Attempt for ${subStrategy.id}`,
-                            subStrategy,
-                            'retryAttempt'
-                        );
+                                const solutionResponse = await makeDeepthinkApiCall(
+                                    parts.concat([{ text: solutionPrompt }]),
+                                    customPromptsDeepthinkState.sys_deepthink_solutionAttempt,
+                                    false,
+                                    `Solution Attempt for ${subStrategy.id}`,
+                                    subStrategy,
+                                    'retryAttempt'
+                                );
 
-                        subStrategy.solutionAttempt = solutionResponse;
-                        subStrategy.status = 'completed';
-                        renderActiveDeepthinkPipeline();
-                    }
-                }
+                                subStrategy.solutionAttempt = solutionResponse;
+                                subStrategy.status = 'completed';
+                                renderActiveDeepthinkPipeline();
+                            } catch (error: any) {
+                                console.error(`Solution attempt failed for ${subStrategy.id}:`, error);
+                                subStrategy.status = 'error';
+                                subStrategy.error = error.message || "Solution attempt failed";
+                                renderActiveDeepthinkPipeline();
+                            }
+                        })());
+                    });
+                });
+                await Promise.allSettled(solutionPromises);
 
-                // Step 4: Self-improvement for all solution attempts (skip any killed by Red Team)
-                for (const mainStrategy of currentProcess.initialStrategies) {
-                    for (const subStrategy of mainStrategy.subStrategies) {
-                        if (currentProcess.isStopRequested) throw new PipelineStopRequestedError("Stop requested during self-improvement");
-                        if (subStrategy.isKilledByRedTeam || !subStrategy.solutionAttempt) continue;
+                if (currentProcess.isStopRequested) throw new PipelineStopRequestedError("Stopped during solution attempts.");
 
-                        subStrategy.selfImprovementStatus = 'processing';
-                        renderActiveDeepthinkPipeline();
+                // Step 4: Self-improvement for all solution attempts IN PARALLEL (skip any killed by Red Team)
+                const improvementPromises: Promise<void>[] = [];
+                currentProcess.initialStrategies.forEach((mainStrategy) => {
+                    mainStrategy.subStrategies.forEach((subStrategy) => {
+                        if (subStrategy.isKilledByRedTeam || !subStrategy.solutionAttempt) return;
+                        
+                        improvementPromises.push((async () => {
+                            if (currentProcess.isStopRequested) {
+                                subStrategy.selfImprovementStatus = 'cancelled';
+                                subStrategy.selfImprovementError = "Process stopped by user.";
+                                return;
+                            }
 
-                        const improvementPrompt = customPromptsDeepthinkState.user_deepthink_selfImprovement
-                            .replace('{{originalProblemText}}', challengeText)
-                            .replace('{{currentSubStrategy}}', subStrategy.subStrategyText)
-                            .replace('{{solutionAttempt}}', subStrategy.solutionAttempt)
-                            .replace('{{knowledgePacket}}', currentProcess.knowledgePacket || 'No hypothesis exploration results available yet.');
+                            try {
+                                subStrategy.selfImprovementStatus = 'processing';
+                                renderActiveDeepthinkPipeline();
 
-                        subStrategy.requestPromptSelfImprovement = improvementPrompt;
+                                const improvementPrompt = customPromptsDeepthinkState.user_deepthink_selfImprovement
+                                    .replace('{{originalProblemText}}', challengeText)
+                                    .replace('{{currentSubStrategy}}', subStrategy.subStrategyText)
+                                    .replace('{{solutionAttempt}}', subStrategy.solutionAttempt || '')
+                                    .replace('{{knowledgePacket}}', currentProcess.knowledgePacket || 'No hypothesis exploration results available yet.');
 
-                        const improvementResponse = await makeDeepthinkApiCall(
-                            parts.concat([{ text: improvementPrompt }]),
-                            customPromptsDeepthinkState.sys_deepthink_selfImprovement,
-                            false,
-                            `Self-Improvement for ${subStrategy.id}`,
-                            subStrategy,
-                            'selfImprovementRetryAttempt'
-                        );
+                                subStrategy.requestPromptSelfImprovement = improvementPrompt;
 
-                        subStrategy.refinedSolution = improvementResponse;
-                        subStrategy.selfImprovementStatus = 'completed';
-                        renderActiveDeepthinkPipeline();
-                    }
-                }
+                                const improvementResponse = await makeDeepthinkApiCall(
+                                    parts.concat([{ text: improvementPrompt }]),
+                                    customPromptsDeepthinkState.sys_deepthink_selfImprovement,
+                                    false,
+                                    `Self-Improvement for ${subStrategy.id}`,
+                                    subStrategy,
+                                    'selfImprovementRetryAttempt'
+                                );
+
+                                subStrategy.refinedSolution = improvementResponse;
+                                subStrategy.selfImprovementStatus = 'completed';
+                                renderActiveDeepthinkPipeline();
+                            } catch (error: any) {
+                                console.error(`Self-improvement failed for ${subStrategy.id}:`, error);
+                                subStrategy.selfImprovementStatus = 'error';
+                                subStrategy.selfImprovementError = error.message || "Self-improvement failed";
+                                renderActiveDeepthinkPipeline();
+                            }
+                        })());
+                    });
+                });
+                await Promise.allSettled(improvementPromises);
+
+                if (currentProcess.isStopRequested) throw new PipelineStopRequestedError("Stopped during self-improvement.");
 
                 currentProcess.strategicSolverComplete = true;
                 renderActiveDeepthinkPipeline();
@@ -6723,32 +6796,30 @@ function renderDeepthinkRedTeamEvaluator(): string {
 function renderDeepthinkFinalResult(): string {
     if (!activeDeepthinkPipeline) return '';
 
-    const bestSolution = activeDeepthinkPipeline.finalJudgedBestSolution;
-    const bestStrategyId = activeDeepthinkPipeline.finalJudgedBestStrategyId;
-
-    if (!bestSolution) {
-        return '<div class="loading">Finalizing analysis...</div>';
+    const deepthinkProcess = activeDeepthinkPipeline;
+    let finalResultHtml = `<div class="math-final-result model-detail-card">`;
+    
+    if (deepthinkProcess.finalJudgingStatus === 'completed' && deepthinkProcess.finalJudgedBestSolution) {
+        finalResultHtml += `<div class="final-solution-display">
+            <div class="markdown-content">
+                ${renderMathContent(deepthinkProcess.finalJudgedBestSolution)}
+            </div>
+        </div>`;
+    } else if (deepthinkProcess.finalJudgingStatus === 'processing' || deepthinkProcess.finalJudgingStatus === 'retrying') {
+        finalResultHtml += `<p class="status-badge status-processing">Final judging in progress...</p>`;
+    } else if (deepthinkProcess.finalJudgingStatus === 'error') {
+        finalResultHtml += `<div class="status-message error">
+            <p>Error during final judging:</p>
+            <pre>${escapeHtml(deepthinkProcess.finalJudgingError || 'Unknown error')}</pre>
+        </div>`;
+    } else if (deepthinkProcess.status === 'completed') {
+        finalResultHtml += `<p class="status-badge status-pending">Final result not available</p>`;
+    } else {
+        finalResultHtml += `<p class="status-badge status-pending">Waiting for solution completion...</p>`;
     }
-
-    return `
-        <div class="final-result">
-            <h2>Final Analysis Result</h2>
-            <div class="best-strategy-info">
-                <h3>Selected Approach: ${bestStrategyId}</h3>
-            </div>
-            <div class="final-solution">
-                <h3>Comprehensive Solution</h3>
-                <pre>${bestSolution}</pre>
-            </div>
-            
-            ${activeDeepthinkPipeline.knowledgePacket ? `
-                <div class="supporting-evidence">
-                    <h3>Supporting Evidence & Insights</h3>
-                    <pre>${activeDeepthinkPipeline.knowledgePacket}</pre>
-                </div>
-            ` : ''}
-        </div>
-    `;
+    finalResultHtml += `</div>`;
+    
+    return finalResultHtml;
 }
 
 function getStatusIcon(status: string): string {
