@@ -2911,11 +2911,37 @@ function handleImportConfiguration(event: Event) {
                     activateTab(activeMathPipeline.activeTabId);
                 }
             } else if (currentMode === 'deepthink') {
-                activeDeepthinkPipeline = importedConfig.activeDeepthinkPipeline ? {
-                    ...importedConfig.activeDeepthinkPipeline,
+                const importedPipeline = importedConfig.activeDeepthinkPipeline;
+                activeDeepthinkPipeline = importedPipeline ? {
+                    ...importedPipeline,
                     isStopRequested: false,
-                    status: (importedConfig.activeDeepthinkPipeline.status === 'processing' || importedConfig.activeDeepthinkPipeline.status === 'stopping') ? 'idle' : importedConfig.activeDeepthinkPipeline.status,
+                    status: (importedPipeline.status === 'processing' || importedPipeline.status === 'stopping') ? 'idle' : importedPipeline.status,
                     activeTabId: importedConfig.activeDeepthinkProblemTabId || 'challenge-details',
+                    // Preserve judge results but reset processing states
+                    initialStrategies: importedPipeline.initialStrategies?.map(strategy => ({
+                        ...strategy,
+                        // Reset processing states but preserve completed judge results
+                        judgingStatus: strategy.judgingStatus === 'processing' || strategy.judgingStatus === 'retrying' ? 'pending' : strategy.judgingStatus,
+                        // Explicitly preserve judge data
+                        judgedBestSolution: strategy.judgedBestSolution,
+                        judgedBestSubStrategyId: strategy.judgedBestSubStrategyId,
+                        judgingRequestPrompt: strategy.judgingRequestPrompt,
+                        judgingResponseText: strategy.judgingResponseText,
+                        judgingError: strategy.judgingError,
+                        subStrategies: strategy.subStrategies?.map(subStrategy => ({
+                            ...subStrategy,
+                            // Reset processing states for sub-strategies
+                            status: subStrategy.status === 'processing' || subStrategy.status === 'retrying' ? 'pending' : subStrategy.status,
+                            selfImprovementStatus: subStrategy.selfImprovementStatus === 'processing' || subStrategy.selfImprovementStatus === 'retrying' ? 'pending' : subStrategy.selfImprovementStatus,
+                        })) || []
+                    })) || [],
+                    // Reset final judging processing states but preserve completed results
+                    finalJudgingStatus: importedPipeline.finalJudgingStatus === 'processing' || importedPipeline.finalJudgingStatus === 'retrying' ? 'pending' : importedPipeline.finalJudgingStatus,
+                    finalJudgedBestSolution: importedPipeline.finalJudgedBestSolution,
+                    finalJudgedBestStrategyId: importedPipeline.finalJudgedBestStrategyId,
+                    finalJudgingRequestPrompt: importedPipeline.finalJudgingRequestPrompt,
+                    finalJudgingResponseText: importedPipeline.finalJudgingResponseText,
+                    finalJudgingError: importedPipeline.finalJudgingError,
                 } : null;
                 activePipelineId = null;
                 renderActiveDeepthinkPipeline();
