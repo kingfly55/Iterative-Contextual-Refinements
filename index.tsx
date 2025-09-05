@@ -6,19 +6,12 @@
 import * as Diff from 'diff';
 import JSZip from 'jszip';
 import { GoogleGenAI, GenerateContentResponse, Part } from "@google/genai";
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
-import katex from 'katex';
 import hljs from 'highlight.js';
+// import { applyPatch } from 'fast-json-patch'; // Unused import
 import { defaultCustomPromptsWebsite, defaultCustomPromptsReact } from './prompts';
 import type { CustomizablePromptsWebsite, CustomizablePromptsReact } from './prompts';
-import { 
-    initializeDeepthinkModule, 
-    startDeepthinkAnalysisProcess, 
-    activateDeepthinkStrategyTab,
-    renderActiveDeepthinkPipeline,
-    setActiveDeepthinkPipelineForImport
-} from './Deepthink/Deepthink';
+import { initializeDeepthinkModule, renderActiveDeepthinkPipeline, activateDeepthinkStrategyTab, setActiveDeepthinkPipelineForImport, startDeepthinkAnalysisProcess } from './Deepthink/Deepthink.tsx';
+import { renderMathContent } from './Components/RenderMathMarkdown.tsx';
 import { CustomizablePromptsDeepthink, createDefaultCustomPromptsDeepthink } from './Deepthink/DeepthinkPrompts';
 
 // Helper: safer JSON parsing for AI outputs
@@ -90,12 +83,12 @@ interface IterationData {
     iterationNumber: number;
     title: string;
     // Website Mode Specific
-    requestPromptHtml_InitialGenerate?: string;
-    requestPromptHtml_FeatureImplement?: string;
-    requestPromptHtml_BugFix?: string;
+    requestPromptContent_InitialGenerate?: string;
+    requestPromptContent_FeatureImplement?: string;
+    requestPromptContent_BugFix?: string;
     requestPromptFeatures_Suggest?: string;
-    generatedHtml?: string;
-    generatedRawHtml?: string; // Raw output from Request 1 (before bug fixing)
+    generatedContent?: string;
+    generatedRawContent?: string; // Raw output from Request 1 (before bug fixing)
     suggestedFeatures?: string[]; // Used by Website for general suggestions
 
     // Diff-format patches provided by model for this iteration's target content (if any)
@@ -458,7 +451,6 @@ function initializeSliderEventListeners() {
 const generateButton = document.getElementById('generate-button') as HTMLButtonElement;
 const tabsNavContainer = document.getElementById('tabs-nav-container') as HTMLElement;
 const pipelinesContentContainer = document.getElementById('pipelines-content-container') as HTMLElement;
-const globalStatusDiv = document.getElementById('global-status') as HTMLElement;
 const pipelineSelectorsContainer = document.getElementById('pipeline-selectors-container') as HTMLElement;
 const appModeSelector = document.getElementById('app-mode-selector') as HTMLElement;
 
@@ -766,7 +758,7 @@ function updateUIAfterModeChange() {
     if (currentMode === 'website') {
         if (initialIdeaLabel) initialIdeaLabel.textContent = 'Website Idea:';
         if (initialIdeaInput) initialIdeaInput.placeholder = 'E.g., "A portfolio website for a photographer", "An e-commerce site for handmade crafts"...';
-        if (generateButtonText) generateButtonText.textContent = 'Generate Website';
+        if (generateButtonText) generateButtonText.textContent = 'Generate & Refine';
         if (modelSelectionContainer) modelSelectionContainer.style.display = 'flex';
         if (modelParametersContainer) modelParametersContainer.style.display = 'none';
         if (temperatureSelectionContainer) temperatureSelectionContainer.style.display = 'block';
@@ -1099,16 +1091,6 @@ function getEmptyStateMessage(status: IterationData['status'], contentType: stri
     }
 }
 
-function renderMarkdown(content: string): string {
-    if (typeof content !== 'string') return '';
-     // For Deepthink mode, use LaTeX rendering
-    if (currentMode === 'deepthink') {
-        return renderMathContent(content);
-    }
-    // Use DOMPurify to prevent XSS attacks after rendering markdown.
-    // marked.parse is synchronous since the highlighter is synchronous.
-    return DOMPurify.sanitize(marked.parse(content));
-}
 
 function renderIteration(pipelineId: number, iter: IterationData): string {
     const pipeline = pipelinesState.find(p => p.id === pipelineId);
@@ -1122,43 +1104,38 @@ function renderIteration(pipelineId: number, iter: IterationData): string {
 
     let promptsContent = '';
     if (currentMode === 'website') {
-        if (iter.requestPromptHtml_InitialGenerate) promptsContent += `<h6 class="prompt-title">Initial HTML Generation Prompt:</h6><div class="markdown-content">${renderMarkdown(iter.requestPromptHtml_InitialGenerate)}</div>`;
-        if (iter.requestPromptHtml_FeatureImplement) promptsContent += `<h6 class="prompt-title">Feature Implementation & Stabilization Prompt:</h6><div class="markdown-content">${renderMarkdown(iter.requestPromptHtml_FeatureImplement)}</div>`;
-        if (iter.requestPromptHtml_BugFix) promptsContent += `<h6 class="prompt-title">HTML Bug Fix/Polish & Completion Prompt:</h6><div class="markdown-content">${renderMarkdown(iter.requestPromptHtml_BugFix)}</div>`;
-        if (iter.requestPromptFeatures_Suggest) promptsContent += `<h6 class="prompt-title">Feature Suggestion Prompt:</h6><div class="markdown-content">${renderMarkdown(iter.requestPromptFeatures_Suggest)}</div>`;
+        if (iter.requestPromptContent_InitialGenerate) promptsContent += `<h6 class="prompt-title">Initial HTML Generation Prompt:</h6>${renderMathContent(iter.requestPromptContent_InitialGenerate)}`;
+        if (iter.requestPromptContent_FeatureImplement) promptsContent += `<h6 class="prompt-title">Feature Implementation & Stabilization Prompt:</h6>${renderMathContent(iter.requestPromptContent_FeatureImplement)}`;
+        if (iter.requestPromptContent_BugFix) promptsContent += `<h6 class="prompt-title">HTML Bug Fix/Polish & Completion Prompt:</h6>${renderMathContent(iter.requestPromptContent_BugFix)}`;
+        if (iter.requestPromptFeatures_Suggest) promptsContent += `<h6 class="prompt-title">Feature Suggestion Prompt:</h6>${renderMathContent(iter.requestPromptFeatures_Suggest)}`;
     }
-    const promptsHtml = promptsContent ? `
-        <details class="model-detail-section collapsible-section">
-            <summary class="model-section-title">Prompts Used</summary>
-            <div class="scrollable-content-area custom-scrollbar">${promptsContent}</div>
-        </details>
-    ` : '';
+    // For refine mode (website mode), don't show the "Used Prompts" toggle
+    const promptsHtml = '';
 
     let generatedOutputHtml = '';
 
 
     if (currentMode === 'website') {
-        if (iter.generatedHtml || ['completed', 'error', 'retrying', 'processing', 'pending', 'cancelled'].includes(iter.status)) {
-            const hasContent = !!iter.generatedHtml && !isEmptyOrPlaceholderHtml(iter.generatedHtml);
+        if (iter.generatedContent || ['completed', 'error', 'retrying', 'processing', 'pending', 'cancelled'].includes(iter.status)) {
+            const hasContent = !!iter.generatedContent && !isEmptyOrPlaceholderHtml(iter.generatedContent);
             let htmlContent;
             if (hasContent) {
-                const contentToRender = `\`\`\`html\n${iter.generatedHtml!}\n\`\`\``;
-                htmlContent = renderMarkdown(contentToRender);
+                htmlContent = renderMathContent(iter.generatedContent!);
             } else {
-                htmlContent = `<div class="empty-state-message">${getEmptyStateMessage(iter.status, 'HTML')}</div>`;
+                htmlContent = `<div class="empty-state-message">${getEmptyStateMessage(iter.status, 'Content')}</div>`;
             }
 
             generatedOutputHtml = `
                 <div class="model-detail-section">
-                    <div class="code-block-header">
-                        <span class="model-section-title">Generated HTML</span>
+                    <div class="model-section-header">
+                        <span class="model-section-title">Generated Content</span>
                         <div class="code-actions">
                              <button class="compare-output-button button" data-pipeline-id="${pipelineId}" data-iteration-number="${iter.iterationNumber}" data-content-type="html" type="button" ${!hasContent ? 'disabled' : ''}><span class="material-symbols-outlined">compare_arrows</span><span class="button-text">Compare</span></button>
                              <button id="copy-html-${pipelineId}-${iter.iterationNumber}" class="button" type="button" ${!hasContent ? 'disabled' : ''}><span class="material-symbols-outlined">content_copy</span><span class="button-text">Copy</span></button>
                              <button id="download-html-${pipelineId}-${iter.iterationNumber}" class="button" type="button" ${!hasContent ? 'disabled' : ''}><span class="material-symbols-outlined">download</span><span class="button-text">Download</span></button>
                         </div>
                     </div>
-                    <div class="code-block-wrapper scrollable-content-area custom-scrollbar">${htmlContent}</div>
+                    <div class="scrollable-content-area custom-scrollbar">${htmlContent}</div>
                 </div>`;
         }
     }
@@ -1175,16 +1152,25 @@ function renderIteration(pipelineId: number, iter: IterationData): string {
 
     let previewHtml = '';
     if (currentMode === 'website') {
-        const isEmptyGenHtml = isEmptyOrPlaceholderHtml(iter.generatedHtml);
+        const isEmptyGenContent = isEmptyOrPlaceholderHtml(iter.generatedContent);
         const previewContainerId = `preview-container-${pipelineId}-${iter.iterationNumber}`;
         const fullscreenButtonId = `fullscreen-btn-${pipelineId}-${iter.iterationNumber}`;
-        const hasContentForPreview = iter.generatedHtml && !isEmptyGenHtml;
+        const hasContentForPreview = iter.generatedContent && !isEmptyGenContent && isHtmlContent(iter.generatedContent);
         let previewContent;
         if (hasContentForPreview) {
             const iframeSandboxOptions = "allow-scripts allow-same-origin allow-forms allow-popups";
-            previewContent = `<iframe id="preview-iframe-${pipelineId}-${iter.iterationNumber}" srcdoc="${escapeHtml(iter.generatedHtml!)}" sandbox="${iframeSandboxOptions}" title="HTML Preview for Iteration ${iter.iterationNumber} of Pipeline ${pipelineId + 1}"></iframe>`;
+            const previewFrameId = `preview-iframe-${pipelineId}-${iter.iterationNumber}`;
+            previewContent = `<iframe id="${previewFrameId}" sandbox="${iframeSandboxOptions}" title="Content Preview for Iteration ${iter.iterationNumber} of Pipeline ${pipelineId + 1}" style="width: 100%; height: 100%; border: none;"></iframe>`;
+            
+            // Use srcdoc approach like the compare modal for better consistency
+            setTimeout(() => {
+                const iframe = document.getElementById(previewFrameId) as HTMLIFrameElement;
+                if (iframe && iter.generatedContent) {
+                    iframe.srcdoc = iter.generatedContent;
+                }
+            }, 0);
         } else {
-            const noPreviewMessage = getEmptyStateMessage(iter.status, 'HTML preview');
+            const noPreviewMessage = getEmptyStateMessage(iter.status, 'Preview');
             previewContent = `<div class="empty-state-message">${noPreviewMessage}</div>`;
         }
 
@@ -1197,7 +1183,9 @@ function renderIteration(pipelineId: number, iter: IterationData): string {
                     <span class="icon-exit-fullscreen material-symbols-outlined" style="display:none;">fullscreen_exit</span>
                 </button>
             </div>
-            <div id="${previewContainerId}" class="html-preview-container">${previewContent}</div>
+            <div class="preview-container diff-preview-container">
+                ${previewContent}
+            </div>
         </div>`;
     }
 
@@ -1225,115 +1213,7 @@ function renderIteration(pipelineId: number, iter: IterationData): string {
     </li>`;
 }
 
-// Utility function to render LaTeX math expressions in content
-function renderMathContent(content: string): string {
-    if (!content) return '';
-    
-    // Simple regex-based approach that was working before
-    let processedContent = content;
-    
-    // Handle display math $$...$$
-    processedContent = processedContent.replace(/\$\$([\s\S]*?)\$\$/g, (match, mathContent) => {
-        try {
-            return katex.renderToString(mathContent.trim(), {
-                displayMode: true,
-                throwOnError: false,
-                trust: true,
-                strict: false
-            });
-        } catch (e) {
-            console.warn('Failed to render display math:', mathContent, e);
-            return match;
-        }
-    });
-    
-    // Handle inline math $...$
-    processedContent = processedContent.replace(/\$([^$\n]+?)\$/g, (match, mathContent) => {
-        try {
-            return katex.renderToString(mathContent.trim(), {
-                displayMode: false,
-                throwOnError: false,
-                trust: true,
-                strict: false
-            });
-        } catch (e) {
-            console.warn('Failed to render inline math:', mathContent, e);
-            return match;
-        }
-    });
-    
-    // Handle LaTeX delimiters \[...\]
-    processedContent = processedContent.replace(/\\\[([\s\S]*?)\\\]/g, (match, mathContent) => {
-        try {
-            return katex.renderToString(mathContent.trim(), {
-                displayMode: true,
-                throwOnError: false,
-                trust: true,
-                strict: false
-            });
-        } catch (e) {
-            console.warn('Failed to render LaTeX display math:', mathContent, e);
-            return match;
-        }
-    });
-    
-    // Handle LaTeX delimiters \(...\)
-    processedContent = processedContent.replace(/\\\(([\s\S]*?)\\\)/g, (match, mathContent) => {
-        try {
-            return katex.renderToString(mathContent.trim(), {
-                displayMode: false,
-                throwOnError: false,
-                trust: true,
-                strict: false
-            });
-        } catch (e) {
-            console.warn('Failed to render LaTeX inline math:', mathContent, e);
-            return match;
-        }
-    });
-    
-    // Now process markdown
-    let htmlContent = marked(processedContent);
-    htmlContent = DOMPurify.sanitize(htmlContent);
-    
-    // Wrap code blocks in containers with copy/download functionality
-    htmlContent = htmlContent.replace(/<pre><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g, (_match: any, attributes: any, codeContent: any) => {
-        const codeId = 'code-' + Math.random().toString(36).substr(2, 9);
-        return `
-            <div class="code-block-container expanded">
-                <div class="code-block-header" onclick="toggleCodeBlock('${codeId}')">
-                    <span class="code-block-title">Code</span>
-                    <div class="code-block-actions" onclick="event.stopPropagation()">
-                        <button class="code-action-btn copy-code-btn" onclick="copyCodeBlock('${codeId}')" title="Copy code">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                            </svg>
-                        </button>
-                        <button class="code-action-btn download-code-btn" onclick="downloadCodeBlock('${codeId}')" title="Download code">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                <polyline points="7,10 12,15 17,10"></polyline>
-                                <line x1="12" y1="15" x2="12" y2="3"></line>
-                            </svg>
-                        </button>
-                        <button class="code-block-expand-toggle expanded" id="toggle-${codeId}" onclick="toggleCodeBlock('${codeId}')" title="Toggle code visibility">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="6,9 12,15 18,9"></polyline>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-                <div class="code-block-content expanded" id="${codeId}">
-                    <pre><code${attributes}>${codeContent}</code></pre>
-                </div>
-            </div>
-        `;
-    });
-    
-    // Wrap content in a div with proper styling classes
-    return `<div class="latex-content-wrapper">${htmlContent}</div>`;
-}
+
 
 // Global functions for code block actions
 (window as any).toggleCodeBlock = function(codeId: string) {
@@ -1461,13 +1341,13 @@ function attachIterationActionButtons(pipelineId: number, iterationNumber: numbe
     if (!iter) return;
 
     if (currentMode === 'website') {
-        const canDownloadOrCopyHtml = !!iter.generatedHtml && !isEmptyOrPlaceholderHtml(iter.generatedHtml);
+        const canDownloadOrCopyHtml = !!iter.generatedContent && !isEmptyOrPlaceholderHtml(iter.generatedContent);
 
         const downloadButton = document.querySelector<HTMLButtonElement>(`#download-html-${pipelineId}-${iterationNumber}`);
         if (downloadButton) {
             downloadButton.onclick = () => {
-                if (iter.generatedHtml) {
-                    downloadFile(iter.generatedHtml, `website_pipeline-${pipelineId + 1}_iter-${iter.iterationNumber}_temp-${pipeline.temperature}.html`, 'text/html');
+                if (iter.generatedContent) {
+                    downloadFile(iter.generatedContent, `website_pipeline-${pipelineId + 1}_iter-${iter.iterationNumber}_temp-${pipeline.temperature}.html`, 'text/html');
                 }
             };
             downloadButton.disabled = !canDownloadOrCopyHtml;
@@ -1477,18 +1357,18 @@ function attachIterationActionButtons(pipelineId: number, iterationNumber: numbe
         if (copyButton) {
             copyButton.dataset.hasContent = String(canDownloadOrCopyHtml);
             copyButton.onclick = () => {
-                if (iter.generatedHtml) copyToClipboard(iter.generatedHtml, copyButton);
+                if (iter.generatedContent) copyToClipboard(iter.generatedContent, copyButton);
             };
             copyButton.disabled = !canDownloadOrCopyHtml;
         }
 
         const fullscreenButton = document.querySelector<HTMLButtonElement>(`#fullscreen-btn-${pipelineId}-${iterationNumber}`);
-        const previewContainer = document.getElementById(`preview-container-${pipelineId}-${iterationNumber}`);
-        if (fullscreenButton && previewContainer) {
+        if (fullscreenButton) {
             fullscreenButton.onclick = () => {
-                if (!document.fullscreenElement) {
-                    previewContainer.requestFullscreen().catch(err => console.error(`Error full-screen: ${err.message}`));
-                } else if (document.exitFullscreen) document.exitFullscreen();
+                const iteration = pipelinesState[pipelineId]?.iterations.find(iter => iter.iterationNumber === iterationNumber);
+                if (iteration?.generatedContent) {
+                    openLivePreviewFullscreen(iteration.generatedContent);
+                }
             };
             fullscreenButton.disabled = !canDownloadOrCopyHtml;
         }
@@ -1682,6 +1562,28 @@ function cleanJsonOutput(jsonString: string): string {
         cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
     }
     
+    // Normalize smart quotes early
+    cleaned = cleaned.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+
+    // Convert Python-style triple-quoted strings for known fields into valid JSON strings
+    // This handles cases like: "search_block": """multi-line code...""" or with stray surrounding quotes
+    // We target common patch value fields explicitly to avoid over-replacing unrelated content
+    const tripleQuotedFieldRe = /(["']?(?:search_block|replace_with|new_content|content|insert|insert_content|value|replacement|replace|with|to|new_value|search|target|match|pattern|searchBlock|newContent|replaceWith)["']?\s*:\s*)(?:"\s*)?(?:"""|''')([\s\S]*?)(?:"""|''')\s*(?:"\s*)?/g;
+    cleaned = cleaned.replace(tripleQuotedFieldRe, (_m, prefix: string, inner: string) => {
+        try {
+            // JSON.stringify will escape newlines, quotes and backslashes appropriately and include surrounding quotes
+            return prefix + JSON.stringify(inner);
+        } catch {
+            // Fallback: basic escaping
+            const escaped = inner.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t").replace(/\"/g, '\\"').replace(/"/g, '\\"');
+            return prefix + '"' + escaped + '"';
+        }
+    });
+
+    // Also normalize any standalone triple-quoted strings that may appear (very rare but possible)
+    cleaned = cleaned.replace(/"""([\s\S]*?)"""/g, (_m, inner: string) => JSON.stringify(inner));
+    cleaned = cleaned.replace(/'''([\s\S]*?)'''/g, (_m, inner: string) => JSON.stringify(inner));
+
     // Try to fix common JSON issues
     try {
         // First, try to parse as-is to see if it's already valid
@@ -1747,178 +1649,460 @@ function cleanJsonOutput(jsonString: string): string {
     }
 }
 
-// ---------- HTML PATCHING (Website mode) ----------
+// ---------- GENERALIZED CONTENT PATCHING (Refine mode) ----------
 
-type HtmlPatchOperation = {
+type ContentPatchOperation = {
     operation: 'replace' | 'insert_after' | 'insert_before' | 'delete';
     search_block: string;
     replace_with?: string;
     new_content?: string;
+    marker?: string; // For XML format insert_before/insert_after operations
 };
 
-function escapeRegExp(literal: string): string {
-    return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Detect if content is HTML by checking for html tags
+function isHtmlContent(content: string): boolean {
+    if (!content || typeof content !== 'string') return false;
+    const trimmed = content.trim();
+    // Check for common HTML patterns - be more permissive than requiring full HTML document
+    return trimmed.includes('<html>') || 
+           trimmed.includes('<!DOCTYPE') || 
+           (trimmed.includes('<head>') && trimmed.includes('<body>')) ||
+           (trimmed.includes('<div') && trimmed.includes('<style')) ||
+           (trimmed.includes('<script') && trimmed.includes('<style'));
 }
 
-function buildFlexibleWhitespaceRegex(block: string): RegExp {
-    // Escape regex chars, then normalize any run of whitespace in the block to match any whitespace run in the source
-    const escaped = escapeRegExp(block)
-        .replace(/\s+/g, '\\s+')
-        .replace(/\\n/g, '\\s*\\n\\s*'); // Handle newlines more flexibly
-    // Use multiline and dotall flags for better matching
-    return new RegExp(escaped, 'ms');
+// Helper: escape regex special characters to build literal patterns
+function escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function countOccurrences(haystack: string, needle: string): number {
-    if (!needle) return 0;
-    let count = 0;
-    let idx = 0;
-    while (true) {
-        idx = haystack.indexOf(needle, idx);
-        if (idx === -1) break;
-        count++;
-        idx += Math.max(1, needle.length);
-    }
-    return count;
+// Normalize text for better matching by removing extra whitespace and normalizing quotes
+function normalizeText(text: string): string {
+    return text
+        .replace(/\s+/g, ' ') // Normalize whitespace to single spaces
+        .replace(/[""'']/g, '"') // Normalize quotes
+        .replace(/[–—]/g, '-') // Normalize dashes  
+        .trim();
 }
 
-function replaceOnceExact(haystack: string, needle: string, replacement: string): { result: string, applied: boolean, multiple: boolean } {
-    if (!needle || typeof needle !== 'string' || typeof haystack !== 'string') {
-        return { result: haystack, applied: false, multiple: false };
-    }
+// Extract key phrases from text for semantic matching
+function extractKeyPhrases(text: string, maxPhrases: number = 3): string[] {
+    const normalized = normalizeText(text);
+    const sentences = normalized.split(/[.!?]+/).filter(s => s.trim().length > 10);
     
-    // First try exact match - this is critical for simple cases like "<body>"
-    const occurrences = countOccurrences(haystack, needle);
-    if (occurrences > 0) {
-        const idx = haystack.indexOf(needle);
-        const result = haystack.slice(0, idx) + replacement + haystack.slice(idx + needle.length);
-        return { result, applied: true, multiple: occurrences > 1 };
-    }
+    // Get distinctive phrases (avoid common words)
+    const phrases = sentences
+        .map(s => s.trim())
+        .filter(s => s.length > 15 && s.length < 100)
+        .slice(0, maxPhrases);
     
-    // Only try flexible matching for multi-line blocks or complex content
-    if (needle.includes('\n') || needle.length > 50) {
-        const regex = buildFlexibleWhitespaceRegex(needle);
-        const match = haystack.match(regex);
-        if (match && match.index !== undefined) {
-            const result = haystack.slice(0, match.index) + replacement + haystack.slice(match.index + match[0].length);
-            return { result, applied: true, multiple: false };
+    return phrases.length > 0 ? phrases : [normalized.substring(0, 50)];
+}
+
+// Helper: find a flexible match where whitespace differences are tolerated
+// Returns { start, end } of the matched range, or null if not found
+function findFlexibleMatch(haystack: string, needle: string): { start: number; end: number } | null {
+    if (!needle) return null;
+    
+    // Strategy 1: Direct exact match
+    const direct = haystack.indexOf(needle);
+    if (direct !== -1) {
+        return { start: direct, end: direct + needle.length };
+    }
+
+    // Strategy 2: Normalized text matching
+    const normalizedHaystack = normalizeText(haystack);
+    const normalizedNeedle = normalizeText(needle);
+    const normalizedMatch = normalizedHaystack.indexOf(normalizedNeedle);
+    if (normalizedMatch !== -1) {
+        // Find the original position by counting characters
+        let originalPos = 0;
+        let normalizedPos = 0;
+        while (normalizedPos < normalizedMatch && originalPos < haystack.length) {
+            if (normalizeText(haystack.charAt(originalPos)) === normalizedHaystack.charAt(normalizedPos)) {
+                normalizedPos++;
+            }
+            originalPos++;
+        }
+        return { start: originalPos, end: originalPos + needle.length };
+    }
+
+    // Strategy 3: Flexible whitespace regex matching
+    const pattern = escapeRegex(needle).replace(/\s+/g, '\\s+');
+    try {
+        const re = new RegExp(pattern, 'ms');
+        const match = re.exec(haystack);
+        if (match && typeof match.index === 'number') {
+            return { start: match.index, end: match.index + match[0].length };
+        }
+    } catch (e) {
+        console.warn('findFlexibleMatch: Regex matching failed', e);
+    }
+
+    // Strategy 4: Progressive substring matching (try shorter portions)
+    const lines = needle.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length > 1) {
+        for (let lineCount = Math.max(1, lines.length - 2); lineCount <= lines.length; lineCount++) {
+            const subset = lines.slice(0, lineCount).join('\n');
+            const subsetMatch = haystack.indexOf(subset);
+            if (subsetMatch !== -1) {
+                console.log(`findFlexibleMatch: Found partial match using ${lineCount}/${lines.length} lines`);
+                return { start: subsetMatch, end: subsetMatch + subset.length };
+            }
         }
     }
-    
-    return { result: haystack, applied: false, multiple: false };
-}
 
-function applyPatches(currentHtml: string, patches: HtmlPatchOperation[]): string {
-    let modifiedHtml = currentHtml ?? '';
-    if (!Array.isArray(patches) || patches.length === 0) {
-        console.log('applyPatches: No valid patches to apply');
-        return modifiedHtml;
+    // Strategy 5: Key phrase matching for semantic similarity
+    const keyPhrases = extractKeyPhrases(needle);
+    for (const phrase of keyPhrases) {
+        const phraseMatch = haystack.indexOf(phrase);
+        if (phraseMatch !== -1) {
+            console.log(`findFlexibleMatch: Found match via key phrase: "${phrase.substring(0, 30)}..."`);
+            return { start: phraseMatch, end: phraseMatch + phrase.length };
+        }
     }
 
-    console.log(`applyPatches: Applying ${patches.length} patches to HTML (${modifiedHtml.length} chars)`);
+    // Strategy 6: Word-order flexible matching for short needles
+    if (needle.length < 200) {
+        const words = needle.split(/\s+/).filter(w => w.length > 2);
+        if (words.length >= 3) {
+            const wordPattern = words.map(w => escapeRegex(w)).join('\\s+(?:\\S+\\s+){0,3}');
+            try {
+                const wordRe = new RegExp(wordPattern, 'i');
+                const wordMatch = wordRe.exec(haystack);
+                if (wordMatch && typeof wordMatch.index === 'number') {
+                    console.log(`findFlexibleMatch: Found fuzzy word-order match`);
+                    return { start: wordMatch.index, end: wordMatch.index + wordMatch[0].length };
+                }
+            } catch (e) {
+                // Ignore word matching errors
+            }
+        }
+    }
+
+    return null;
+}
+
+// Generalized content application function
+function applyContentPatches(currentContent: string, patches: ContentPatchOperation[]): string {
+    // Create a copy of the content to avoid reference issues
+    let modifiedContent = typeof currentContent === 'string' ? currentContent : '';
+    if (!Array.isArray(patches) || patches.length === 0) {
+        console.log('applyContentPatches: No valid patches to apply');
+        return modifiedContent;
+    }
+
+    console.log(`applyContentPatches: Applying ${patches.length} patches to content (${modifiedContent.length} chars)`);
+    
+    // Store original content length for comparison
+    const originalLength = modifiedContent.length;
     
     for (let i = 0; i < patches.length; i++) {
         const rawPatch = patches[i];
         if (!rawPatch || typeof rawPatch !== 'object') {
-            console.warn(`applyPatches: Patch ${i + 1}: Skipping invalid patch (not an object):`, rawPatch);
+            console.warn(`applyContentPatches: Patch ${i + 1}: Skipping invalid patch (not an object):`, rawPatch);
             continue;
         }
 
-        const op = String((rawPatch as any).operation || '').toLowerCase() as HtmlPatchOperation['operation'];
+        const op = String((rawPatch as any).operation || '').toLowerCase() as ContentPatchOperation['operation'];
         const searchBlock = (rawPatch as any).search_block ?? '';
         const replaceWith = (rawPatch as any).replace_with ?? '';
         const newContent = (rawPatch as any).new_content ?? '';
 
         if (!op || !searchBlock || typeof searchBlock !== 'string') {
-            console.warn(`applyPatches: Patch ${i + 1}: Skipping patch with missing/invalid operation or search_block:`, rawPatch);
+            console.warn(`applyContentPatches: Patch ${i + 1}: Skipping patch with missing/invalid operation or search_block:`, rawPatch);
             continue;
         }
 
-        console.log(`applyPatches: Patch ${i + 1}: ${op} operation on block: "${searchBlock.substring(0, 60)}${searchBlock.length > 60 ? '...' : ''}"`);        
+        console.log(`applyContentPatches: Patch ${i + 1}: ${op} operation on block: "${searchBlock.substring(0, 60)}${searchBlock.length > 60 ? '...' : ''}"`);        
         
         try {
-            const beforeLength = modifiedHtml.length;
+            const beforeLength = modifiedContent.length;
             
+            const match = findFlexibleMatch(modifiedContent, searchBlock);
+
             if (op === 'replace') {
-                let { result, applied, multiple } = replaceOnceExact(modifiedHtml, searchBlock, replaceWith);
-                if (!applied) {
-                    console.warn(`applyPatches: Patch ${i + 1}: replace - search_block not found. Patch skipped. Block: "${searchBlock.substring(0, 120)}${searchBlock.length > 120 ? '...' : ''}"`);                    
+                if (match) {
+                    modifiedContent = modifiedContent.slice(0, match.start) + replaceWith + modifiedContent.slice(match.end);
+                    console.log(`applyContentPatches: Patch ${i + 1}: Successfully applied replace (${beforeLength} -> ${modifiedContent.length} chars)`);
                 } else {
-                    if (multiple) {
-                        console.warn(`applyPatches: Patch ${i + 1}: replace - multiple matches found. Only first occurrence was replaced.`);
-                    }
-                    console.log(`applyPatches: Patch ${i + 1}: Successfully applied replace (${beforeLength} -> ${result.length} chars)`);
+                    console.warn(`applyContentPatches: Patch ${i + 1}: replace - search_block not found (even with whitespace-flex match). Patch skipped.`);
                 }
-                modifiedHtml = result;
             } else if (op === 'insert_after') {
-                let { result, applied, multiple } = replaceOnceExact(modifiedHtml, searchBlock, searchBlock + newContent);
-                if (!applied) {
-                    console.warn(`applyPatches: Patch ${i + 1}: insert_after - search_block not found. Patch skipped. Block: "${searchBlock.substring(0, 120)}${searchBlock.length > 120 ? '...' : ''}"`);                    
+                if (match) {
+                    const insertPoint = match.end;
+                    modifiedContent = modifiedContent.slice(0, insertPoint) + newContent + modifiedContent.slice(insertPoint);
+                    console.log(`applyContentPatches: Patch ${i + 1}: Successfully applied insert_after (${beforeLength} -> ${modifiedContent.length} chars)`);
                 } else {
-                    if (multiple) {
-                        console.warn(`applyPatches: Patch ${i + 1}: insert_after - multiple matches found. Only first occurrence was used.`);
+                    // Fallback: try anchor-line insertion using the longest significant line from search_block
+                    const lines = String(searchBlock).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                    let anchors: string[] = [];
+                    if (lines.length > 0) {
+                        const longest = [...lines].sort((a, b) => b.length - a.length)[0];
+                        const first = lines[0];
+                        const last = lines[lines.length - 1];
+                        anchors = Array.from(new Set([longest, first, last].filter(Boolean)));
                     }
-                    console.log(`applyPatches: Patch ${i + 1}: Successfully applied insert_after (${beforeLength} -> ${result.length} chars)`);
+                    let inserted = false;
+                    for (const anchor of anchors) {
+                        const aMatch = findFlexibleMatch(modifiedContent, anchor);
+                        if (aMatch) {
+                            const insertPoint = aMatch.end;
+                            modifiedContent = modifiedContent.slice(0, insertPoint) + newContent + modifiedContent.slice(insertPoint);
+                            console.log(`applyContentPatches: Patch ${i + 1}: insert_after applied via anchor fallback. Anchor: "${anchor.substring(0, 60)}${anchor.length > 60 ? '...' : ''}"`);
+                            inserted = true;
+                            break;
+                        }
+                    }
+                    if (!inserted) {
+                        console.warn(`applyContentPatches: Patch ${i + 1}: insert_after - search_block not found. Anchor fallback also failed. Patch skipped.`);
+                    }
                 }
-                modifiedHtml = result;
             } else if (op === 'insert_before') {
-                let { result, applied, multiple } = replaceOnceExact(modifiedHtml, searchBlock, newContent + searchBlock);
-                if (!applied) {
-                    console.warn(`applyPatches: Patch ${i + 1}: insert_before - search_block not found. Patch skipped. Block: "${searchBlock.substring(0, 120)}${searchBlock.length > 120 ? '...' : ''}"`);                    
+                if (match) {
+                    modifiedContent = modifiedContent.slice(0, match.start) + newContent + modifiedContent.slice(match.start);
+                    console.log(`applyContentPatches: Patch ${i + 1}: Successfully applied insert_before (${beforeLength} -> ${modifiedContent.length} chars)`);
                 } else {
-                    if (multiple) {
-                        console.warn(`applyPatches: Patch ${i + 1}: insert_before - multiple matches found. Only first occurrence was used.`);
+                    // Fallback: try anchor-line insertion before the best matching anchor line
+                    const lines = String(searchBlock).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                    let anchors: string[] = [];
+                    if (lines.length > 0) {
+                        const longest = [...lines].sort((a, b) => b.length - a.length)[0];
+                        const first = lines[0];
+                        const last = lines[lines.length - 1];
+                        anchors = Array.from(new Set([longest, first, last].filter(Boolean)));
                     }
-                    console.log(`applyPatches: Patch ${i + 1}: Successfully applied insert_before (${beforeLength} -> ${result.length} chars)`);
+                    let inserted = false;
+                    for (const anchor of anchors) {
+                        const aMatch = findFlexibleMatch(modifiedContent, anchor);
+                        if (aMatch) {
+                            modifiedContent = modifiedContent.slice(0, aMatch.start) + newContent + modifiedContent.slice(aMatch.start);
+                            console.log(`applyContentPatches: Patch ${i + 1}: insert_before applied via anchor fallback. Anchor: "${anchor.substring(0, 60)}${anchor.length > 60 ? '...' : ''}"`);
+                            inserted = true;
+                            break;
+                        }
+                    }
+                    if (!inserted) {
+                        console.warn(`applyContentPatches: Patch ${i + 1}: insert_before - search_block not found. Anchor fallback also failed. Patch skipped.`);
+                    }
                 }
-                modifiedHtml = result;
             } else if (op === 'delete') {
-                let { result, applied, multiple } = replaceOnceExact(modifiedHtml, searchBlock, '');
-                if (!applied) {
-                    console.warn(`applyPatches: Patch ${i + 1}: delete - search_block not found. Patch skipped. Block: "${searchBlock.substring(0, 120)}${searchBlock.length > 120 ? '...' : ''}"`);                    
+                if (match) {
+                    modifiedContent = modifiedContent.slice(0, match.start) + modifiedContent.slice(match.end);
+                    console.log(`applyContentPatches: Patch ${i + 1}: Successfully applied delete (${beforeLength} -> ${modifiedContent.length} chars)`);
                 } else {
-                    if (multiple) {
-                        console.warn(`applyPatches: Patch ${i + 1}: delete - multiple matches found. Only first occurrence was deleted.`);
-                    }
-                    console.log(`applyPatches: Patch ${i + 1}: Successfully applied delete (${beforeLength} -> ${result.length} chars)`);
+                    console.warn(`applyContentPatches: Patch ${i + 1}: delete - search_block not found (flex). Patch skipped.`);
                 }
-                modifiedHtml = result;
             } else {
-                console.warn(`applyPatches: Patch ${i + 1}: Unsupported operation '${op}'. Skipping.`, rawPatch);
+                console.warn(`applyContentPatches: Patch ${i + 1}: Unsupported operation '${op}'. Skipping.`, rawPatch);
             }
         } catch (e) {
-            console.warn(`applyPatches: Patch ${i + 1}: Error applying patch. Skipping this patch.`, e, rawPatch);
+            console.warn(`applyContentPatches: Patch ${i + 1}: Error applying patch. Skipping this patch.`, e, rawPatch);
         }
     }
     
-    console.log(`applyPatches: Completed. Final HTML length: ${modifiedHtml.length} chars`);
-    return modifiedHtml;
+    console.log(`applyContentPatches: Completed. Final content length: ${modifiedContent.length} chars (original: ${originalLength} chars)`);
+    
+    // Add a safeguard to prevent extremely large content growth
+    if (modifiedContent.length > originalLength * 10 && originalLength > 1000) {
+        console.warn(`applyContentPatches: Content grew significantly (${originalLength} -> ${modifiedContent.length}). This might indicate an issue.`);
+    }
+    
+    return modifiedContent;
 }
 
-function parsePatchesFromJson(rawJsonString: string): HtmlPatchOperation[] | null {
-    const cleaned = cleanOutputByType(rawJsonString, 'json');
-    try {
-        const parsedAny = JSON.parse(cleaned);
-        const maybeArray = Array.isArray(parsedAny) ? parsedAny : (parsedAny && typeof parsedAny === 'object' && Array.isArray(parsedAny.patches) ? parsedAny.patches : null);
-        if (!maybeArray) return null;
-        const normalized: HtmlPatchOperation[] = [];
-        for (const item of maybeArray) {
-            if (!item || typeof item !== 'object') continue;
-            const op = String((item as any).operation || '').toLowerCase();
-            const searchBlock = (item as any).search_block;
-            const replaceWith = (item as any).replace_with;
-            const newContent = (item as any).new_content;
-            if (!op || typeof searchBlock !== 'string') continue;
-            if (op === 'replace' && typeof replaceWith !== 'string') continue;
-            if ((op === 'insert_after' || op === 'insert_before') && typeof newContent !== 'string') continue;
-            if (op !== 'replace' && op !== 'insert_after' && op !== 'insert_before' && op !== 'delete') continue;
-            normalized.push({ operation: op as any, search_block: searchBlock, replace_with: replaceWith, new_content: newContent });
-        }
-        return normalized;
-    } catch (e) {
-        console.warn('parsePatchesFromJson: Failed to parse JSON patches. Raw (first 300 chars):', rawJsonString.substring(0, 300), e);
+// Parse content patches from XML string  
+function parseContentPatchesFromXml(rawXmlString: string): ContentPatchOperation[] | null {
+    if (!rawXmlString || typeof rawXmlString !== 'string') {
+        console.warn('parseContentPatchesFromXml: No rawXmlString provided');
         return null;
     }
+
+    // Clean up the XML string
+    let cleanedXml = rawXmlString.trim();
+    
+    // Extract the changes section
+    const changesMatch = cleanedXml.match(/<changes>([\s\S]*?)<\/changes>/i);
+    if (!changesMatch) {
+        console.warn('parseContentPatchesFromXml: No <changes> section found in XML');
+        return null;
+    }
+    
+    const changesContent = changesMatch[1];
+    console.log('parseContentPatchesFromXml: Extracted changes content:', changesContent.substring(0, 200) + '...');
+
+    // Parse individual change elements
+    const changeRegex = /<change>([\s\S]*?)<\/change>/gi;
+    const changes: ContentPatchOperation[] = [];
+    let match;
+    
+    while ((match = changeRegex.exec(changesContent)) !== null) {
+        const changeContent = match[1];
+        console.log('parseContentPatchesFromXml: Processing change:', changeContent.substring(0, 100) + '...');
+        
+        const operation = parseChangeOperation(changeContent);
+        if (operation) {
+            changes.push(operation);
+        }
+    }
+    
+    if (changes.length === 0) {
+        console.warn('parseContentPatchesFromXml: No valid change operations found');
+        return null;
+    }
+    
+    console.log(`parseContentPatchesFromXml: Successfully parsed ${changes.length} operations`);
+    return changes;
+}
+
+// Helper function to parse individual change operation
+function parseChangeOperation(changeContent: string): ContentPatchOperation | null {
+    // Extract CDATA content helper
+    const extractCDATA = (tag: string, content: string): string => {
+        const regex = new RegExp(`<${tag}><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`, 'i');
+        const match = content.match(regex);
+        return match ? match[1] : '';
+    };
+    
+    // Check for search/replace pattern
+    const searchContent = extractCDATA('search', changeContent);
+    const replaceContent = extractCDATA('replace', changeContent);
+    
+    if (searchContent && replaceContent) {
+        return {
+            operation: 'replace',
+            search_block: searchContent,
+            replace_with: replaceContent
+        };
+    }
+    
+    // Check for insert_after pattern
+    const insertAfterContent = extractCDATA('insert_after', changeContent);
+    const markerAfterContent = extractCDATA('marker', changeContent);
+    
+    if (insertAfterContent && markerAfterContent) {
+        return {
+            operation: 'insert_after',
+            search_block: markerAfterContent,
+            new_content: insertAfterContent
+        };
+    }
+    
+    // Check for insert_before pattern
+    const insertBeforeContent = extractCDATA('insert_before', changeContent);
+    const markerBeforeContent = extractCDATA('marker', changeContent);
+    
+    if (insertBeforeContent && markerBeforeContent) {
+        return {
+            operation: 'insert_before', 
+            search_block: markerBeforeContent,
+            new_content: insertBeforeContent
+        };
+    }
+    
+    // Check for delete pattern
+    const deleteContent = extractCDATA('delete', changeContent);
+    
+    if (deleteContent) {
+        return {
+            operation: 'delete',
+            search_block: deleteContent
+        };
+    }
+    
+    console.warn('parseChangeOperation: Could not parse change operation:', changeContent.substring(0, 100) + '...');
+    return null;
+}
+
+// Legacy JSON parser (kept for backward compatibility)
+function parseContentPatchesFromJson(rawJsonString: string): ContentPatchOperation[] | null {
+    if (!rawJsonString || typeof rawJsonString !== 'string') {
+        console.warn('parseContentPatchesFromJson: No rawJsonString provided');
+        return null;
+    }
+    
+    let parsedAny: any;
+    try {
+        parsedAny = parseJsonSafe(rawJsonString);
+        if (!parsedAny) {
+            console.warn('parseContentPatchesFromJson: parseJsonSafe returned null/undefined');
+            return null;
+        }
+    } catch (e) {
+        console.warn('parseContentPatchesFromJson: parseJsonSafe failed. Raw (first 300 chars):', rawJsonString.substring(0, 300), e);
+        return null;
+    }
+
+    const containers = ['patches', 'operations', 'edits', 'changes'];
+    const getArrayFromContainer = (obj: any): any[] | null => {
+        if (Array.isArray(obj)) return obj;
+        if (obj && typeof obj === 'object') {
+            for (const key of containers) {
+                if (Array.isArray(obj[key])) return obj[key];
+            }
+        }
+        return null;
+    };
+
+    const maybeArray = getArrayFromContainer(parsedAny);
+    if (!maybeArray) {
+        console.warn('parseContentPatchesFromJson: No patches array found in parsed JSON. Keys:', parsedAny && typeof parsedAny === 'object' ? Object.keys(parsedAny) : 'n/a');
+        return null;
+    }
+
+    const pick = (o: any, keys: string[]): any => {
+        for (const k of keys) {
+            if (o && Object.prototype.hasOwnProperty.call(o, k)) return o[k];
+        }
+        return undefined;
+    };
+
+    const normalizeOp = (opRaw: any): ContentPatchOperation['operation'] | '' => {
+        const s = String(opRaw || '').toLowerCase().trim().replace(/[-\s]+/g, '_');
+        if (s === 'replace' || s === 'insert_after' || s === 'insert_before' || s === 'delete') return s as ContentPatchOperation['operation'];
+        return '';
+    };
+
+    const normalized: ContentPatchOperation[] = [];
+    for (const item of maybeArray) {
+        if (!item || typeof item !== 'object') continue;
+        const op = normalizeOp(pick(item, ['operation', 'op', 'action']));
+        const searchBlock = pick(item, ['search_block', 'search', 'target', 'match', 'pattern', 'searchBlock']);
+        const replaceWith = pick(item, ['replace_with', 'replacement', 'replace', 'with', 'new_value', 'to', 'replaceWith']);
+        const newContent = pick(item, ['new_content', 'content', 'insert', 'insert_content', 'value', 'newContent']);
+
+        if (!op || typeof searchBlock !== 'string') continue;
+        if (op === 'replace' && typeof replaceWith !== 'string') continue;
+        if ((op === 'insert_after' || op === 'insert_before') && typeof newContent !== 'string') continue;
+
+        normalized.push({ operation: op, search_block: searchBlock, replace_with: replaceWith, new_content: newContent });
+    }
+
+    if (normalized.length === 0) {
+        console.warn('parseContentPatchesFromJson: No valid patch operations after normalization.');
+        return null;
+    }
+    return normalized;
+}
+
+// Unified parser that detects format and uses appropriate parser
+function parseContentPatches(rawString: string): ContentPatchOperation[] | null {
+    if (!rawString || typeof rawString !== 'string') {
+        console.warn('parseContentPatches: No rawString provided');
+        return null;
+    }
+    
+    const trimmed = rawString.trim();
+    
+    // Detect XML format
+    if (trimmed.includes('</changes>') && trimmed.includes('</change>')) {
+        console.log('parseContentPatches: Detected XML format, using XML parser');
+        return parseContentPatchesFromXml(rawString);
+    }
+    
+    // Fallback to JSON format
+    console.log('parseContentPatches: Detected JSON format, using JSON parser');
+    return parseContentPatchesFromJson(rawString);
 }
 
 
@@ -2044,8 +2228,7 @@ async function runPipeline(pipelineId: number, initialRequest: string) {
     pipeline.isStopRequested = false;
     updatePipelineStatusUI(pipelineId, 'running');
 
-    let currentHtmlContent = "";
-    let currentTextContent = "";
+    let currentContent = "";
     let currentSuggestions: string[] = [];
 
 
@@ -2068,8 +2251,8 @@ async function runPipeline(pipelineId: number, initialRequest: string) {
         }
 
         // Reset prompts and outputs for current iteration (website mode only)
-        iteration.requestPromptHtml_InitialGenerate = iteration.requestPromptHtml_FeatureImplement = iteration.requestPromptHtml_BugFix = iteration.requestPromptFeatures_Suggest = undefined;
-        iteration.generatedRawHtml = undefined; // Clear raw HTML output
+        iteration.requestPromptContent_InitialGenerate = iteration.requestPromptContent_FeatureImplement = iteration.requestPromptContent_BugFix = iteration.requestPromptFeatures_Suggest = undefined;
+        iteration.generatedRawContent = undefined; // Clear raw HTML output
         iteration.error = undefined;
         // Website-only fields are managed; non-website fields no longer exist
 
@@ -2107,54 +2290,41 @@ async function runPipeline(pipelineId: number, initialRequest: string) {
             };
 
             if (currentMode === 'website') {
-                let rawHtmlAfterGenOrImpl = "";
-                const placeholderRawHtml = '<!-- No HTML provided by previous step. Please generate foundational structure based on the original idea. -->';
-                const placeholderCurrentHtml = "<!-- No significant HTML content available. Base suggestions on the original idea or propose foundational elements. -->";
+                const placeholderContent = '<!-- No content provided by previous step. Please generate foundational structure based on the original idea. -->';
 
                 if (i === 0) {
-                    const userPromptInitialGen = renderPrompt(customPromptsWebsiteState.user_initialGen, { initialIdea: initialRequest, currentHtml: currentHtmlContent });
-                    iteration.requestPromptHtml_InitialGenerate = userPromptInitialGen;
+                    const userPromptInitialGen = renderPrompt(customPromptsWebsiteState.user_initialGen, { initialIdea: initialRequest, currentContent: currentContent });
+                    iteration.requestPromptContent_InitialGenerate = userPromptInitialGen;
                     {
-                        const initialGenResponse = await makeApiCall(userPromptInitialGen, customPromptsWebsiteState.sys_initialGen, true, "Initial HTML Generation");
-                        // Check if response is JSON patches or full HTML
-                        if (currentHtmlContent && currentHtmlContent.trim().length > 0) {
-                            // We have existing HTML, expect JSON patches
-                            const patches = parsePatchesFromJson(initialGenResponse);
-                            if (patches && patches.length > 0) {
-                                rawHtmlAfterGenOrImpl = applyPatches(currentHtmlContent, patches);
-                                iteration.providedPatchesJson = cleanOutputByType(initialGenResponse, 'json');
-                                iteration.providedPatchesContentType = 'html';
-                            } else {
-                                // Fallback: treat as full HTML
-                                const fallbackHtml = cleanOutputByType(initialGenResponse, 'html');
-                                rawHtmlAfterGenOrImpl = fallbackHtml && fallbackHtml.length > 0 ? cleanHtmlOutput(fallbackHtml) : "";
-                            }
-                        } else {
-                            // No existing HTML, expect full HTML output
-                            rawHtmlAfterGenOrImpl = cleanHtmlOutput(initialGenResponse);
-                        }
-                        iteration.generatedRawHtml = rawHtmlAfterGenOrImpl; // Store raw output from Request 1
+                        const initialGenResponse = await makeApiCall(userPromptInitialGen, customPromptsWebsiteState.sys_initialGen, false, "Initial HTML Generation");
+                        // For initial generation, expect full content output
+                        currentContent = initialGenResponse;
+                        iteration.generatedRawContent = currentContent; // Store initial generation
                     }
 
-                    const userPromptInitialBugFix = renderPrompt(customPromptsWebsiteState.user_initialBugFix, { initialIdea: initialRequest, rawHtml: rawHtmlAfterGenOrImpl || placeholderRawHtml });
-                    iteration.requestPromptHtml_BugFix = userPromptInitialBugFix;
+                    const userPromptInitialBugFix = renderPrompt(customPromptsWebsiteState.user_initialBugFix, { initialIdea: initialRequest, currentContent: currentContent || placeholderContent });
+                    iteration.requestPromptContent_BugFix = userPromptInitialBugFix;
                     {
-                        const bugfixResponse = await makeApiCall(userPromptInitialBugFix, customPromptsWebsiteState.sys_initialBugFix, true, "Initial HTML Bug Fix (JSON Patches)");
-                        const patches = parsePatchesFromJson(bugfixResponse);
+                        const bugfixResponse = await makeApiCall(userPromptInitialBugFix, customPromptsWebsiteState.sys_initialBugFix, false, "Initial Content Bug Fix (XML Patches)");
+                        const patches = parseContentPatches(bugfixResponse);
                         if (patches && patches.length > 0) {
-                            const patched = applyPatches(rawHtmlAfterGenOrImpl || "", patches);
-                            iteration.generatedHtml = cleanHtmlOutput(patched);
+                            // Create a copy of currentContent to avoid reference issues
+                            const contentBeforePatches = currentContent || "";
+                            currentContent = applyContentPatches(contentBeforePatches, patches);
+                            iteration.generatedContent = isHtmlContent(currentContent) ? cleanHtmlOutput(currentContent) : currentContent;
                             iteration.providedPatchesJson = cleanOutputByType(bugfixResponse, 'json');
-                            iteration.providedPatchesContentType = 'html';
+                            iteration.providedPatchesContentType = isHtmlContent(currentContent) ? 'html' : 'text';
                         } else {
-                            // Fallback: treat response as full HTML if JSON invalid or empty
-                            const fallbackHtml = cleanOutputByType(bugfixResponse, 'html');
-                            iteration.generatedHtml = fallbackHtml && fallbackHtml.length > 0 ? cleanHtmlOutput(fallbackHtml) : (rawHtmlAfterGenOrImpl || "");
+                            // Fallback: treat response as full content if JSON invalid or empty
+                            const fallbackContent = cleanOutputByType(bugfixResponse, isHtmlContent(bugfixResponse) ? 'html' : 'text');
+                            if (fallbackContent && fallbackContent.length > 0) {
+                                currentContent = isHtmlContent(fallbackContent) ? cleanHtmlOutput(fallbackContent) : fallbackContent;
+                            }
+                            iteration.generatedContent = currentContent;
                         }
                     }
-                    currentHtmlContent = iteration.generatedHtml || "";
 
-                    const userPromptInitialFeatures = renderPrompt(customPromptsWebsiteState.user_initialFeatureSuggest, { initialIdea: initialRequest, currentHtml: currentHtmlContent || placeholderCurrentHtml });
+                    const userPromptInitialFeatures = renderPrompt(customPromptsWebsiteState.user_initialFeatureSuggest, { initialIdea: initialRequest, currentContent: currentContent || placeholderContent });
                     iteration.requestPromptFeatures_Suggest = userPromptInitialFeatures;
                     // Use the selected model for feature suggestions
                     const featuresJsonString = await callGemini(userPromptInitialFeatures, pipeline.temperature, pipeline.modelName, customPromptsWebsiteState.sys_initialFeatureSuggest, true).then(response => response.text);
@@ -2162,64 +2332,76 @@ async function runPipeline(pipelineId: number, initialRequest: string) {
                     currentSuggestions = iteration.suggestedFeatures;
                 } else if (i <= numMainRefinementLoops) {
                     const featuresToImplementStr = currentSuggestions.join('; ');
-                    const userPromptRefineImplement = renderPrompt(customPromptsWebsiteState.user_refineStabilizeImplement, { currentHtml: currentHtmlContent || placeholderRawHtml, featuresToImplementStr });
-                    iteration.requestPromptHtml_FeatureImplement = userPromptRefineImplement;
+                    const userPromptRefineImplement = renderPrompt(customPromptsWebsiteState.user_refineStabilizeImplement, { currentContent: currentContent || placeholderContent, featuresToImplementStr });
+                    iteration.requestPromptContent_FeatureImplement = userPromptRefineImplement;
                     {
-                        const refineImplementResponse = await makeApiCall(userPromptRefineImplement, customPromptsWebsiteState.sys_refineStabilizeImplement, true, `Stabilization & Feature Impl (Iter ${i}) - JSON Patches`);
-                        const patches = parsePatchesFromJson(refineImplementResponse);
+                        const refineImplementResponse = await makeApiCall(userPromptRefineImplement, customPromptsWebsiteState.sys_refineStabilizeImplement, false, `Stabilization & Feature Impl (Iter ${i}) - XML Patches`);
+                        const patches = parseContentPatches(refineImplementResponse);
                         if (patches && patches.length > 0) {
-                            rawHtmlAfterGenOrImpl = applyPatches(currentHtmlContent || "", patches);
+                            // Create a copy of currentContent to avoid reference issues
+                            const contentBeforePatches = currentContent || "";
+                            currentContent = applyContentPatches(contentBeforePatches, patches);
                             iteration.providedPatchesJson = cleanOutputByType(refineImplementResponse, 'json');
-                            iteration.providedPatchesContentType = 'html';
+                            iteration.providedPatchesContentType = isHtmlContent(currentContent) ? 'html' : 'text';
                         } else {
-                            // Fallback: treat response as full HTML if JSON invalid or empty
-                            const fallbackHtml = cleanOutputByType(refineImplementResponse, 'html');
-                            rawHtmlAfterGenOrImpl = fallbackHtml && fallbackHtml.length > 0 ? cleanHtmlOutput(fallbackHtml) : (currentHtmlContent || "");
+                            // Fallback: treat response as full content if JSON invalid or empty
+                            const fallbackContent = cleanOutputByType(refineImplementResponse, isHtmlContent(refineImplementResponse) ? 'html' : 'text');
+                            if (fallbackContent && fallbackContent.length > 0) {
+                                currentContent = isHtmlContent(fallbackContent) ? cleanHtmlOutput(fallbackContent) : fallbackContent;
+                            }
                         }
-                        iteration.generatedRawHtml = rawHtmlAfterGenOrImpl; // Store raw output from Request 1
+                        iteration.generatedRawContent = currentContent; // Store content after feature implementation
                     }
 
-                    const userPromptRefineBugFix = renderPrompt(customPromptsWebsiteState.user_refineBugFix, { rawHtml: rawHtmlAfterGenOrImpl || placeholderRawHtml });
-                    iteration.requestPromptHtml_BugFix = userPromptRefineBugFix;
+                    const userPromptRefineBugFix = renderPrompt(customPromptsWebsiteState.user_refineBugFix, { currentContent: currentContent || placeholderContent });
+                    iteration.requestPromptContent_BugFix = userPromptRefineBugFix;
                     {
-                        const bugfixResponse = await makeApiCall(userPromptRefineBugFix, customPromptsWebsiteState.sys_refineBugFix, true, `Bug Fix & Completion (Iter ${i}) - JSON Patches`);
-                        const patches = parsePatchesFromJson(bugfixResponse);
+                        const bugfixResponse = await makeApiCall(userPromptRefineBugFix, customPromptsWebsiteState.sys_refineBugFix, false, `Bug Fix & Completion (Iter ${i}) - XML Patches`);
+                        const patches = parseContentPatches(bugfixResponse);
                         if (patches && patches.length > 0) {
-                            const patched = applyPatches(rawHtmlAfterGenOrImpl || "", patches);
-                            iteration.generatedHtml = cleanHtmlOutput(patched);
+                            // Create a copy of currentContent to avoid reference issues
+                            const contentBeforePatches = currentContent || "";
+                            currentContent = applyContentPatches(contentBeforePatches, patches);
+                            iteration.generatedContent = isHtmlContent(currentContent) ? cleanHtmlOutput(currentContent) : currentContent;
                             iteration.providedPatchesJson = cleanOutputByType(bugfixResponse, 'json');
-                            iteration.providedPatchesContentType = 'html';
+                            iteration.providedPatchesContentType = isHtmlContent(currentContent) ? 'html' : 'text';
                         } else {
-                            // Fallback: treat response as full HTML if JSON invalid or empty
-                            const fallbackHtml = cleanOutputByType(bugfixResponse, 'html');
-                            iteration.generatedHtml = fallbackHtml && fallbackHtml.length > 0 ? cleanHtmlOutput(fallbackHtml) : (rawHtmlAfterGenOrImpl || "");
+                            // Fallback: treat response as full content if JSON invalid or empty
+                            const fallbackContent = cleanOutputByType(bugfixResponse, isHtmlContent(bugfixResponse) ? 'html' : 'text');
+                            if (fallbackContent && fallbackContent.length > 0) {
+                                currentContent = isHtmlContent(fallbackContent) ? cleanHtmlOutput(fallbackContent) : fallbackContent;
+                            }
+                            iteration.generatedContent = currentContent;
                         }
                     }
-                    currentHtmlContent = iteration.generatedHtml || "";
 
-                    const userPromptRefineFeatures = renderPrompt(customPromptsWebsiteState.user_refineFeatureSuggest, { initialIdea: initialRequest, currentHtml: currentHtmlContent || placeholderCurrentHtml });
+                    const userPromptRefineFeatures = renderPrompt(customPromptsWebsiteState.user_refineFeatureSuggest, { initialIdea: initialRequest, currentContent: currentContent || placeholderContent });
                     iteration.requestPromptFeatures_Suggest = userPromptRefineFeatures;
                     // Use the selected model for feature suggestions
                     const featuresJsonString = await callGemini(userPromptRefineFeatures, pipeline.temperature, pipeline.modelName, customPromptsWebsiteState.sys_refineFeatureSuggest, true).then(response => response.text);
                     iteration.suggestedFeatures = parseJsonSuggestions(featuresJsonString, 'features', 5);
                     currentSuggestions = iteration.suggestedFeatures;
                 } else {
-                    const userPromptFinalPolish = renderPrompt(customPromptsWebsiteState.user_finalPolish, { currentHtml: currentHtmlContent || placeholderRawHtml });
-                    iteration.requestPromptHtml_BugFix = userPromptFinalPolish; // Re-using bugfix field for UI display of final polish prompt
+                    const userPromptFinalPolish = renderPrompt(customPromptsWebsiteState.user_finalPolish, { currentContent: currentContent || placeholderContent });
+                    iteration.requestPromptContent_BugFix = userPromptFinalPolish; // Re-using bugfix field for UI display of final polish prompt
                     {
-                        const finalPolishResponse = await makeApiCall(userPromptFinalPolish, customPromptsWebsiteState.sys_finalPolish, true, "Final Polish - JSON Patches");
-                        const patches = parsePatchesFromJson(finalPolishResponse);
+                        const finalPolishResponse = await makeApiCall(userPromptFinalPolish, customPromptsWebsiteState.sys_finalPolish, false, "Final Polish - XML Patches");
+                        const patches = parseContentPatches(finalPolishResponse);
                         if (patches && patches.length > 0) {
-                            const patched = applyPatches(currentHtmlContent || "", patches);
-                            iteration.generatedHtml = cleanHtmlOutput(patched);
+                            // Create a copy of currentContent to avoid reference issues
+                            const contentBeforePatches = currentContent || "";
+                            currentContent = applyContentPatches(contentBeforePatches, patches);
+                            iteration.generatedContent = isHtmlContent(currentContent) ? cleanHtmlOutput(currentContent) : currentContent;
                             iteration.providedPatchesJson = cleanOutputByType(finalPolishResponse, 'json');
-                            iteration.providedPatchesContentType = 'html';
+                            iteration.providedPatchesContentType = isHtmlContent(currentContent) ? 'html' : 'text';
                         } else {
-                            // Fallback: treat response as full HTML if JSON invalid or empty
-                            const fallbackHtml = cleanOutputByType(finalPolishResponse, 'html');
-                            iteration.generatedHtml = fallbackHtml && fallbackHtml.length > 0 ? cleanHtmlOutput(fallbackHtml) : (currentHtmlContent || "");
+                            // Fallback: treat response as full content if JSON invalid or empty
+                            const fallbackContent = cleanOutputByType(finalPolishResponse, isHtmlContent(finalPolishResponse) ? 'html' : 'text');
+                            if (fallbackContent && fallbackContent.length > 0) {
+                                currentContent = isHtmlContent(fallbackContent) ? cleanHtmlOutput(fallbackContent) : fallbackContent;
+                            }
+                            iteration.generatedContent = currentContent;
                         }
-                        currentHtmlContent = iteration.generatedHtml || "";
                     }
                     iteration.suggestedFeatures = [];
                 }
@@ -2482,6 +2664,21 @@ function handleImportConfiguration(event: Event) {
                     status: (importedConfig.activeReactPipeline.status === 'orchestrating' || importedConfig.activeReactPipeline.status === 'processing_workers' || importedConfig.activeReactPipeline.status === 'stopping') ? 'idle' : importedConfig.activeReactPipeline.status,
                 } : null;
                 activePipelineId = null;
+            } else if (currentMode === 'website') {
+                // Restore website mode pipelines state
+                pipelinesState = importedConfig.pipelinesState ? importedConfig.pipelinesState.map(pipeline => ({
+                    ...pipeline,
+                    isStopRequested: false,
+                    status: (pipeline.status === 'running' || pipeline.status === 'stopping') ? 'stopped' : pipeline.status,
+                    iterations: pipeline.iterations.map(iteration => ({
+                        ...iteration,
+                        status: (iteration.status === 'processing' || iteration.status === 'retrying') ? 'completed' : iteration.status,
+                    }))
+                })) : [];
+                activePipelineId = importedConfig.activePipelineId;
+                
+                // Re-render the pipelines UI
+                renderPipelines();
             }
 
 
@@ -2725,7 +2922,7 @@ function renderReactModePipeline() {
         let contentBlock;
         if (hasContent) {
             const contentToRender = `\`\`\`tsx\n${stage.generatedContent!}\n\`\`\``;
-            contentBlock = renderMarkdown(contentToRender);
+            contentBlock = renderMathContent(contentToRender);
         } else {
             contentBlock = `<div class="empty-state-message">${getEmptyStateMessage(stage.status, 'code')}</div>`;
         }
@@ -2795,7 +2992,7 @@ function renderReactModePipeline() {
 
     if (pipeline.finalAppendedCode) {
         const finalOutputPane = document.createElement('div');
-        const finalCodeHtml = renderMarkdown(`\`\`\`tsx\n${pipeline.finalAppendedCode}\n\`\`\``);
+        const finalCodeHtml = renderMathContent(`\`\`\`tsx\n${pipeline.finalAppendedCode}\n\`\`\``);
 
         finalOutputPane.innerHTML = `
             <div class="react-final-output-pane model-detail-card">
@@ -2956,14 +3153,6 @@ function aggregateReactOutputs() {
 function initializeUI() {
     initializeApiKey();
 
-    marked.setOptions({
-        gfm: true,
-        breaks: true,
-        highlight: (code, lang) => {
-            const language = hljs.getLanguage(lang) ? lang : 'plaintext';
-            return hljs.highlight(code, { language }).value;
-        },
-    } as any);
 
     renderPipelineSelectors();
     initializeCustomPromptTextareas();
@@ -3162,6 +3351,7 @@ let currentDiffViewMode: 'unified' | 'split' = 'split';
 let currentSourceContent: string = '';
 let currentTargetContent: string = '';
 let currentProvidedPatchesJson: string | null = null;
+let isShowingRawPatches: boolean = false;
 
 // Helper function to extract HTML from old format request prompts
 function extractHtmlFromRequestPrompt(requestPrompt: string): string | null {
@@ -3181,12 +3371,92 @@ function extractHtmlFromRequestPrompt(requestPrompt: string): string | null {
     
     return null;
 }
+
+function openPatchesModal() {
+    if (!currentProvidedPatchesJson) {
+        alert("No patch data available for this iteration.");
+        return;
+    }
+
+    // Toggle between showing raw patches and current content
+    isShowingRawPatches = !isShowingRawPatches;
+    
+    // Update button text
+    const button = document.getElementById('view-provided-patches-button');
+    const buttonText = button?.querySelector('.button-text');
+    
+    if (isShowingRawPatches) {
+        // Show raw patches in right panel, original content in left
+        if (buttonText) buttonText.textContent = 'View Current Content';
+        
+        // Update left panel with original content
+        const diffSourceContent = document.getElementById('diff-source-content');
+        const diffSourceTitle = document.getElementById('diff-source-title');
+        if (diffSourceContent && currentSourceContent) {
+            diffSourceContent.innerHTML = `<pre class="custom-scrollbar" style="font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace; font-size: 1.1rem; line-height: 1.6; white-space: pre-wrap; margin: 0; padding: 16px; background: var(--bg-secondary); border-radius: 8px; overflow: auto;">${escapeHtml(currentSourceContent)}</pre>`;
+        }
+        if (diffSourceTitle) diffSourceTitle.textContent = 'Original Content';
+        
+        // Update right panel with raw patches
+        const diffTargetContent = document.getElementById('diff-target-content');
+        const diffTargetTitle = document.getElementById('diff-target-title');
+        if (diffTargetContent) {
+            // Format the raw patches for display
+            let displayContent = currentProvidedPatchesJson;
+            try {
+                // Try to pretty-print if it's JSON
+                if (currentProvidedPatchesJson.trim().startsWith('[') || currentProvidedPatchesJson.trim().startsWith('{')) {
+                    displayContent = JSON.stringify(JSON.parse(currentProvidedPatchesJson), null, 2);
+                }
+            } catch (e) {
+                // If not valid JSON, show as-is (likely XML format)
+                displayContent = currentProvidedPatchesJson;
+            }
+            
+            diffTargetContent.innerHTML = `<pre class="custom-scrollbar" style="font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace; font-size: 1.1rem; line-height: 1.6; white-space: pre-wrap; margin: 0; padding: 16px; background: var(--bg-secondary); border-radius: 8px; overflow: auto;">${escapeHtml(displayContent)}</pre>`;
+        }
+        if (diffTargetTitle) diffTargetTitle.textContent = 'Raw Agent Response (Patches)';
+        
+    } else {
+        // Show current comparison view - button should say what clicking it WILL do
+        if (buttonText) buttonText.textContent = 'View Provided Diff Format Patches';
+        
+        // Restore original side-by-side comparison
+        if (currentSourceContent && currentTargetContent) {
+            renderSideBySideComparison(currentSourceContent, currentTargetContent, 'Before Changes', 'After Changes');
+        }
+    }
+}
+
+// Ensure proper initial state when diff modal opens
+function resetPatchesToggleState() {
+    isShowingRawPatches = false; // Always start with normal comparison view
+    const button = document.getElementById('view-provided-patches-button');
+    const buttonText = button?.querySelector('.button-text');
+    if (buttonText) buttonText.textContent = 'View Provided Diff Format Patches';
+}
+
 function renderDiff(sourceText: string, targetText: string) {
     // Store content in global variables for toggle functionality
     currentSourceContent = sourceText;
     currentTargetContent = targetText;
     
-    if (!diffViewerPanel) return;
+    // Choose the correct container based on the active panel (same logic as split view)
+    const globalComparePanel = document.getElementById('global-compare-panel');
+    const instantFixesPanel = document.getElementById('instant-fixes-panel');
+    let container: HTMLElement | null = null;
+
+    if (globalComparePanel && globalComparePanel.classList.contains('active')) {
+        container = document.getElementById('diff-viewer-panel');
+    } else if (instantFixesPanel && instantFixesPanel.classList.contains('active')) {
+        container = document.getElementById('instant-fixes-diff-viewer');
+    } else {
+        // Fallback: try global compare container first, then instant fixes
+        container = document.getElementById('diff-viewer-panel') || document.getElementById('instant-fixes-diff-viewer');
+    }
+    
+    if (!container) return;
+    
     // Ensure parent containers can scroll in unified view (disable split lock on both containers)
     const unifiedGlobalContainer = document.getElementById('diff-viewer-panel');
     const unifiedInstantContainer = document.getElementById('instant-fixes-diff-viewer');
@@ -3213,9 +3483,12 @@ function renderDiff(sourceText: string, targetText: string) {
     // Update header diff stats
     updateHeaderDiffStats(sourceText, targetText);
     
-    // Create diff content HTML
-    let diffHtml = '<div class="diff-view-fullscreen">';
+    // Create diff content HTML with proper scrolling container like split view
+    let diffHtml = '<div class="diff-view-unified"><div class="diff-pane custom-scrollbar" style="font-family: \'JetBrains Mono\', \'Fira Code\', \'SF Mono\', \'Monaco\', \'Cascadia Code\', \'Roboto Mono\', Consolas, \'Courier New\', monospace; font-size: 1.1rem; line-height: 1.6;">';
     let lineNumber = 1;
+    
+    // Process lines in batches for better performance
+    const allLines: Array<{line: string, colorClass: string, lineNum: number}> = [];
     
     differences.forEach(part => {
         const lines = part.value.split('\n');
@@ -3223,22 +3496,42 @@ function renderDiff(sourceText: string, targetText: string) {
             if (index === lines.length - 1 && line === '') return; // Skip empty last line
             
             const colorClass = part.added ? 'diff-added' : part.removed ? 'diff-removed' : 'diff-neutral';
-            const prefix = part.added ? '+' : part.removed ? '-' : ' ';
-            
-            diffHtml += `<div class="diff-line ${colorClass}">
-                <span class="diff-line-number">${lineNumber}</span>
-                <span class="diff-line-prefix">${prefix}</span>
-                <span class="diff-line-content">${escapeHtml(line)}</span>
-            </div>`;
+            allLines.push({ line, colorClass, lineNum: lineNumber });
             
             if (!part.removed) lineNumber++;
         });
     });
+
+    // Batch highlight lines for performance
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < allLines.length; i += BATCH_SIZE) {
+        const batch = allLines.slice(i, i + BATCH_SIZE);
+        const combinedText = batch.map(item => item.line).join('\n');
+        const highlightedBatch = hljs.highlightAuto(combinedText).value.split('\n');
+        
+        batch.forEach((item, batchIndex) => {
+            const highlightedLine = highlightedBatch[batchIndex] || escapeHtml(item.line);
+            diffHtml += `<div class="diff-line-unified ${item.colorClass}" style="display: flex; margin: 0 !important; padding: 0 8px !important; line-height: 1.6 !important; border: none !important; min-height: auto !important; height: auto !important;">
+                <span style="display: inline-block; width: 40px; text-align: right; margin-right: 8px; opacity: 0.6; font-size: 1rem; padding: 0 !important; margin: 0 !important;">${item.lineNum}</span>
+                <span style="flex: 1; white-space: pre-wrap; padding: 0 !important; margin: 0 !important;">${highlightedLine}</span>
+            </div>`;
+        });
+    }
     
-    diffHtml += '</div>';
+    diffHtml += '</div></div>';
     
     // Only show diff content (stats are in header now)
-    diffViewerPanel.innerHTML = diffHtml;
+    container.innerHTML = diffHtml;
+    
+    // Force refresh scrolling by triggering a layout recalculation
+    const scrollContainer = container.querySelector('.diff-pane.custom-scrollbar') as HTMLElement;
+    if (scrollContainer) {
+        // Force browser to recalculate scrollbar by temporarily changing overflow
+        scrollContainer.style.overflow = 'hidden';
+        requestAnimationFrame(() => {
+            scrollContainer.style.overflow = 'auto';
+        });
+    }
 }
 
 function renderSideBySideComparison(sourceText: string, targetText: string, sourceTitle: string, targetTitle: string) {
@@ -3266,13 +3559,9 @@ function renderSideBySideComparison(sourceText: string, targetText: string, sour
     // Calculate and update header diff stats
     updateHeaderDiffStats(sourceText, targetText);
     
-    // Render content with syntax highlighting
+    // Render content using renderMathContent for proper rendering with syntax highlighting
     const renderContent = (text: string) => {
-        if (diffSourceData?.contentType === 'html') {
-            return `<pre><code class="language-html">${escapeHtml(text)}</code></pre>`;
-        } else {
-            return `<pre><code class="language-text">${escapeHtml(text)}</code></pre>`;
-        }
+        return renderMathContent(text);
     };
     
     diffSourceContent.innerHTML = renderContent(sourceText);
@@ -3314,7 +3603,7 @@ function populateDiffTargetTree() {
             const isSource = pipeline.id === diffSourceData!.pipelineId && iter.iterationNumber === diffSourceData!.iterationNumber;
             let targetContent: string | undefined = undefined;
             if (diffSourceData!.contentType === 'html') {
-                targetContent = iter.generatedHtml;
+                targetContent = iter.generatedContent;
             } else { // text
                 targetContent = iter.generatedOrRevisedText || iter.generatedMainContent;
             }
@@ -3367,10 +3656,10 @@ function openDiffModal(pipelineId: number, iterationNumber: number, contentType:
         // For HTML mode, compare Request 1 (raw) vs Request 2 (bug fixed) within the same iteration
         // Handle both old and new JSON formats
         
-        if (iteration.generatedRawHtml) {
+        if (iteration.generatedRawContent) {
             // New format with separate raw and fixed versions
-            sourceContent = iteration.generatedRawHtml;
-            targetContent = iteration.generatedHtml;
+            sourceContent = iteration.generatedRawContent;
+            targetContent = iteration.generatedContent;
             
             if (iteration.title.includes('Initial')) {
                 sourceTitle = "Initial Generation (Request 1)";
@@ -3385,11 +3674,11 @@ function openDiffModal(pipelineId: number, iterationNumber: number, contentType:
             currentProvidedPatchesJson = iteration.providedPatchesJson || null;
         } else {
             // Old format: extract raw HTML from request prompt
-            const rawHtmlFromPrompt = extractHtmlFromRequestPrompt(iteration.requestPromptHtml_BugFix);
+            const rawHtmlFromPrompt = extractHtmlFromRequestPrompt(iteration.requestPromptContent_BugFix);
             
             if (rawHtmlFromPrompt) {
                 sourceContent = rawHtmlFromPrompt;
-                targetContent = iteration.generatedHtml;
+                targetContent = iteration.generatedContent;
                 sourceTitle = "Before Bug Fix";
                 targetTitle = "After Bug Fix";
                 currentProvidedPatchesJson = iteration.providedPatchesJson || null;
@@ -3397,20 +3686,20 @@ function openDiffModal(pipelineId: number, iterationNumber: number, contentType:
                 // Fallback: compare with previous iteration if available
                 if (iteration.iterationNumber > 0) {
                     const prevIteration = pipeline.iterations.find(iter => iter.iterationNumber === iteration.iterationNumber - 1);
-                    if (prevIteration?.generatedHtml) {
-                        sourceContent = prevIteration.generatedHtml;
-                        targetContent = iteration.generatedHtml;
+                    if (prevIteration?.generatedContent) {
+                        sourceContent = prevIteration.generatedContent;
+                        targetContent = iteration.generatedContent;
                         sourceTitle = `Previous: ${prevIteration.title}`;
                         targetTitle = `Current: ${iteration.title}`;
                     } else {
-                        sourceContent = iteration.generatedHtml;
-                        targetContent = iteration.generatedHtml;
+                        sourceContent = iteration.generatedContent;
+                        targetContent = iteration.generatedContent;
                         sourceTitle = iteration.title;
                         targetTitle = iteration.title;
                     }
                 } else {
-                    sourceContent = iteration.generatedHtml;
-                    targetContent = iteration.generatedHtml;
+                    sourceContent = iteration.generatedContent;
+                    targetContent = iteration.generatedContent;
                     sourceTitle = iteration.title;
                     targetTitle = iteration.title;
                 }
@@ -3434,6 +3723,9 @@ function openDiffModal(pipelineId: number, iterationNumber: number, contentType:
     }
 
     diffSourceData = { pipelineId, iterationNumber, contentType, content: sourceContent, title: sourceTitle };
+
+    // Reset the patches toggle state to ensure proper initial button text
+    resetPatchesToggleState();
 
     // Set up the modal for instant fixes mode by default
     activateDiffMode('instant-fixes');
@@ -3521,9 +3813,9 @@ function activateDiffMode(mode: 'instant-fixes' | 'global-compare') {
             if (diffSourceData.contentType === 'html') {
                 const sourceIteration = pipeline.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber);
                 if (sourceIteration) {
-                    if (sourceIteration.generatedRawHtml) {
+                    if (sourceIteration.generatedRawContent) {
                         // New format: compare raw vs fixed within same iteration
-                        targetContent = sourceIteration.generatedHtml; // Request 2 output
+                        targetContent = sourceIteration.generatedContent; // Request 2 output
                         currentProvidedPatchesJson = sourceIteration.providedPatchesJson || null;
                         
                         if (sourceIteration.title.includes('Initial')) {
@@ -3535,25 +3827,25 @@ function activateDiffMode(mode: 'instant-fixes' | 'global-compare') {
                         }
                     } else {
                         // Old format: check if we can extract raw HTML from request prompt
-                        const rawHtmlFromPrompt = extractHtmlFromRequestPrompt(sourceIteration.requestPromptHtml_BugFix);
+                        const rawHtmlFromPrompt = extractHtmlFromRequestPrompt(sourceIteration.requestPromptContent_BugFix);
                         
                         if (rawHtmlFromPrompt) {
-                            targetContent = sourceIteration.generatedHtml;
+                            targetContent = sourceIteration.generatedContent;
                             targetTitle = "After Bug Fix";
                             currentProvidedPatchesJson = sourceIteration.providedPatchesJson || null;
                         } else {
                             // Fallback: compare with previous iteration if available
                             if (diffSourceData.iterationNumber > 0) {
                                 const prevIteration = pipeline.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber - 1);
-                                if (prevIteration?.generatedHtml) {
-                                    targetContent = sourceIteration.generatedHtml;
+                                if (prevIteration?.generatedContent) {
+                                    targetContent = sourceIteration.generatedContent;
                                     targetTitle = `Current: ${sourceIteration.title}`;
                                 }
                             }
                             
                             if (!targetContent) {
                                 // Fallback: show same content
-                                targetContent = sourceIteration.generatedHtml;
+                                targetContent = sourceIteration.generatedContent;
                                 targetTitle = sourceIteration.title;
                             }
                         }
@@ -3562,8 +3854,8 @@ function activateDiffMode(mode: 'instant-fixes' | 'global-compare') {
             } else {
                 // For non-HTML modes, we don't have separate raw vs fixed versions yet
                 const sourceIteration = pipeline.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber);
-                // Fallback to generatedHtml if present; otherwise leave undefined (no instant fixes for non-HTML)
-                targetContent = sourceIteration?.generatedHtml;
+                // Fallback to generatedContent if present; otherwise leave undefined (no instant fixes for non-HTML)
+                targetContent = sourceIteration?.generatedContent;
                 targetTitle = sourceIteration?.title || "Target";
             }
             
@@ -3576,13 +3868,13 @@ function activateDiffMode(mode: 'instant-fixes' | 'global-compare') {
         let hasBugFixVersion = false;
         if (diffSourceData.contentType === 'html') {
             const sourceIteration = pipeline.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber);
-            // New format: check for both generatedRawHtml and generatedHtml
+            // New format: check for both generatedRawContent and generatedContent
             // Old format: check if we can extract raw HTML from request prompt, or have a previous iteration
-            hasBugFixVersion = !!(sourceIteration?.generatedRawHtml && sourceIteration?.generatedHtml) ||
-                              (!sourceIteration?.generatedRawHtml && (
-                                  extractHtmlFromRequestPrompt(sourceIteration?.requestPromptHtml_BugFix || '') ||
+            hasBugFixVersion = !!(sourceIteration?.generatedRawContent && sourceIteration?.generatedContent) ||
+                              (!sourceIteration?.generatedRawContent && (
+                                  extractHtmlFromRequestPrompt(sourceIteration?.requestPromptContent_BugFix || '') ||
                                   (diffSourceData.iterationNumber > 0 && 
-                                   pipeline.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber - 1)?.generatedHtml)
+                                   pipeline.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber - 1)?.generatedContent)
                               ));
         } else {
             // For non-HTML modes, we don't have separate raw vs fixed versions yet
@@ -3648,25 +3940,70 @@ function renderDiffSideBySide(sourceText: string, targetText: string) {
     let leftLineNum = 1;
     let rightLineNum = 1;
 
+    // Process lines in batches for better performance
+    const leftLines: Array<{line: string, type: 'added' | 'removed' | 'neutral' | 'placeholder', lineNum: number}> = [];
+    const rightLines: Array<{line: string, type: 'added' | 'removed' | 'neutral' | 'placeholder', lineNum: number}> = [];
+    
     diff.forEach(part => {
         const lines = part.value.split('\n').filter(l => l.length > 0);
         if (part.added) {
             lines.forEach(line => {
-                rightPaneHtml += `<div class="diff-line diff-added"><span class="diff-line-number">${rightLineNum++}</span><span class="diff-line-prefix">+</span><span class="diff-line-content">${escapeHtml(line)}</span></div>`;
-                leftPaneHtml += `<div class="diff-line diff-placeholder"></div>`;
+                rightLines.push({ line, type: 'added', lineNum: rightLineNum++ });
+                leftLines.push({ line: '', type: 'placeholder', lineNum: 0 });
             });
         } else if (part.removed) {
             lines.forEach(line => {
-                leftPaneHtml += `<div class="diff-line diff-removed"><span class="diff-line-number">${leftLineNum++}</span><span class="diff-line-prefix">-</span><span class="diff-line-content">${escapeHtml(line)}</span></div>`;
-                rightPaneHtml += `<div class="diff-line diff-placeholder"></div>`;
+                leftLines.push({ line, type: 'removed', lineNum: leftLineNum++ });
+                rightLines.push({ line: '', type: 'placeholder', lineNum: 0 });
             });
         } else {
             lines.forEach(line => {
-                leftPaneHtml += `<div class="diff-line diff-neutral"><span class="diff-line-number">${leftLineNum++}</span><span class="diff-line-prefix"> </span><span class="diff-line-content">${escapeHtml(line)}</span></div>`;
-                rightPaneHtml += `<div class="diff-line diff-neutral"><span class="diff-line-number">${rightLineNum++}</span><span class="diff-line-prefix"> </span><span class="diff-line-content">${escapeHtml(line)}</span></div>`;
+                leftLines.push({ line, type: 'neutral', lineNum: leftLineNum++ });
+                rightLines.push({ line, type: 'neutral', lineNum: rightLineNum++ });
             });
         }
     });
+
+    // Batch highlight lines for performance
+    const BATCH_SIZE = 20;
+    
+    // Process left pane in batches
+    for (let i = 0; i < leftLines.length; i += BATCH_SIZE) {
+        const batch = leftLines.slice(i, i + BATCH_SIZE);
+        const nonPlaceholderBatch = batch.filter(item => item.type !== 'placeholder');
+        const combinedText = nonPlaceholderBatch.map(item => item.line).join('\n');
+        const highlightedBatch = nonPlaceholderBatch.length > 0 ? hljs.highlightAuto(combinedText).value.split('\n') : [];
+        
+        let highlightedIndex = 0;
+        batch.forEach(item => {
+            if (item.type === 'placeholder') {
+                leftPaneHtml += `<div class="diff-line-split diff-placeholder" style="display: flex; margin: 0 !important; padding: 0 8px !important; line-height: 1.6 !important; opacity: 0.3; min-height: auto !important; height: auto !important;"><span style="display: inline-block; width: 40px; margin-right: 8px;"></span><span style="flex: 1;"></span></div>`;
+            } else {
+                const highlightedLine = highlightedBatch[highlightedIndex++] || escapeHtml(item.line);
+                const colorClass = item.type === 'added' ? 'diff-added' : item.type === 'removed' ? 'diff-removed' : 'diff-neutral';
+                leftPaneHtml += `<div class="diff-line-split ${colorClass}" style="display: flex; margin: 0 !important; padding: 0 8px !important; line-height: 1.6 !important; min-height: auto !important; height: auto !important;"><span style="display: inline-block; width: 40px; text-align: right; margin-right: 8px; opacity: 0.6; font-size: 1rem; padding: 0 !important; margin: 0 !important;">${item.lineNum}</span><span style="flex: 1; white-space: pre-wrap; padding: 0 !important; margin: 0 !important;">${highlightedLine}</span></div>`;
+            }
+        });
+    }
+    
+    // Process right pane in batches
+    for (let i = 0; i < rightLines.length; i += BATCH_SIZE) {
+        const batch = rightLines.slice(i, i + BATCH_SIZE);
+        const nonPlaceholderBatch = batch.filter(item => item.type !== 'placeholder');
+        const combinedText = nonPlaceholderBatch.map(item => item.line).join('\n');
+        const highlightedBatch = nonPlaceholderBatch.length > 0 ? hljs.highlightAuto(combinedText).value.split('\n') : [];
+        
+        let highlightedIndex = 0;
+        batch.forEach(item => {
+            if (item.type === 'placeholder') {
+                rightPaneHtml += `<div class="diff-line-split diff-placeholder" style="display: flex; margin: 0 !important; padding: 0 8px !important; line-height: 1.6 !important; opacity: 0.3; min-height: auto !important; height: auto !important;"><span style="display: inline-block; width: 40px; margin-right: 8px;"></span><span style="flex: 1;"></span></div>`;
+            } else {
+                const highlightedLine = highlightedBatch[highlightedIndex++] || escapeHtml(item.line);
+                const colorClass = item.type === 'added' ? 'diff-added' : item.type === 'removed' ? 'diff-removed' : 'diff-neutral';
+                rightPaneHtml += `<div class="diff-line-split ${colorClass}" style="display: flex; margin: 0 !important; padding: 0 8px !important; line-height: 1.6 !important; min-height: auto !important; height: auto !important;"><span style="display: inline-block; width: 40px; text-align: right; margin-right: 8px; opacity: 0.6; font-size: 1rem; padding: 0 !important; margin: 0 !important;">${item.lineNum}</span><span style="flex: 1; white-space: pre-wrap; padding: 0 !important; margin: 0 !important;">${highlightedLine}</span></div>`;
+            }
+        });
+    }
 
     const diffHtml = `
         <div class="diff-view-side-by-side">
@@ -3761,7 +4098,8 @@ function activateInstantFixesView(view: 'side-by-side' | 'diff-analysis' | 'prev
     
     // Show/hide diff view toggle based on view
     if (view === 'diff-analysis') {
-        showDiffViewToggle();
+        // Don't show diff view toggle for diff analysis - always use split view
+        hideDiffViewToggle();
         // Get target content properly for diff analysis
         if (diffSourceData) {
             const pipeline = pipelinesState.find(p => p.id === diffSourceData.pipelineId);
@@ -3769,7 +4107,7 @@ function activateInstantFixesView(view: 'side-by-side' | 'diff-analysis' | 'prev
             
             if (diffSourceData.contentType === 'html') {
                 const sourceIteration = pipeline?.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber);
-                analysisTargetContent = sourceIteration?.generatedHtml;
+                analysisTargetContent = sourceIteration?.generatedContent;
                 currentProvidedPatchesJson = sourceIteration?.providedPatchesJson || null;
             } else {
                 const sourceIteration = pipeline?.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber);
@@ -3781,12 +4119,8 @@ function activateInstantFixesView(view: 'side-by-side' | 'diff-analysis' | 'prev
                 currentSourceContent = diffSourceData.content;
                 currentTargetContent = analysisTargetContent;
                 
-                // Immediately render the diff analysis based on current mode
-                if (currentDiffViewMode === 'unified') {
-                    renderInstantFixesDiff(diffSourceData.content, analysisTargetContent);
-                } else {
-                    renderDiffSideBySide(diffSourceData.content, analysisTargetContent);
-                }
+                // Always render split view for diff analysis
+                renderDiffSideBySide(diffSourceData.content, analysisTargetContent);
             }
         }
     } else {
@@ -3804,7 +4138,7 @@ function activateInstantFixesView(view: 'side-by-side' | 'diff-analysis' | 'prev
         if (diffSourceData.contentType === 'html') {
             const sourceIteration = pipeline?.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber);
             if (sourceIteration) {
-                targetContent = sourceIteration.generatedHtml; // Request 2 output
+                targetContent = sourceIteration.generatedContent; // Request 2 output
                 currentProvidedPatchesJson = sourceIteration.providedPatchesJson || null;
                 
                 if (sourceIteration.title.includes('Initial')) {
@@ -3828,12 +4162,8 @@ function activateInstantFixesView(view: 'side-by-side' | 'diff-analysis' | 'prev
                 currentSourceContent = diffSourceData.content;
                 currentTargetContent = targetContent;
                 
-                // Render based on current diff view mode
-                if (currentDiffViewMode === 'unified') {
-                    renderInstantFixesDiff(diffSourceData.content, targetContent);
-                } else {
-                    renderDiffSideBySide(diffSourceData.content, targetContent);
-                }
+                // Always render split view for diff analysis
+                renderDiffSideBySide(diffSourceData.content, targetContent);
             } else if (view === 'preview' && diffSourceData.contentType === 'html') {
                 renderHtmlPreview(diffSourceData.content, targetContent, diffSourceData.title, targetTitle);
             } else if (view === 'side-by-side') {
@@ -3865,58 +4195,6 @@ function renderHtmlPreview(sourceHtml: string, targetHtml: string, sourceTitle: 
     previewTargetFrame.srcdoc = targetHtml;
 }
 
-function renderInstantFixesDiff(sourceText: string, targetText: string) {
-    const diffViewer = document.getElementById('instant-fixes-diff-viewer');
-    if (!diffViewer) return;
-    
-    const differences = Diff.diffLines(sourceText, targetText, { newlineIsToken: true });
-    
-    // Calculate diff statistics
-    let addedLines = 0;
-    let removedLines = 0;
-    let totalChanges = 0;
-    
-    differences.forEach(part => {
-        const lines = part.value.split('\n').filter(line => line !== '' || part.value.endsWith('\n'));
-        if (part.added) {
-            addedLines += lines.length;
-            totalChanges += lines.length;
-        } else if (part.removed) {
-            removedLines += lines.length;
-            totalChanges += lines.length;
-        }
-    });
-    
-    // Update header diff stats
-    updateHeaderDiffStats(sourceText, targetText);
-    
-    // Create diff content HTML
-    let diffHtml = '<div class="diff-view-fullscreen">';
-    let lineNumber = 1;
-    
-    differences.forEach(part => {
-        const lines = part.value.split('\n');
-        lines.forEach((line, index) => {
-            if (index === lines.length - 1 && line === '') return; // Skip empty last line
-            
-            const colorClass = part.added ? 'diff-added' : part.removed ? 'diff-removed' : 'diff-neutral';
-            const prefix = part.added ? '+' : part.removed ? '-' : ' ';
-            
-            diffHtml += `<div class="diff-line ${colorClass}">
-                <span class="diff-line-number">${lineNumber}</span>
-                <span class="diff-line-prefix">${prefix}</span>
-                <span class="diff-line-content">${escapeHtml(line)}</span>
-            </div>`;
-            
-            if (!part.removed) lineNumber++;
-        });
-    });
-    
-    diffHtml += '</div>';
-    
-    // Only show diff content (stats are in header now)
-    diffViewer.innerHTML = diffHtml;
-}
 
 function updateHeaderDiffStats(sourceText: string, targetText: string) {
     const headerDiffStats = document.getElementById('header-diff-stats');
@@ -4040,11 +4318,8 @@ function activateDiffViewMode(mode: 'unified' | 'split') {
         // For instant fixes mode - diff analysis view
         if (instantFixesPanel && instantFixesPanel.classList.contains('active') && 
             diffAnalysisView && diffAnalysisView.classList.contains('active')) {
-            if (mode === 'unified') {
-                renderInstantFixesDiff(currentSourceContent, currentTargetContent);
-            } else {
-                renderDiffSideBySide(currentSourceContent, currentTargetContent);
-            }
+            // Diff analysis always uses split view
+            renderDiffSideBySide(currentSourceContent, currentTargetContent);
         }
         
         // For global compare mode
@@ -4100,6 +4375,12 @@ function downloadPreviewContent(type: 'source' | 'target') {
 
 function openPreviewFullscreen(type: 'source' | 'target') {
     const content = type === 'source' ? currentSourceContent : currentTargetContent;
+    if (content) {
+        openLivePreviewFullscreen(content);
+    }
+}
+
+function openLivePreviewFullscreen(content: string) {
     if (content) {
         const newWindow = window.open('', '_blank');
         if (newWindow) {
@@ -4265,8 +4546,6 @@ document.addEventListener('DOMContentLoaded', () => {
         parseJsonSafe,
         updateControlsState,
         escapeHtml: (str: string) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'),
-        renderMarkdown,
-        renderMathContent,
         getSelectedTemperature,
         getSelectedModel,
         getSelectedTopP,

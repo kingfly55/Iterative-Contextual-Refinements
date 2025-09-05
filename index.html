@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
     <link rel="stylesheet" href="index.css">
+    <link rel="stylesheet" href="Components/RenderMathMarkdown.css">
     <script type="importmap">
 {
   "imports": {
@@ -63,7 +64,7 @@
                         <div id="app-mode-selector" class="radio-group-modern" role="radiogroup" aria-label="Select Application Mode">
                            <label class="radio-label-modern">
                                 <input type="radio" name="appMode" value="website" checked>
-                                <span>HTML</span>
+                                <span>Refine</span>
                             </label>
                             <label class="radio-label-modern">
                                 <input type="radio" name="appMode" value="deepthink">
@@ -227,7 +228,7 @@
                                 <div class="prompt-card">
                                     <div class="prompt-card-header">
                                         <span class="prompt-card-title">User Prompt Template</span>
-                                        <span class="prompt-placeholders">Variables: <code>{{initialIdea}}</code>, <code>{{rawHtml}}</code></span>
+                                        <span class="prompt-placeholders">Variables: <code>{{initialIdea}}</code>, <code>{{currentContent}}</code></span>
                                     </div>
                                     <div class="prompt-card-body"><textarea id="user-initial-bugfix" class="prompt-textarea" rows="4"></textarea></div>
                                 </div>
@@ -241,7 +242,7 @@
                                 <div class="prompt-card">
                                     <div class="prompt-card-header">
                                         <span class="prompt-card-title">User Prompt Template</span>
-                                        <span class="prompt-placeholders">Variables: <code>{{initialIdea}}</code>, <code>{{currentHtml}}</code></span>
+                                        <span class="prompt-placeholders">Variables: <code>{{initialIdea}}</code>, <code>{{currentContent}}</code></span>
                                     </div>
                                     <div class="prompt-card-body"><textarea id="user-initial-features" class="prompt-textarea" rows="4"></textarea></div>
                                 </div>
@@ -255,7 +256,7 @@
                                 <div class="prompt-card">
                                     <div class="prompt-card-header">
                                         <span class="prompt-card-title">User Prompt Template</span>
-                                        <span class="prompt-placeholders">Variables: <code>{{currentHtml}}</code>, <code>{{featuresToImplementStr}}</code></span>
+                                        <span class="prompt-placeholders">Variables: <code>{{currentContent}}</code>, <code>{{featuresToImplementStr}}</code></span>
                                     </div>
                                     <div class="prompt-card-body"><textarea id="user-refine-implement" class="prompt-textarea" rows="4"></textarea></div>
                                 </div>
@@ -269,7 +270,7 @@
                                 <div class="prompt-card">
                                     <div class="prompt-card-header">
                                         <span class="prompt-card-title">User Prompt Template</span>
-                                        <span class="prompt-placeholders">Variables: <code>{{rawHtml}}</code></span>
+                                        <span class="prompt-placeholders">Variables: <code>{{currentContent}}</code></span>
                                     </div>
                                     <div class="prompt-card-body"><textarea id="user-refine-bugfix" class="prompt-textarea" rows="4"></textarea></div>
                                 </div>
@@ -283,7 +284,7 @@
                                 <div class="prompt-card">
                                     <div class="prompt-card-header">
                                         <span class="prompt-card-title">User Prompt Template</span>
-                                        <span class="prompt-placeholders">Variables: <code>{{initialIdea}}</code>, <code>{{currentHtml}}</code></span>
+                                        <span class="prompt-placeholders">Variables: <code>{{initialIdea}}</code>, <code>{{currentContent}}</code></span>
                                     </div>
                                     <div class="prompt-card-body"><textarea id="user-refine-features" class="prompt-textarea" rows="4"></textarea></div>
                                 </div>
@@ -297,7 +298,7 @@
                                 <div class="prompt-card">
                                     <div class="prompt-card-header">
                                         <span class="prompt-card-title">User Prompt Template</span>
-                                        <span class="prompt-placeholders">Variables: <code>{{currentHtml}}</code></span>
+                                        <span class="prompt-placeholders">Variables: <code>{{currentContent}}</code></span>
                                     </div>
                                     <div class="prompt-card-body"><textarea id="user-final-polish" class="prompt-textarea" rows="4"></textarea></div>
                                 </div>

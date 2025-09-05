@@ -1,5 +1,6 @@
-import { GoogleGenAI, GenerateContentResponse, Part } from "@google/genai";
-import { type CustomizablePromptsDeepthink, createDefaultCustomPromptsDeepthink } from './DeepthinkPrompts.js';
+import { GoogleGenAI, Part, GenerateContentResponse } from "@google/genai";
+import { CustomizablePromptsDeepthink, createDefaultCustomPromptsDeepthink } from './DeepthinkPrompts';
+import { renderMathContent } from '../Components/RenderMathMarkdown';
 
 // Import types and constants from main index.tsx
 export interface DeepthinkSubStrategyData {
@@ -121,8 +122,6 @@ let getRefinementEnabled: () => boolean;
 let getSelectedHypothesisCount: () => number;
 let getSelectedRedTeamAggressiveness: () => string;
 let escapeHtml: (unsafe: string) => string;
-let renderMarkdown: (content: string) => string;
-let renderMathContent: (content: string) => string;
 let cleanTextOutput: (text: string) => string;
 let updateControlsState: (newState: any) => void;
 let customPromptsDeepthinkState: CustomizablePromptsDeepthink;
@@ -143,8 +142,6 @@ export function initializeDeepthinkModule(dependencies: {
     parseJsonSafe: typeof parseJsonSafe;
     updateControlsState: (newState: any) => void;
     escapeHtml: typeof escapeHtml;
-    renderMarkdown: typeof renderMarkdown;
-    renderMathContent: (content: string) => string;
     getSelectedTemperature: () => number;
     getSelectedModel: () => string;
     getSelectedTopP: () => number;
@@ -176,8 +173,6 @@ export function initializeDeepthinkModule(dependencies: {
     getSelectedRedTeamAggressiveness = dependencies.getSelectedRedTeamAggressiveness;
     cleanTextOutput = dependencies.cleanTextOutput;
     escapeHtml = dependencies.escapeHtml;
-    renderMarkdown = dependencies.renderMarkdown;
-    renderMathContent = dependencies.renderMathContent;
     tabsNavContainer = dependencies.tabsNavContainer;
     pipelinesContentContainer = dependencies.pipelinesContentContainer;
     setActiveDeepthinkPipeline = dependencies.setActiveDeepthinkPipeline;
@@ -433,10 +428,14 @@ export function openDeepthinkSolutionModal(subStrategyId: string) {
     modalBody.style.padding = '20px';
     modalBody.style.height = 'calc(100vh - 120px)';
 
-    const refinementEnabled = getRefinementEnabled();
+    // Check if refinement was actually performed during this run
+    // If refinedSolution equals solutionAttempt, it means refinement was disabled during the run
+    const refinementWasPerformed = subStrategy.refinedSolution !== subStrategy.solutionAttempt;
+    const currentRefinementEnabled = getRefinementEnabled();
+    
     const solutionComparison = document.createElement('div');
     solutionComparison.style.display = 'grid';
-    solutionComparison.style.gridTemplateColumns = refinementEnabled ? '1fr 1fr' : '1fr';
+    solutionComparison.style.gridTemplateColumns = currentRefinementEnabled ? '1fr 1fr' : '1fr';
     solutionComparison.style.gap = '20px';
     solutionComparison.style.height = '100%';
 
@@ -451,7 +450,7 @@ export function openDeepthinkSolutionModal(subStrategyId: string) {
     leftHeader.style.padding = '12px 16px';
     leftHeader.style.background = 'rgba(15, 17, 32, 0.4)';
     leftHeader.style.borderBottom = '1px solid #333';
-    leftHeader.innerHTML = refinementEnabled 
+    leftHeader.innerHTML = currentRefinementEnabled 
         ? '<h4 style="margin: 0;"><span class="material-symbols-outlined">psychology</span>Attempted Solution</h4>'
         : '<h4 style="margin: 0;"><span class="material-symbols-outlined">psychology</span>Solution</h4>';
     leftPanel.appendChild(leftHeader);
@@ -465,7 +464,7 @@ export function openDeepthinkSolutionModal(subStrategyId: string) {
 
     solutionComparison.appendChild(leftPanel);
 
-    // Always show refined solution panel, but grey it out if refinement is disabled
+    // Always show refined solution panel, but grey it out if refinement was not performed during this run
     const rightPanel = document.createElement('div');
     rightPanel.style.display = 'flex';
     rightPanel.style.flexDirection = 'column';
@@ -473,8 +472,8 @@ export function openDeepthinkSolutionModal(subStrategyId: string) {
     rightPanel.style.borderRadius = '8px';
     rightPanel.style.overflow = 'hidden';
     
-    // Apply disabled styling if refinement is disabled
-    if (!refinementEnabled) {
+    // Apply disabled styling if refinement was not performed during this run
+    if (!refinementWasPerformed) {
         rightPanel.classList.add('disabled-pane');
     }
 
@@ -483,7 +482,7 @@ export function openDeepthinkSolutionModal(subStrategyId: string) {
     rightHeader.style.background = 'rgba(15, 17, 32, 0.4)';
     rightHeader.style.borderBottom = '1px solid #333';
     
-    const headerContent = refinementEnabled 
+    const headerContent = currentRefinementEnabled 
         ? '<h4 style="margin: 0;"><span class="material-symbols-outlined">auto_fix_high</span>Refined Solution</h4>'
         : '<h4 style="margin: 0; opacity: 0.6;"><span class="material-symbols-outlined">auto_fix_off</span>Refined Solution (Disabled)</h4>';
     rightHeader.innerHTML = headerContent;
@@ -495,14 +494,14 @@ export function openDeepthinkSolutionModal(subStrategyId: string) {
     rightContent.style.padding = '16px';
     rightContent.style.position = 'relative';
     
-    const contentText = refinementEnabled 
+    const contentText = currentRefinementEnabled 
         ? (subStrategy.refinedSolution || 'Refined solution not available')
         : (subStrategy.refinedSolution || subStrategy.solutionAttempt || 'Solution refinement is disabled');
     
     rightContent.innerHTML = renderMathContent(contentText);
     
-    // Add disabled overlay if refinement is off
-    if (!refinementEnabled) {
+    // Add disabled overlay if refinement was not performed during this run
+    if (!refinementWasPerformed) {
         const disabledOverlay = document.createElement('div');
         disabledOverlay.classList.add('disabled-overlay');
         disabledOverlay.textContent = 'Refinement Disabled';
@@ -1522,8 +1521,10 @@ function openSubStrategySolutionModal(subStrategyId: string) {
         return;
     }
     
-    // Check if refinement is enabled
-    const refinementEnabled = getRefinementEnabled();
+    // Check if refinement was actually performed during this run
+    // If refinedSolution equals solutionAttempt, it means refinement was disabled during the run
+    const refinementWasPerformed = subStrategy.refinedSolution !== subStrategy.solutionAttempt;
+    const currentRefinementEnabled = getRefinementEnabled();
     
     // Create full-screen modal overlay
     const modalOverlay = document.createElement('div');
@@ -1533,10 +1534,10 @@ function openSubStrategySolutionModal(subStrategyId: string) {
     modalContent.className = 'modal-content fullscreen-content';
     
     // Determine refined solution panel styling and content
-    const refinedPaneClass = refinementEnabled ? '' : 'disabled-pane';
-    const refinedIcon = refinementEnabled ? 'verified' : 'auto_fix_off';
-    const refinedTitle = refinementEnabled ? 'Refined Solution' : 'Refined Solution (Disabled)';
-    const refinedOverlay = refinementEnabled ? '' : '<div class="disabled-overlay">Refinement Disabled</div>';
+    const refinedPaneClass = refinementWasPerformed ? '' : 'disabled-pane';
+    const refinedIcon = currentRefinementEnabled ? 'verified' : 'auto_fix_off';
+    const refinedTitle = currentRefinementEnabled ? 'Refined Solution' : 'Refined Solution (Disabled)';
+    const refinedOverlay = refinementWasPerformed ? '' : '<div class="disabled-overlay">Refinement Disabled</div>';
     
     modalContent.innerHTML = `
         <div class="modal-header">
@@ -1576,11 +1577,11 @@ function openSubStrategySolutionModal(subStrategyId: string) {
                             <h4>${refinedTitle}</h4>
                         </div>
                         <div class="diff-actions">
-                            <button class="copy-solution-btn" data-content="${escapeHtml(subStrategy.refinedSolution || '')}" ${!refinementEnabled ? 'disabled' : ''}>
+                            <button class="copy-solution-btn" data-content="${escapeHtml(subStrategy.refinedSolution || '')}" ${!refinementWasPerformed ? 'disabled' : ''}>
                                 <span class="material-symbols-outlined">content_copy</span>
                                 Copy
                             </button>
-                            <button class="download-solution-btn" data-content="${escapeHtml(subStrategy.refinedSolution || '')}" data-filename="refined-solution.md" ${!refinementEnabled ? 'disabled' : ''}>
+                            <button class="download-solution-btn" data-content="${escapeHtml(subStrategy.refinedSolution || '')}" data-filename="refined-solution.md" ${!refinementWasPerformed ? 'disabled' : ''}>
                                 <span class="material-symbols-outlined">download</span>
                                 Download
                             </button>
@@ -1907,10 +1908,8 @@ function renderFinalResultContent(deepthinkProcess: DeepthinkPipelineState): str
     
     if (deepthinkProcess.finalJudgingStatus === 'completed' && deepthinkProcess.finalJudgedBestSolution) {
         html += `
-            <div class="final-solution-display judged-solution-container final-judged-solution">
-                <div class="markdown-content">
-                    ${renderMathContent(deepthinkProcess.finalJudgedBestSolution)}
-                </div>
+            <div class="judged-solution-container final-judged-solution">
+                ${renderMathContent(deepthinkProcess.finalJudgedBestSolution)}
             </div>
         `;
     } else if (deepthinkProcess.finalJudgingStatus === 'processing') {

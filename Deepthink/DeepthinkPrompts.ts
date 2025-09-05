@@ -17,7 +17,6 @@ export interface CustomizablePromptsDeepthink {
     sys_deepthink_finalJudge: string;
 }
 
-// JSON output instruction constant
 const systemInstructionJsonOutputOnly = `\n\n**CRITICAL OUTPUT FORMAT REQUIREMENT:**\nYour response must be EXCLUSIVELY a valid JSON object. No additional text, explanations, markdown formatting, or code blocks are permitted. The response must begin with { and end with }. Any deviation from this format will cause a system failure.`;
 
 // Red Team Aggressiveness Level Constants
