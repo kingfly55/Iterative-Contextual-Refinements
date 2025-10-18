@@ -3,68 +3,93 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import * as Diff from 'diff';
+
 import JSZip from 'jszip';
-import { GoogleGenAI, GenerateContentResponse, Part } from "@google/genai";
-import hljs from 'highlight.js';
-// import { applyPatch } from 'fast-json-patch'; // Unused import
-import { defaultCustomPromptsWebsite, defaultCustomPromptsReact } from './prompts';
+import { defaultCustomPromptsWebsite, createDefaultCustomPromptsReact, QUALITY_MODE_SYSTEM_PROMPT } from './prompts';
 import type { CustomizablePromptsWebsite, CustomizablePromptsReact } from './prompts';
 import { initializeDeepthinkModule, renderActiveDeepthinkPipeline, activateDeepthinkStrategyTab, setActiveDeepthinkPipelineForImport, startDeepthinkAnalysisProcess } from './Deepthink/Deepthink.tsx';
-import { renderMathContent } from './Components/RenderMathMarkdown.tsx';
+import * as React from 'react';
+import * as ReactDOM from 'react-dom/client';
+import { renderMathContent } from './Components/RenderMathMarkdown';
 import { CustomizablePromptsDeepthink, createDefaultCustomPromptsDeepthink } from './Deepthink/DeepthinkPrompts';
+import { CustomizablePromptsAdaptiveDeepthink, createDefaultCustomPromptsAdaptiveDeepthink } from './AdaptiveDeepthink/AdaptiveDeepthinkPrompt';
+import { CustomizablePromptsContextual, createDefaultCustomPromptsContextual } from './Contextual/ContextualPrompts';
+import {
+    initializeGenerativeUIMode,
+    renderGenerativeUIMode,
+    startGenerativeUIProcess,
+    stopGenerativeUIProcess,
+    isGenerativeUIModeActive,
+    cleanupGenerativeUIMode,
+    getActiveGenerativeUIState,
+    setActiveGenerativeUIStateForImport
+} from './GenerativeUI/GenerativeUI';
+import {
+    renderContextualMode,
+    startContextualProcess,
+    stopContextualProcess,
+    getContextualState,
+    setContextualContentUpdateCallback,
+    setContextualStateForImport
+} from './Contextual/Contextual';
+import {
+    renderAdaptiveDeepthinkMode,
+    startAdaptiveDeepthinkProcess,
+    stopAdaptiveDeepthinkProcess,
+    cleanupAdaptiveDeepthinkMode,
+    getAdaptiveDeepthinkState,
+    setAdaptiveDeepthinkStateForImport
+} from './AdaptiveDeepthink';
+import { openDiffModal } from './Components/DiffModal';
+import {
+    initializeAgenticMode,
+    startAgenticProcess,
+    startAgenticProcessInContainer,
+    renderAgenticMode,
+    setAgenticContentUpdateCallback,
+    rehydrateAgenticUIInContainer,
+    cleanupAgenticMode,
+    isAgenticModeActive,
+    setAgenticPromptsManager,
+    getActiveAgenticState,
+    setActiveAgenticStateForImport,
+} from './Agentic/Agentic';
+import { MonacoFileEditor } from './Components/MonacoFileEditor';
+import { AGENTIC_SYSTEM_PROMPT } from './Agentic/AgenticModePrompt';
+import {
+    routingManager,
+    initializeRouting,
+    getSelectedModel,
+    getSelectedTemperature,
+    getSelectedTopP,
+    getSelectedRefinementStages,
+    getSelectedStrategiesCount,
+    getSelectedSubStrategiesCount,
+    getSelectedHypothesisCount,
+    getSelectedRedTeamAggressiveness,
+    getRefinementEnabled,
+    getSkipSubStrategies,
+    getDissectedObservationsEnabled,
+    getIterativeCorrectionsEnabled,
+    getProvideAllSolutionsToCorrectors,
+    hasValidApiKey,
+    callAI
+} from './Routing';
+import {
+    parseJsonSafe,
+    cleanJsonOutput,
+    cleanHtmlOutput,
+    cleanTextOutput,
+    cleanOutputByType,
+    isHtmlContent,
+    parseJsonSuggestions  // Kept only for Deepthink strategies - NOT for features
+} from './Parsing';
 
-// Helper: safer JSON parsing for AI outputs
-function parseJsonSafe(raw: string, context: string): any {
-  try {
-    // First pass: strip fences/formatting using existing cleaner
-    const cleaned = cleanOutputByType(raw, 'json');
-    return JSON.parse(cleaned);
-  } catch (e1) {
-    try {
-      // Second pass: try to recover common issues
-      let text = raw.trim();
-      // Remove code fences
-      text = text.replace(/^```[\s\S]*?\n/, '').replace(/```\s*$/m, '');
-      // Extract first JSON object/array block
-      const match = text.match(/([\[{][\s\S]*[\]}])/);
-      if (match) text = match[1];
-      // Fix trailing commas before ] or }
-      text = text.replace(/,\s*(\]|\})/g, '$1');
-      // Replace smart quotes
-      text = text.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
-      return JSON.parse(text);
-    } catch (e2) {
-      try {
-        // Third pass: targeted fixes for common malformed arrays/keys
-        let text = raw.trim();
-        // Remove fences
-        text = text.replace(/^```[\s\S]*?\n/, '').replace(/```\s*$/m, '');
-        // If we see an object with possibly unquoted keys (e.g., sub_strategies), quote them
-        text = text.replace(/\b(sub_strategies|strategies|hypotheses)\b\s*:/g, '"$1":');
-        // Capture inner-most JSON-like block
-        const blockMatch = text.match(/([\[{][\s\S]*[\]}])/);
-        if (blockMatch) text = blockMatch[1];
-        // If array of quoted strings lacks commas, insert commas between adjacent quoted strings
-        // Example: ["a" "b" "c"] => ["a", "b", "c"]
-        text = text.replace(/"\s+"/g, '", "');
-        // Also between "] [" patterns just in case
-        text = text.replace(/"\s*\]\s*\[\s*"/g, '"], ["');
-        // Fix trailing commas again
-        text = text.replace(/,\s*(\]|\})/g, '$1');
-        return JSON.parse(text);
-      } catch (e3) {
-        console.error(`JSON parse failed in ${context}:`, e2);
-        throw e3;
-      }
-    }
-  }
-}
 
 // Constants for retry logic
 const MAX_RETRIES = 3; // Max number of retries for API errors
-const INITIAL_DELAY_MS = 2000; // Initial delay in milliseconds
-const BACKOFF_FACTOR = 2; // Factor by which delay increases
+const INITIAL_DELAY_MS = 20000; // Initial delay in milliseconds
+const BACKOFF_FACTOR = 4; // Factor by which delay increases
 
 /**
  * Custom error class to signify that pipeline processing was intentionally
@@ -77,7 +102,11 @@ class PipelineStopRequestedError extends Error {
     }
 }
 
-type ApplicationMode = 'website' | 'deepthink' | 'react';
+type ApplicationMode = 'website' | 'deepthink' | 'react' | 'agentic' | 'generativeui' | 'contextual' | 'adaptive-deepthink';
+
+// Global variables
+let currentMode: 'website' | 'react' | 'deepthink' | 'agentic' | 'generativeui' | 'contextual' | 'adaptive-deepthink' = 'website';
+let currentEvolutionMode: 'off' | 'novelty' | 'quality' = 'novelty'; // Default to Novelty mode
 
 interface IterationData {
     iterationNumber: number;
@@ -88,12 +117,10 @@ interface IterationData {
     requestPromptContent_BugFix?: string;
     requestPromptFeatures_Suggest?: string;
     generatedContent?: string;
-    generatedRawContent?: string; // Raw output from Request 1 (before bug fixing)
-    suggestedFeatures?: string[]; // Used by Website for general suggestions
+    contentBeforeBugFix?: string; // Content state before bug-fix patches are applied
+    suggestedFeaturesContent?: string; // Markdown content from feature suggestion agent
 
-    // Diff-format patches provided by model for this iteration's target content (if any)
-    providedPatchesJson?: string; // Raw JSON string (array or object with { patches: [...] })
-    providedPatchesContentType?: string; // e.g., 'html', 'text', 'markdown', 'python'
+    // Removed diff-format patches - now using full content updates
 
     status: 'pending' | 'processing' | 'retrying' | 'completed' | 'error' | 'cancelled';
     error?: string;
@@ -115,11 +142,30 @@ interface PipelineState {
 }
 
 
+interface DeepthinkSolutionCritiqueData {
+    id: string;
+    subStrategyId: string;
+    mainStrategyId: string;
+    requestPrompt?: string;
+    critiqueResponse?: string;
+    status: 'pending' | 'processing' | 'retrying' | 'completed' | 'error' | 'cancelled';
+    error?: string;
+    retryAttempt?: number;
+    isDetailsOpen?: boolean;
+}
+
 interface DeepthinkSubStrategyData {
     id: string; // e.g., "main1-sub1"
     subStrategyText: string;
     requestPromptSolutionAttempt?: string;
     solutionAttempt?: string;
+
+    // Solution critique fields
+    requestPromptSolutionCritique?: string;
+    solutionCritique?: string;
+    solutionCritiqueStatus?: 'pending' | 'processing' | 'retrying' | 'completed' | 'error' | 'cancelled';
+    solutionCritiqueError?: string;
+    solutionCritiqueRetryAttempt?: number;
 
     // New fields for self-improvement and refinement
     requestPromptSelfImprovement?: string;
@@ -163,7 +209,7 @@ interface DeepthinkRedTeamData {
     killedStrategyIds: string[]; // IDs of strategies killed (main strategy or sub-strategy IDs)
     killedSubStrategyIds: string[]; // IDs of sub-strategies killed
     reasoning?: string; // Red team's reasoning for their decisions
-    status: 'pending' | 'processing' | 'retrying' | 'completed' | 'error' | 'cancelled';
+    status: 'pending' | 'processing' | 'completed' | 'error' | 'cancelled';
     error?: string;
     isDetailsOpen?: boolean;
     retryAttempt?: number;
@@ -196,6 +242,7 @@ interface DeepthinkMainStrategyData {
 
 interface DeepthinkPipelineState {
     id: string; // unique ID for this deepthink challenge instance
+    challenge: string;
     challengeText: string;
     challengeImageBase64?: string | null; // Base64 encoded image
     challengeImageMimeType?: string;
@@ -204,7 +251,7 @@ interface DeepthinkPipelineState {
     status: 'idle' | 'processing' | 'retrying' | 'completed' | 'error' | 'stopping' | 'stopped' | 'cancelled'; // Overall status
     error?: string; // Overall error for the whole process
     isStopRequested?: boolean;
-    activeTabId?: string; // e.g., "challenge-details", "strategic-solver", "hypothesis-explorer", "final-result"
+    activeTabId: string; // e.g., "strategic-solver", "hypothesis-explorer", "final-result"
     activeStrategyTab?: number;
     retryAttempt?: number; // for initial strategy generation step
 
@@ -217,6 +264,16 @@ interface DeepthinkPipelineState {
 
     // Knowledge packet synthesized from hypothesis exploration
     knowledgePacket?: string;
+
+    // Solution critique and synthesis fields
+    solutionCritiques: DeepthinkSolutionCritiqueData[];
+    solutionCritiquesStatus?: 'pending' | 'processing' | 'completed' | 'error' | 'cancelled';
+    solutionCritiquesError?: string;
+    dissectedObservationsSynthesis?: string;
+    dissectedSynthesisRequestPrompt?: string;
+    dissectedSynthesisStatus?: 'pending' | 'processing' | 'retrying' | 'completed' | 'error' | 'cancelled';
+    dissectedSynthesisError?: string;
+    dissectedSynthesisRetryAttempt?: number;
 
     // Red Team agents for strategy evaluation
     redTeamAgents: DeepthinkRedTeamData[];
@@ -244,12 +301,18 @@ interface DeepthinkPipelineState {
 
 interface ExportedConfig {
     currentMode: ApplicationMode;
+    currentEvolutionMode?: 'off' | 'novelty' | 'quality'; // Evolution convergence mode
     initialIdea: string;
     selectedModel: string;
     selectedOriginalTemperatureIndices: number[]; // For website
     pipelinesState: PipelineState[]; // For website
     activeDeepthinkPipeline?: DeepthinkPipelineState | null; // For deepthink
     activeReactPipeline: ReactPipelineState | null; // Added for React mode
+    embeddedAgenticState?: any | null; // For agentic state embedded in React mode
+    activeAgenticState?: any | null; // For agentic mode
+    activeGenerativeUIState?: any | null; // For generative UI mode
+    activeContextualState?: any | null; // For contextual mode
+    activeAdaptiveDeepthinkState?: any | null; // For adaptive deepthink mode
     activePipelineId: number | null; // For website
     activeDeepthinkProblemTabId?: string; // For deepthink UI
     globalStatusText: string;
@@ -257,7 +320,24 @@ interface ExportedConfig {
     customPromptsWebsite: CustomizablePromptsWebsite;
     customPromptsDeepthink?: CustomizablePromptsDeepthink;
     customPromptsReact: CustomizablePromptsReact; // Added for React mode
+    customPromptsAgentic: { systemPrompt: string }; // Added for Agentic mode
+    customPromptsAdaptiveDeepthink?: CustomizablePromptsAdaptiveDeepthink; // Added for Adaptive Deepthink mode
+    customPromptsContextual?: CustomizablePromptsContextual; // Added for Contextual mode
     isCustomPromptsOpen?: boolean;
+    // Model parameters for Deepthink modes
+    modelParameters?: {
+        temperature: number;
+        topP: number;
+        refinementStages: number;
+        strategiesCount: number;
+        subStrategiesCount: number;
+        hypothesisCount: number;
+        redTeamAggressiveness: string;
+        refinementEnabled: boolean;
+        skipSubStrategies: boolean;
+        dissectedObservationsEnabled: boolean;
+        iterativeCorrectionsEnabled: boolean;
+    };
 }
 
 // React Mode Specific Interfaces
@@ -282,489 +362,111 @@ export interface ReactPipelineState { // Exporting for potential use elsewhere
     orchestratorRawOutput?: string; // Full raw output from orchestrator (for debugging/inspection)
     stages: ReactModeStage[]; // Array of 5 worker agent stages
     finalAppendedCode?: string; // Combined code from all worker agents
-    status: 'idle' | 'orchestrating' | 'processing_workers' | 'completed' | 'error' | 'stopping' | 'stopped' | 'cancelled' | 'orchestrating_retrying' | 'failed';
+    status: 'idle' | 'orchestrating' | 'processing_workers' | 'completed' | 'error' | 'stopping' | 'stopped' | 'cancelled' | 'orchestrating_retrying' | 'failed' | 'agentic_orchestrating';
     error?: string;
     isStopRequested?: boolean;
     activeTabId?: string; // To track which of the 5 worker agent tabs is active in UI, e.g., "worker-0", "worker-1"
     orchestratorRetryAttempt?: number;
+    agenticRefineStarted?: boolean; // Embedded Agentic refinement has started inside React mode
+    initialAgenticContent?: string; // Initial content for the embedded agentic agent
+    workerPromptsData?: any[]; // Worker prompts data for the embedded agent
+    workersExecuted?: boolean; // Whether worker agents have been executed
+    previewUrl?: string; // Preview URL for the built application
+    prevPreviewUrl?: string; // Previous preview URL for cleanup
 }
 
 
 
-const NUM_WEBSITE_REFINEMENT_ITERATIONS = 3;
-const TOTAL_STEPS_WEBSITE = 1 + NUM_WEBSITE_REFINEMENT_ITERATIONS + 1;
+// Website refinement steps now depend on the Refinement Stages slider (Routing)
 
 
 
 export const NUM_INITIAL_STRATEGIES_DEEPTHINK = 3;
 export const NUM_SUB_STRATEGIES_PER_MAIN_DEEPTHINK = 3;
 
-// Function to get selected model from dropdown
-function getSelectedModel(): string {
-    return modelSelectElement?.value || 'gemini-2.5-pro';
-}
+// Functions now handled by routing system - keeping for backward compatibility
+// These are now imported from ./Routing
 
-function getSelectedTemperature(): number {
-    const temp = parseFloat(temperatureSlider?.value || '0.7');
-    return Math.max(0, Math.min(2, temp)); // Clamp between 0 and 2
-}
-
-function getSelectedTopP(): number {
-    const topP = parseFloat(topPSlider?.value || '0.95');
-    return Math.max(0, Math.min(1, topP)); // Clamp between 0 and 1
-}
-
-function getSelectedStrategiesCount(): number {
-    const strategies = parseInt(strategiesSlider?.value || '3');
-    return Math.max(1, Math.min(10, strategies)); // Clamp between 1 and 10
-}
-
-function getSelectedSubStrategiesCount(): number {
-    return subStrategiesSlider ? parseInt(subStrategiesSlider.value) : 3;
-}
-
-// Function to get selected hypothesis count
-function getSelectedHypothesisCount(): number {
-    const hypothesisToggle = document.getElementById('hypothesis-toggle') as HTMLInputElement;
-    if (hypothesisToggle && !hypothesisToggle.checked) {
-        return 0; // Return 0 when toggle is off to skip hypothesis generation
-    }
-    return hypothesisSlider ? parseInt(hypothesisSlider.value) : 4;
-}
-
-// Function to get selected red team aggressiveness
-function getSelectedRedTeamAggressiveness(): string {
-    const redTeamButtons = document.querySelectorAll('.red-team-button');
-    for (const button of redTeamButtons) {
-        if ((button as HTMLElement).classList.contains('active')) {
-            return (button as HTMLElement).dataset.value || 'balanced';
-        }
-    }
-    return 'balanced';
-}
-
-// Function to get refinement toggle state
-function getRefinementEnabled(): boolean {
-    return refinementToggle ? refinementToggle.checked : false;
-}
-
-
-const temperatures = [0, 0.7, 1.0, 1.5, 2.0];
 
 let pipelinesState: PipelineState[] = [];
 let activeDeepthinkPipeline: DeepthinkPipelineState | null = null; // Added for Deepthink mode
 let activeReactPipeline: ReactPipelineState | null = null; // Added for React mode
-let ai: GoogleGenAI | null = null;
 let activePipelineId: number | null = null;
 let isGenerating = false;
-let currentMode: ApplicationMode = 'website';
+// currentMode already declared above with currentEvolutionMode
 let currentProblemImageBase64: string | null = null;
 let currentProblemImageMimeType: string | null = null;
 // This variable is no longer used for the modal state but can be kept for config export/import
 let isCustomPromptsOpen = false;
 
+// Global state variables
+let customPromptsWebsiteState = defaultCustomPromptsWebsite;
+let customPromptsDeepthinkState = createDefaultCustomPromptsDeepthink();
+let customPromptsReactState = createDefaultCustomPromptsReact();
+let customPromptsAgenticState = { systemPrompt: AGENTIC_SYSTEM_PROMPT }; // Added for Agentic mode
+let customPromptsAdaptiveDeepthinkState = createDefaultCustomPromptsAdaptiveDeepthink();
+let customPromptsContextualState = createDefaultCustomPromptsContextual();
 
-let customPromptsWebsiteState: CustomizablePromptsWebsite = JSON.parse(JSON.stringify(defaultCustomPromptsWebsite));
-let customPromptsDeepthinkState: CustomizablePromptsDeepthink = createDefaultCustomPromptsDeepthink(NUM_INITIAL_STRATEGIES_DEEPTHINK, NUM_SUB_STRATEGIES_PER_MAIN_DEEPTHINK);
-
-// Function to update deepthink prompts with current slider values
-function updateDeepthinkPromptsState() {
-    const currentStrategiesCount = getSelectedStrategiesCount();
-    const currentSubStrategiesCount = getSelectedSubStrategiesCount();
-    const currentHypothesisCount = getSelectedHypothesisCount();
-    const currentRedTeamAggressiveness = getSelectedRedTeamAggressiveness();
-    customPromptsDeepthinkState = createDefaultCustomPromptsDeepthink(currentStrategiesCount, currentSubStrategiesCount, currentHypothesisCount, currentRedTeamAggressiveness);
-}
-let customPromptsReactState: CustomizablePromptsReact = JSON.parse(JSON.stringify(defaultCustomPromptsReact)); // Added for React mode
-
-
-const apiKeyStatusElement = document.getElementById('api-key-status') as HTMLParagraphElement;
-const apiKeyFormContainer = document.getElementById('api-key-form-container') as HTMLElement;
-const apiKeyInput = document.getElementById('api-key-input') as HTMLInputElement;
-const saveApiKeyButton = document.getElementById('save-api-key-button') as HTMLButtonElement;
-const clearApiKeyButton = document.getElementById('clear-api-key-button') as HTMLButtonElement;
+// Core UI elements (not routing-related)
 const initialIdeaInput = document.getElementById('initial-idea') as HTMLTextAreaElement;
 const initialIdeaLabel = document.getElementById('initial-idea-label') as HTMLLabelElement;
 const modelSelectionContainer = document.getElementById('model-selection-container') as HTMLElement;
-const modelSelectElement = document.getElementById('model-select') as HTMLSelectElement;
 const modelParametersContainer = document.getElementById('model-parameters-container') as HTMLElement;
-const temperatureSlider = document.getElementById('temperature-slider') as HTMLInputElement;
-const topPSlider = document.getElementById('top-p-slider') as HTMLInputElement;
-const strategiesSlider = document.getElementById('strategies-slider') as HTMLInputElement;
-const subStrategiesSlider = document.getElementById('sub-strategies-slider') as HTMLInputElement;
-const hypothesisSlider = document.getElementById('hypothesis-slider') as HTMLInputElement;
-// Red team slider removed - now using button toggles
-const refinementToggle = document.getElementById('refinement-toggle') as HTMLInputElement;
-const temperatureValue = document.getElementById('temperature-value') as HTMLSpanElement;
-const topPValue = document.getElementById('top-p-value') as HTMLSpanElement;
-const strategiesValue = document.getElementById('strategies-value') as HTMLSpanElement;
-const subStrategiesValue = document.getElementById('sub-strategies-value') as HTMLSpanElement;
-const hypothesisValue = document.getElementById('hypothesis-value') as HTMLSpanElement;
-// Red team value span removed - now using button toggles
-const temperatureSelectionContainer = document.getElementById('temperature-selection-container') as HTMLElement;
-
-// Add event listeners for sliders to update display values
-function initializeSliderEventListeners() {
-    if (temperatureSlider && temperatureValue) {
-        temperatureSlider.addEventListener('input', () => {
-            temperatureValue.textContent = temperatureSlider.value;
-        });
-    }
-    
-    if (topPSlider && topPValue) {
-        topPSlider.addEventListener('input', () => {
-            topPValue.textContent = topPSlider.value;
-        });
-    }
-    
-    if (strategiesSlider && strategiesValue) {
-        strategiesSlider.addEventListener('input', () => {
-            strategiesValue.textContent = strategiesSlider.value;
-            updateDeepthinkPromptsState();
-        });
-    }
-    
-    if (subStrategiesSlider && subStrategiesValue) {
-        subStrategiesSlider.addEventListener('input', () => {
-            subStrategiesValue.textContent = subStrategiesSlider.value;
-            updateDeepthinkPromptsState();
-        });
-    }
-    
-    const hypothesisToggle = document.getElementById('hypothesis-toggle') as HTMLInputElement;
-    const hypothesisSliderContainer = document.getElementById('hypothesis-slider-container');
-    
-    if (hypothesisToggle && hypothesisSliderContainer) {
-        hypothesisToggle.addEventListener('change', () => {
-            const informationPacketContent = document.getElementById('information-packet-content');
-            const executionAgentsVisualization = document.getElementById('execution-agents-visualization');
-            
-            if (hypothesisToggle.checked) {
-                hypothesisSliderContainer.classList.remove('hidden');
-                if (informationPacketContent) informationPacketContent.classList.remove('hidden');
-                if (executionAgentsVisualization) executionAgentsVisualization.classList.remove('hidden');
-            } else {
-                hypothesisSliderContainer.classList.add('hidden');
-                if (informationPacketContent) informationPacketContent.classList.add('hidden');
-                if (executionAgentsVisualization) executionAgentsVisualization.classList.add('hidden');
-            }
-            updateDeepthinkPromptsState();
-        });
-    }
-    
-    if (hypothesisSlider && hypothesisValue) {
-        hypothesisSlider.addEventListener('input', () => {
-            hypothesisValue.textContent = hypothesisSlider.value;
-            updateDeepthinkPromptsState();
-        });
-    }
-    
-    // Add event listeners for red team buttons
-    const redTeamButtons = document.querySelectorAll('.red-team-button');
-    redTeamButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            // Remove active class from all buttons
-            redTeamButtons.forEach(btn => btn.classList.remove('active'));
-            // Add active class to clicked button
-            button.classList.add('active');
-            // Update deepthink prompts state when selection changes
-            updateDeepthinkPromptsState();
-        });
-    });
-}
+// Slider event listeners now handled by routing system
 const generateButton = document.getElementById('generate-button') as HTMLButtonElement;
 const tabsNavContainer = document.getElementById('tabs-nav-container') as HTMLElement;
 const pipelinesContentContainer = document.getElementById('pipelines-content-container') as HTMLElement;
-const pipelineSelectorsContainer = document.getElementById('pipeline-selectors-container') as HTMLElement;
 const appModeSelector = document.getElementById('app-mode-selector') as HTMLElement;
 
+// Helper function to clear tabs (button is now outside tabs container, so just clear)
+function clearTabsContainer() {
+    tabsNavContainer.innerHTML = '';
+}
 
-// Custom Prompts Modal Elements
-const promptsModalOverlay = document.getElementById('prompts-modal-overlay') as HTMLElement;
-const promptsModalCloseButton = document.getElementById('prompts-modal-close-button') as HTMLButtonElement;
-const customizePromptsTrigger = document.getElementById('customize-prompts-trigger') as HTMLElement;
 
-// Diff Modal Elements
-const diffModalOverlay = document.getElementById('diff-modal-overlay') as HTMLElement;
-const diffModalCloseButton = document.getElementById('diff-modal-close-button') as HTMLButtonElement;
-const diffSourceLabel = document.getElementById('diff-source-label') as HTMLParagraphElement;
-const diffTargetTreeContainer = document.getElementById('diff-target-tree') as HTMLElement;
-const diffViewerPanel = document.getElementById('diff-viewer-panel') as HTMLElement;
+// Custom Prompts Modal Elements - Now managed by routing system
 
 const exportConfigButton = document.getElementById('export-config-button') as HTMLButtonElement;
 const importConfigInput = document.getElementById('import-config-input') as HTMLInputElement;
 const importConfigLabel = document.getElementById('import-config-label') as HTMLLabelElement;
 
-const customPromptTextareasWebsite: { [K in keyof CustomizablePromptsWebsite]: HTMLTextAreaElement | null } = {
-    sys_initialGen: document.getElementById('sys-initial-gen') as HTMLTextAreaElement,
-    user_initialGen: document.getElementById('user-initial-gen') as HTMLTextAreaElement,
-    sys_initialBugFix: document.getElementById('sys-initial-bugfix') as HTMLTextAreaElement,
-    user_initialBugFix: document.getElementById('user-initial-bugfix') as HTMLTextAreaElement,
-    sys_initialFeatureSuggest: document.getElementById('sys-initial-features') as HTMLTextAreaElement,
-    user_initialFeatureSuggest: document.getElementById('user-initial-features') as HTMLTextAreaElement,
-    sys_refineStabilizeImplement: document.getElementById('sys-refine-implement') as HTMLTextAreaElement,
-    user_refineStabilizeImplement: document.getElementById('user-refine-implement') as HTMLTextAreaElement,
-    sys_refineBugFix: document.getElementById('sys-refine-bugfix') as HTMLTextAreaElement,
-    user_refineBugFix: document.getElementById('user-refine-bugfix') as HTMLTextAreaElement,
-    sys_refineFeatureSuggest: document.getElementById('sys-refine-features') as HTMLTextAreaElement,
-    user_refineFeatureSuggest: document.getElementById('user-refine-features') as HTMLTextAreaElement,
-    sys_finalPolish: document.getElementById('sys-final-polish') as HTMLTextAreaElement,
-    user_finalPolish: document.getElementById('user-final-polish') as HTMLTextAreaElement,
-};
-
-const customPromptTextareasDeepthink: { [K in keyof CustomizablePromptsDeepthink]: HTMLTextAreaElement | null } = {
-    sys_deepthink_initialStrategy: document.getElementById('sys-deepthink-initial-strategy') as HTMLTextAreaElement,
-    user_deepthink_initialStrategy: document.getElementById('user-deepthink-initial-strategy') as HTMLTextAreaElement,
-    sys_deepthink_subStrategy: document.getElementById('sys-deepthink-sub-strategy') as HTMLTextAreaElement,
-    user_deepthink_subStrategy: document.getElementById('user-deepthink-sub-strategy') as HTMLTextAreaElement,
-    sys_deepthink_solutionAttempt: document.getElementById('sys-deepthink-solution-attempt') as HTMLTextAreaElement,
-    user_deepthink_solutionAttempt: document.getElementById('user-deepthink-solution-attempt') as HTMLTextAreaElement,
-    sys_deepthink_selfImprovement: document.getElementById('sys-deepthink-self-improvement') as HTMLTextAreaElement,
-    user_deepthink_selfImprovement: document.getElementById('user-deepthink-self-improvement') as HTMLTextAreaElement,
-    sys_deepthink_hypothesisGeneration: document.getElementById('sys-deepthink-hypothesis-generation') as HTMLTextAreaElement,
-    user_deepthink_hypothesisGeneration: document.getElementById('user-deepthink-hypothesis-generation') as HTMLTextAreaElement,
-    sys_deepthink_hypothesisTester: document.getElementById('sys-deepthink-hypothesis-tester') as HTMLTextAreaElement,
-    user_deepthink_hypothesisTester: document.getElementById('user-deepthink-hypothesis-tester') as HTMLTextAreaElement,
-    sys_deepthink_redTeam: document.getElementById('sys-deepthink-red-team') as HTMLTextAreaElement,
-    user_deepthink_redTeam: document.getElementById('user-deepthink-red-team') as HTMLTextAreaElement,
-    sys_deepthink_judge: document.getElementById('sys-deepthink-judge') as HTMLTextAreaElement,
-    sys_deepthink_finalJudge: document.getElementById('sys-deepthink-final-judge') as HTMLTextAreaElement,
-};
-
-const customPromptTextareasReact: { [K in keyof CustomizablePromptsReact]: HTMLTextAreaElement | null } = { // Added for React mode
-    sys_orchestrator: document.getElementById('sys-react-orchestrator') as HTMLTextAreaElement,
-    user_orchestrator: document.getElementById('user-react-orchestrator') as HTMLTextAreaElement,
-};
-
-function initializeApiKey() {
-    let statusMessage = "";
-    let isKeyAvailable = false;
-    let currentApiKey: string | null = null;
-
-    // Hide form elements by default
-    apiKeyFormContainer.style.display = 'none';
-    saveApiKeyButton.style.display = 'none';
-    clearApiKeyButton.style.display = 'none';
-    apiKeyInput.style.display = 'none';
-
-    const envKey = process.env.API_KEY;
-
-    if (envKey) {
-        statusMessage = "API Key loaded from environment.";
-        isKeyAvailable = true;
-        currentApiKey = envKey;
-        apiKeyStatusElement.className = 'api-key-status-message status-badge status-ok';
-    } else {
-        apiKeyFormContainer.style.display = 'flex'; // Show the container for input/buttons
-        const storedKey = localStorage.getItem('gemini-api-key');
-        if (storedKey) {
-            statusMessage = "Using API Key from local storage.";
-            isKeyAvailable = true;
-            currentApiKey = storedKey;
-            apiKeyStatusElement.className = 'api-key-status-message status-badge status-ok';
-            clearApiKeyButton.style.display = 'inline-flex'; // Show clear button
-        } else {
-            statusMessage = "API Key not found. Please provide one.";
-            isKeyAvailable = false;
-            apiKeyStatusElement.className = 'api-key-status-message status-badge status-error';
-            apiKeyInput.style.display = 'block'; // Show input field
-            saveApiKeyButton.style.display = 'inline-flex'; // Show save button
-        }
-    }
-
-    if (apiKeyStatusElement) {
-        apiKeyStatusElement.textContent = statusMessage;
-    }
-
-    if (isKeyAvailable && currentApiKey) {
-        try {
-            ai = new GoogleGenAI({ apiKey: currentApiKey });
-            if (generateButton) generateButton.disabled = isGenerating;
-            return true;
-        } catch (e: any) {
-            console.error("Failed to initialize GoogleGenAI:", e);
-            if (apiKeyStatusElement) {
-                apiKeyStatusElement.textContent = `API Init Error`;
-                apiKeyStatusElement.className = 'api-key-status-message status-badge status-error';
-                apiKeyStatusElement.title = `Error: ${e.message}`;
-            }
-            if (generateButton) generateButton.disabled = true;
-            ai = null;
-            return false;
-        }
-    } else {
-        if (generateButton) generateButton.disabled = true;
-        ai = null;
-        return false;
-    }
-}
 
 
 function initializeCustomPromptTextareas() {
-    // Website Prompts
-    for (const key in customPromptTextareasWebsite) {
-        const k = key as keyof CustomizablePromptsWebsite;
-        const textarea = customPromptTextareasWebsite[k];
-        if (textarea) {
-            textarea.value = customPromptsWebsiteState[k];
-            textarea.addEventListener('input', (e) => {
-                customPromptsWebsiteState[k] = (e.target as HTMLTextAreaElement).value;
-            });
-        }
-    }
+    // Initialize prompts manager in routing system with references to global variables
+    routingManager.initializePromptsManager(
+        { current: customPromptsWebsiteState },
+        { current: customPromptsDeepthinkState },
+        { current: customPromptsReactState },
+        { current: customPromptsAgenticState },
+        { current: customPromptsAdaptiveDeepthinkState },
+        { current: customPromptsContextualState }
+    );
 
-    // Deepthink Prompts
-    for (const key in customPromptTextareasDeepthink) {
-        const k = key as keyof CustomizablePromptsDeepthink;
-        const textarea = customPromptTextareasDeepthink[k];
-        if (textarea) {
-            textarea.value = customPromptsDeepthinkState[k];
-            textarea.addEventListener('input', (e) => {
-                customPromptsDeepthinkState[k] = (e.target as HTMLTextAreaElement).value;
-            });
-        }
-    }
-    // React Prompts (for Orchestrator)
-    for (const key in customPromptTextareasReact) {
-        const k = key as keyof CustomizablePromptsReact;
-        const textarea = customPromptTextareasReact[k];
-        if (textarea) {
-            textarea.value = customPromptsReactState[k];
-            textarea.addEventListener('input', (e) => {
-                customPromptsReactState[k] = (e.target as HTMLTextAreaElement).value;
-            });
-        }
+    // Set up Agentic mode with prompts manager
+    const agenticPromptsManager = routingManager.getAgenticPromptsManager();
+    if (agenticPromptsManager) {
+        setAgenticPromptsManager(agenticPromptsManager);
     }
 }
 
 function updateCustomPromptTextareasFromState() {
-    for (const key in customPromptTextareasWebsite) {
-        const k = key as keyof CustomizablePromptsWebsite;
-        const textarea = customPromptTextareasWebsite[k];
-        if (textarea) textarea.value = customPromptsWebsiteState[k];
-    }
-    for (const key in customPromptTextareasDeepthink) {
-        const k = key as keyof CustomizablePromptsDeepthink;
-        const textarea = customPromptTextareasDeepthink[k];
-        if (textarea) textarea.value = customPromptsDeepthinkState[k];
-    }
-    for (const key in customPromptTextareasReact) { // Added for React mode
-        const k = key as keyof CustomizablePromptsReact;
-        const textarea = customPromptTextareasReact[k];
-        if (textarea) textarea.value = customPromptsReactState[k];
-    }
-}
-
-const promptNavStructure = {
-    website: [
-        { groupTitle: "1. Initial Generation & Analysis", prompts: ["initial-gen", "initial-bugfix", "initial-features"] },
-        { groupTitle: "2. Refinement Cycle", prompts: ["refine-implement", "refine-bugfix", "refine-features"] },
-        { groupTitle: "3. Final Polish", prompts: ["final-polish"] }
-    ],
-    deepthink: [
-        { groupTitle: "1. Strategic Solver", prompts: ["deepthink-initial-strategy", "deepthink-sub-strategy", "deepthink-solution-attempt", "deepthink-self-improvement"] },
-        { groupTitle: "2. Hypothesis Explorer", prompts: ["deepthink-hypothesis-generation", "deepthink-prover", "deepthink-disprover"] },
-        { groupTitle: "3. Red Team Evaluator", prompts: ["deepthink-red-team"] }
-    ],
-    react: [
-        { groupTitle: "Orchestrator Agent", prompts: ["react-orchestrator"] }
-    ]
-};
-
-function initializePromptsModal() {
-    const navContainer = document.getElementById('prompts-modal-nav');
-    const contentContainer = document.getElementById('prompts-modal-content');
-    if (!navContainer || !contentContainer) return;
-
-    // Clear previous state
-    navContainer.innerHTML = '';
-    contentContainer.querySelectorAll('.prompts-mode-container').forEach(el => el.classList.remove('active'));
-    contentContainer.querySelectorAll('.prompt-content-pane').forEach(el => el.classList.remove('active'));
-
-    const activeModeContainer = document.getElementById(`${currentMode}-prompts-container`);
-    if (!activeModeContainer) return;
-
-    activeModeContainer.classList.add('active');
-
-    // Display current mode at the top of nav
-    const modeTitle = document.createElement('h4');
-    modeTitle.className = 'prompts-nav-mode-title';
-    modeTitle.textContent = `${currentMode.charAt(0).toUpperCase() + currentMode.slice(1)} Mode Prompts`;
-    navContainer.appendChild(modeTitle);
-
-    const navStructure = promptNavStructure[currentMode as keyof typeof promptNavStructure];
-    if (!navStructure) return;
-
-    let firstNavItem: HTMLElement | null = null;
-
-    navStructure.forEach(group => {
-        const groupTitleEl = document.createElement('h5');
-        groupTitleEl.className = 'prompts-nav-group-title';
-        groupTitleEl.textContent = group.groupTitle;
-        navContainer.appendChild(groupTitleEl);
-
-        group.prompts.forEach(promptKey => {
-            const pane = activeModeContainer.querySelector<HTMLElement>(`.prompt-content-pane[data-prompt-key="${promptKey}"]`);
-            if (!pane) return;
-
-            const titleElement = pane.querySelector<HTMLHeadingElement>('.prompt-pane-title');
-            const title = titleElement ? titleElement.textContent : 'Unnamed Section';
-
-            const navItem = document.createElement('div');
-            navItem.className = 'prompts-nav-item';
-            navItem.textContent = title;
-            navItem.dataset.targetPane = promptKey;
-            navContainer.appendChild(navItem);
-
-            if (!firstNavItem) {
-                firstNavItem = navItem;
-            }
-
-            navItem.addEventListener('click', () => {
-                // Deactivate all nav items and panes first
-                navContainer.querySelectorAll('.prompts-nav-item').forEach(item => item.classList.remove('active'));
-                activeModeContainer.querySelectorAll('.prompt-content-pane').forEach(p => p.classList.remove('active'));
-
-                // Activate the clicked one
-                navItem.classList.add('active');
-                pane.classList.add('active');
-            });
-        });
-    });
-
-    // Activate the first one by default
-    if (firstNavItem) {
-        firstNavItem.click();
-    }
-}
-
-
-function setPromptsModalVisible(visible: boolean) {
-    if (promptsModalOverlay) {
-        if (visible) {
-            initializePromptsModal(); // Re-initialize on open to reflect current mode
-            promptsModalOverlay.style.display = 'flex';
-            setTimeout(() => {
-                promptsModalOverlay.classList.add('is-visible');
-            }, 10);
-        } else {
-            promptsModalOverlay.classList.remove('is-visible');
-            promptsModalOverlay.addEventListener('transitionend', () => {
-                if (!promptsModalOverlay.classList.contains('is-visible')) {
-                    promptsModalOverlay.style.display = 'none';
-                }
-            }, { once: true });
-        }
+    const promptsManager = routingManager.getPromptsManager();
+    if (promptsManager) {
+        promptsManager.updateTextareasFromState();
     }
 }
 
 function updateUIAfterModeChange() {
-    // Visibility of prompt containers is now handled by CSS classes and initializePromptsModal
+    // Update prompts modal mode through routing system
+    routingManager.setCurrentMode(currentMode);
+
+    // Visibility of prompt containers is now handled by routing system
     const allPromptContainers = document.querySelectorAll('.prompts-mode-container');
     allPromptContainers.forEach(container => container.classList.remove('active'));
     const activeContainer = document.getElementById(`${currentMode}-prompts-container`);
     if (activeContainer) activeContainer.classList.add('active');
-    
+
     // Reinitialize sidebar controls after mode change
     setTimeout(() => {
         if ((window as any).reinitializeSidebarControls) {
@@ -775,38 +477,91 @@ function updateUIAfterModeChange() {
     // Default UI states
     if (modelSelectionContainer) modelSelectionContainer.style.display = 'flex';
     if (modelParametersContainer) modelParametersContainer.style.display = 'flex';
-    if (temperatureSelectionContainer) temperatureSelectionContainer.style.display = 'block';
 
     const generateButtonText = generateButton?.querySelector('.button-text');
+    const apiCallIndicator = document.querySelector('.api-call-indicator') as HTMLElement;
 
     if (currentMode === 'website') {
-        if (initialIdeaLabel) initialIdeaLabel.textContent = 'Website Idea:';
-        if (initialIdeaInput) initialIdeaInput.placeholder = 'E.g., "A portfolio website for a photographer", "An e-commerce site for handmade crafts"...';
+        if (initialIdeaLabel) initialIdeaLabel.textContent = 'Iteratively Refine:';
+        if (initialIdeaInput) initialIdeaInput.placeholder = 'E.g., "Python Code For Array Sorting Using Cross Products", "An e-commerce site for handmade crafts"...';
         if (generateButtonText) generateButtonText.textContent = 'Generate & Refine';
         if (modelSelectionContainer) modelSelectionContainer.style.display = 'flex';
-        if (modelParametersContainer) modelParametersContainer.style.display = 'none';
-        if (temperatureSelectionContainer) temperatureSelectionContainer.style.display = 'block';
+        if (modelParametersContainer) modelParametersContainer.style.display = 'flex';
+        if (apiCallIndicator) apiCallIndicator.style.display = 'none';
+        setDeepthinkControlsVisible(false);
+        setRefineControlsVisible(true);
     } else if (currentMode === 'deepthink') {
         if (initialIdeaLabel) initialIdeaLabel.textContent = 'Core Challenge:';
         if (initialIdeaInput) initialIdeaInput.placeholder = 'E.g., "Design a sustainable urban transportation system", "Analyze the impact of remote work on company culture"...';
         if (generateButtonText) generateButtonText.textContent = 'Deepthink';
         if (modelSelectionContainer) modelSelectionContainer.style.display = 'flex';
         if (modelParametersContainer) modelParametersContainer.style.display = 'flex';
-        if (temperatureSelectionContainer) temperatureSelectionContainer.style.display = 'none';
+        if (apiCallIndicator) apiCallIndicator.style.display = 'flex';
+        setDeepthinkControlsVisible(true);
+        setRefineControlsVisible(false);
     } else if (currentMode === 'react') { // Added for React mode
         if (initialIdeaLabel) initialIdeaLabel.textContent = 'React App Request:';
         if (initialIdeaInput) initialIdeaInput.placeholder = 'E.g., "A simple to-do list app with local storage persistence", "A weather dashboard using OpenWeatherMap API"...';
         if (generateButtonText) generateButtonText.textContent = 'Generate React App';
         if (modelSelectionContainer) modelSelectionContainer.style.display = 'flex';
-        if (modelParametersContainer) modelParametersContainer.style.display = 'none';
-        if (temperatureSelectionContainer) temperatureSelectionContainer.style.display = 'block';
+        if (modelParametersContainer) modelParametersContainer.style.display = 'flex';
+        if (apiCallIndicator) apiCallIndicator.style.display = 'none';
+        setDeepthinkControlsVisible(false);
+        setRefineControlsVisible(false);
+    } else if (currentMode === 'agentic') { // Added for Agentic mode
+        if (initialIdeaLabel) initialIdeaLabel.textContent = 'Content to Refine:';
+        if (initialIdeaInput) initialIdeaInput.placeholder = 'Enter text, code, data report, or any content you want the agent to iteratively refine...';
+        if (generateButtonText) generateButtonText.textContent = 'Generate & Refine';
+        if (modelSelectionContainer) modelSelectionContainer.style.display = 'flex';
+        if (modelParametersContainer) modelParametersContainer.style.display = 'flex';
+        if (apiCallIndicator) apiCallIndicator.style.display = 'none';
+        setDeepthinkControlsVisible(false);
+        setRefineControlsVisible(false);
+    } else if (currentMode === 'generativeui') { // Added for GenerativeUI mode
+        if (initialIdeaLabel) initialIdeaLabel.textContent = 'UI Query:';
+        if (initialIdeaInput) initialIdeaInput.placeholder = 'E.g., "Create a dashboard to track my project tasks with statuses for to-do, in-progress, and done"...';
+        if (generateButtonText) generateButtonText.textContent = 'Generate Interface';
+        if (modelSelectionContainer) modelSelectionContainer.style.display = 'flex';
+        if (modelParametersContainer) modelParametersContainer.style.display = 'flex';
+        if (apiCallIndicator) apiCallIndicator.style.display = 'none';
+        setDeepthinkControlsVisible(false);
+        setRefineControlsVisible(false);
+    } else if (currentMode === 'contextual') { // Added for Contextual mode
+        if (initialIdeaLabel) initialIdeaLabel.textContent = 'Initial User Request:';
+        if (initialIdeaInput) initialIdeaInput.placeholder = 'E.g., "Write a comprehensive guide on machine learning basics", "Create a detailed business plan for a coffee shop"...';
+        if (generateButtonText) generateButtonText.textContent = 'Start Contextual Refinement';
+        if (modelSelectionContainer) modelSelectionContainer.style.display = 'flex';
+        if (modelParametersContainer) modelParametersContainer.style.display = 'flex';
+        if (apiCallIndicator) apiCallIndicator.style.display = 'none';
+        setDeepthinkControlsVisible(false);
+        setRefineControlsVisible(false);
+    } else if (currentMode === 'adaptive-deepthink') { // Added for Adaptive Deepthink mode
+        if (initialIdeaLabel) initialIdeaLabel.textContent = 'Core Challenge:';
+        if (initialIdeaInput) initialIdeaInput.placeholder = 'E.g., "Solve this mathematical problem", "Design a scalable database architecture", "Analyze this complex scenario"...';
+        if (generateButtonText) generateButtonText.textContent = 'Adaptive Deepthink';
+        if (modelSelectionContainer) modelSelectionContainer.style.display = 'flex';
+        if (modelParametersContainer) modelParametersContainer.style.display = 'flex';
+        if (apiCallIndicator) apiCallIndicator.style.display = 'none';
+        setDeepthinkControlsVisible(false); // Adaptive Deepthink is agentic - no manual config
+        setRefineControlsVisible(false);
     }
 
     if (!isGenerating) {
         pipelinesState = [];
         activeReactPipeline = null;
+        if (currentMode === 'agentic') {
+            cleanupAgenticMode();
+        } else if (currentMode === 'generativeui') {
+            cleanupGenerativeUIMode();
+        } else if (currentMode === 'contextual') {
+            stopContextualProcess();
+        } else if (currentMode === 'adaptive-deepthink') {
+            cleanupAdaptiveDeepthinkMode();
+        }
         renderPipelines();
-        renderReactModePipeline();
+        if (currentMode === 'react') {
+            renderReactModePipeline();
+        }
     }
     updateControlsState();
 }
@@ -819,58 +574,110 @@ function renderPrompt(template: string, data: Record<string, string>): string {
     }
     return rendered;
 }
-function renderPipelineSelectors() {
-    if (!pipelineSelectorsContainer) return;
-    pipelineSelectorsContainer.innerHTML = ''; // Clear existing
-    temperatures.forEach((temp, index) => {
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'pipeline-selector-item';
+// Variants removed: selectors no longer exist
 
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.id = `pipeline-selector-${index}`;
-        checkbox.value = temp.toString();
-        checkbox.checked = true; // Default to checked
-        checkbox.dataset.temperatureIndex = index.toString();
+// Show/Hide Deepthink-only controls in the sidebar
+function setDeepthinkControlsVisible(visible: boolean) {
+    const display = visible ? '' : 'none';
+    const strategiesGroup = document.getElementById('strategies-slider')?.closest('.input-group-tight') as HTMLElement | null;
+    const strategyExecutionContainer = document.querySelector('.strategy-execution-container') as HTMLElement | null;
+    const infoPacketContainer = document.getElementById('information-packet-window')?.closest('.information-packet-container') as HTMLElement | null;
+    const execAgents = document.getElementById('execution-agents-visualization') as HTMLElement | null;
+    const hypothesisGroup = document.getElementById('hypothesis-slider-container') as HTMLElement | null;
+    const redTeam = document.querySelector('.red-team-options-container') as HTMLElement | null;
+    const refinementOptions = document.querySelector('.refinement-options-container') as HTMLElement | null;
 
+    if (strategiesGroup) strategiesGroup.style.display = display;
+    if (strategyExecutionContainer) strategyExecutionContainer.style.display = display;
+    if (infoPacketContainer) infoPacketContainer.style.display = display;
+    if (execAgents) execAgents.style.display = display;
+    if (hypothesisGroup) hypothesisGroup.style.display = display;
+    if (redTeam) redTeam.style.display = display;
+    if (refinementOptions) refinementOptions.style.display = display;
+}
 
-        const label = document.createElement('label');
-        label.htmlFor = checkbox.id;
-        label.textContent = `Variant (T: ${temp.toFixed(1)})`; // Changed label for more generic usage
+// Show/Hide Refine-only controls in the sidebar
+function setRefineControlsVisible(visible: boolean) {
+    const display = visible ? '' : 'none';
+    const refineStagesGroup = document.getElementById('refinement-stages-slider')?.closest('.input-group-tight') as HTMLElement | null;
+    const evolutionConvergenceContainer = document.querySelector('.evolution-convergence-container') as HTMLElement | null;
 
-        itemDiv.appendChild(checkbox);
-        itemDiv.appendChild(label);
-        pipelineSelectorsContainer.appendChild(itemDiv);
+    if (refineStagesGroup) refineStagesGroup.style.display = display;
+    if (evolutionConvergenceContainer) evolutionConvergenceContainer.style.display = display;
+}
 
-        checkbox.addEventListener('change', () => {
-            updateControlsState();
+// Initialize Evolution Convergence buttons
+function initializeEvolutionConvergenceButtons() {
+    const evolutionButtons = document.querySelectorAll('.evolution-convergence-button');
+    
+    // Set initial active state based on currentEvolutionMode
+    evolutionButtons.forEach(button => {
+        const buttonValue = (button as HTMLElement).dataset.value as 'off' | 'novelty' | 'quality';
+        if (buttonValue === currentEvolutionMode) {
+            button.classList.add('active');
+        } else {
+            button.classList.remove('active');
+        }
+    });
+    
+    // Update initial description
+    updateEvolutionModeDescription(currentEvolutionMode);
+    
+    // Add click handlers
+    evolutionButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const value = (button as HTMLElement).dataset.value as 'off' | 'novelty' | 'quality';
+
+            // Update active state
+            evolutionButtons.forEach(b => b.classList.remove('active'));
+            button.classList.add('active');
+
+            // Update current mode
+            currentEvolutionMode = value;
+
+            // Update description text
+            updateEvolutionModeDescription(value);
         });
     });
-    updateControlsState(); // Initial state
 }
 
-function getSelectedTemperatures(): { temp: number, originalIndex: number }[] {
-    const selected: { temp: number, originalIndex: number }[] = [];
-    if (pipelineSelectorsContainer) {
-        const checkboxes = pipelineSelectorsContainer.querySelectorAll<HTMLInputElement>('input[type="checkbox"]:checked');
-        checkboxes.forEach(checkbox => {
-            const tempValue = parseFloat(checkbox.value);
-            const originalIndex = parseInt(checkbox.dataset.temperatureIndex || "-1", 10);
-            if (!isNaN(tempValue) && originalIndex !== -1) {
-                selected.push({ temp: tempValue, originalIndex });
-            }
-        });
+function updateEvolutionModeDescription(mode: 'off' | 'novelty' | 'quality') {
+    const descriptionElement = document.getElementById('evolution-convergence-description');
+    if (!descriptionElement) return;
+
+    let descriptionText = '';
+    switch (mode) {
+        case 'off':
+            descriptionText = `
+                <span class="evolution-mode-text">Feature suggestions disabled. Flow: Initial Generation → Initial Bug Fix & Polish → Refinement Bug Fix & Polish (Loop N times) → Final Polish</span>
+            `;
+            break;
+        case 'novelty':
+            descriptionText = `
+                <span class="evolution-mode-text">Default mode with all agents active for balanced innovation and quality.</span>
+            `;
+            break;
+        case 'quality':
+            descriptionText = `
+                <span class="evolution-mode-text">All agents focus on high quality improvements. No new features, only refinement of existing content.</span>
+            `;
+            break;
     }
-    return selected;
+
+    descriptionElement.innerHTML = descriptionText;
 }
 
-function updateControlsState() {
+export function updateControlsState() {
     const anyPipelineRunningOrStopping = pipelinesState.some(p => p.status === 'running' || p.status === 'stopping');
     const deepthinkPipelineRunningOrStopping = activeDeepthinkPipeline?.status === 'processing' || activeDeepthinkPipeline?.status === 'stopping';
-    const reactPipelineRunningOrStopping = activeReactPipeline?.status === 'orchestrating' || activeReactPipeline?.status === 'processing_workers' || activeReactPipeline?.status === 'stopping'; // Added for React
-    isGenerating = anyPipelineRunningOrStopping  || deepthinkPipelineRunningOrStopping || reactPipelineRunningOrStopping;
+    const reactPipelineRunningOrStopping = activeReactPipeline?.status === 'orchestrating' || activeReactPipeline?.status === 'agentic_orchestrating' || activeReactPipeline?.status === 'processing_workers' || activeReactPipeline?.status === 'stopping'; // Added for React
+    const agenticRunning = isAgenticModeActive();
+    const generativeUIRunning = isGenerativeUIModeActive();
+    const contextualRunning = getContextualState()?.isRunning || false;
+    const adaptiveDeepthinkRunning = getAdaptiveDeepthinkState()?.isProcessing || false;
+    isGenerating = anyPipelineRunningOrStopping || deepthinkPipelineRunningOrStopping || reactPipelineRunningOrStopping || agenticRunning || generativeUIRunning || contextualRunning || adaptiveDeepthinkRunning;
 
-    const isApiKeyReady = !!ai;
+    const isApiKeyReady = hasValidApiKey();
 
     if (generateButton) {
         let disabled = isGenerating || !isApiKeyReady;
@@ -879,9 +686,16 @@ function updateControlsState() {
                 // Enabled if not generating
             } else if (currentMode === 'react') {
                 // Enabled if not generating
+            } else if (currentMode === 'agentic') {
+                // Enabled if not generating
+            } else if (currentMode === 'generativeui') {
+                // Enabled if not generating
+            } else if (currentMode === 'contextual') {
+                // Enabled if not generating
+            } else if (currentMode === 'adaptive-deepthink') {
+                // Enabled if not generating
             } else if (currentMode === 'website') { // website only
-                const selectedTemps = getSelectedTemperatures();
-                disabled = selectedTemps.length === 0;
+                // No additional gating
             }
         }
         generateButton.disabled = disabled;
@@ -892,125 +706,105 @@ function updateControlsState() {
     if (importConfigLabel) importConfigLabel.classList.toggle('disabled', isGenerating);
     if (initialIdeaInput) initialIdeaInput.disabled = isGenerating;
 
-    if (modelSelectElement) modelSelectElement.disabled = isGenerating;
-    if (temperatureSlider) temperatureSlider.disabled = isGenerating;
-    if (topPSlider) topPSlider.disabled = isGenerating;
-    if (strategiesSlider) strategiesSlider.disabled = isGenerating;
-    if (subStrategiesSlider) subStrategiesSlider.disabled = isGenerating;
-    if (hypothesisSlider) hypothesisSlider.disabled = isGenerating;
+    // Model controls are now managed by routing system
     // Disable red team buttons during generation
     const redTeamButtons = document.querySelectorAll('.red-team-button');
     redTeamButtons.forEach(button => {
         (button as HTMLButtonElement).disabled = isGenerating;
     });
-    if (refinementToggle) refinementToggle.disabled = isGenerating;
-    if (pipelineSelectorsContainer) {
-        const disableSelectors = isGenerating || currentMode === 'deepthink' || currentMode === 'react';
-        pipelineSelectorsContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => (cb as HTMLInputElement).disabled = disableSelectors);
-        const pipelineSelectHeading = document.getElementById('pipeline-select-heading');
-        if (pipelineSelectHeading) {
-            const parentSection = pipelineSelectHeading.closest('.sidebar-section-content');
-            parentSection?.classList.toggle('disabled', disableSelectors);
-        }
-    }
+
+    // Disable sliders during generation
+    const sliders = document.querySelectorAll('.slider');
+    sliders.forEach(slider => {
+        (slider as HTMLInputElement).disabled = isGenerating;
+    });
+
+    // Disable toggles during generation
+    const toggles = document.querySelectorAll('input[type="checkbox"]:not([id*="pipeline"])');
+    toggles.forEach(toggle => {
+        (toggle as HTMLInputElement).disabled = isGenerating;
+    });
+    // Variants UI removed
 
     // Allow user to select any model for deepthink mode
     // Removed forced model selection override
 
-    // Block ALL sidebar controls during generation in ANY mode
-    if (appModeSelector) {
-        appModeSelector.querySelectorAll('input[type="radio"]').forEach(rb => (rb as HTMLInputElement).disabled = isGenerating);
-        appModeSelector.style.pointerEvents = isGenerating ? 'none' : 'auto';
-        appModeSelector.style.opacity = isGenerating ? '0.6' : '1';
+
+
+    // Update prompts modal state through routing system
+    routingManager.updatePromptsModalState(isGenerating);
+
+
+
+
+
+    // Block sidebar content during generation
+    const sidebarContent = document.querySelector('#controls-sidebar .sidebar-content');
+    if (sidebarContent) {
+        (sidebarContent as HTMLElement).style.pointerEvents = isGenerating ? 'none' : 'auto';
+        (sidebarContent as HTMLElement).style.opacity = isGenerating ? '0.6' : '1';
     }
 
-    if (customizePromptsTrigger) {
-        const parentSection = customizePromptsTrigger.closest('.sidebar-section');
-        parentSection?.classList.toggle('disabled', isGenerating);
-        customizePromptsTrigger.style.pointerEvents = isGenerating ? 'none' : 'auto';
-        customizePromptsTrigger.style.opacity = isGenerating ? '0.6' : '1';
+    // Disable providers and prompts buttons
+    const providersButton = document.getElementById('add-providers-trigger');
+    if (providersButton) {
+        (providersButton as HTMLButtonElement).disabled = isGenerating;
     }
-
-    // Block model selection container
-    if (modelSelectionContainer) {
-        modelSelectionContainer.style.pointerEvents = isGenerating ? 'none' : 'auto';
-        modelSelectionContainer.style.opacity = isGenerating ? '0.6' : '1';
-    }
-
-    // Block temperature selection container
-    if (temperatureSelectionContainer) {
-        temperatureSelectionContainer.style.pointerEvents = isGenerating ? 'none' : 'auto';
-        temperatureSelectionContainer.style.opacity = isGenerating ? '0.6' : '1';
-    }
-
-    // Block entire sidebar during generation
-    const controlsSidebar = document.getElementById('controls-sidebar');
-    if (controlsSidebar) {
-        controlsSidebar.style.pointerEvents = isGenerating ? 'none' : 'auto';
-        controlsSidebar.style.opacity = isGenerating ? '0.6' : '1';
+    const promptsButton = document.getElementById('prompts-trigger');
+    if (promptsButton) {
+        (promptsButton as HTMLButtonElement).disabled = isGenerating;
     }
 }
 
 
 function initPipelines() {
-    const selectedModel = modelSelectElement.value;
-    const selectedTempsWithOriginalIndices = getSelectedTemperatures();
-    let totalSteps: number;
-    let numRefinementIterations: number;
+    const selectedModel = getSelectedModel();
+    const temp = getSelectedTemperature();
+    const numRefinementIterations = getSelectedRefinementStages();
+    const totalSteps = 1 + numRefinementIterations + 1;
 
-    switch (currentMode) {
-        case 'website':
-            totalSteps = TOTAL_STEPS_WEBSITE;
-            numRefinementIterations = NUM_WEBSITE_REFINEMENT_ITERATIONS;
-            break;
-        default:
-            return;
+    const iterations: IterationData[] = [];
+    for (let i = 0; i < totalSteps; i++) {
+        let title = '';
+        if (i === 0) title = 'Initial Gen, Fix & Suggest';
+        else if (i <= numRefinementIterations) title = `Refine ${i}: Stabilize, Implement, Fix & Suggest`;
+        else title = 'Final Polish & Fix';
+        iterations.push({
+            iterationNumber: i,
+            title: title,
+            status: 'pending',
+            isDetailsOpen: true,
+        });
     }
 
+    pipelinesState = [{
+        id: 0,
+        originalTemperatureIndex: 0,
+        temperature: temp,
+        modelName: selectedModel,
+        iterations: iterations,
+        status: 'idle',
+        isStopRequested: false,
+    }];
 
-    pipelinesState = selectedTempsWithOriginalIndices.map(({ temp, originalIndex }, pipelineIndex) => {
-        const iterations: IterationData[] = [];
-        for (let i = 0; i < totalSteps; i++) {
-            let title = '';
-            if (currentMode === 'website') {
-                if (i === 0) title = 'Initial Gen, Fix & Suggest';
-                else if (i <= numRefinementIterations) title = `Refine ${i}: Stabilize, Implement, Fix & Suggest`;
-                else title = 'Final Polish & Fix';
-            }
-            iterations.push({
-                iterationNumber: i,
-                title: title,
-                status: 'pending',
-                isDetailsOpen: true, // Always open with new design
-            });
-        }
-        return {
-            id: pipelineIndex,
-            originalTemperatureIndex: originalIndex,
-            temperature: temp,
-            modelName: selectedModel,
-            iterations: iterations,
-            status: 'idle',
-            isStopRequested: false,
-        };
-    });
     renderPipelines();
     if (pipelinesState.length > 0) {
         activateTab(pipelinesState[0].id);
     } else {
-        tabsNavContainer.innerHTML = '<p class="no-pipelines-message">No variants selected to run.</p>';
+        clearTabsContainer();
+        tabsNavContainer.innerHTML += '<p class="no-pipelines-message">Nothing to show yet.</p>';
         pipelinesContentContainer.innerHTML = '';
     }
     updateControlsState();
 }
 
-
-function activateTab(idToActivate: number | string) {
+function activateTab(idToActivate: string | number) {
     if (currentMode === 'deepthink' && activeDeepthinkPipeline) {
         activeDeepthinkPipeline.activeTabId = idToActivate as string;
         // Deactivate all deepthink tabs and panes
         document.querySelectorAll('#tabs-nav-container .tab-button.deepthink-mode-tab').forEach(btn => btn.classList.remove('active'));
         document.querySelectorAll('#pipelines-content-container > .pipeline-content').forEach(pane => pane.classList.remove('active'));
+        
         // Activate the correct one
         const tabButton = document.getElementById(`deepthink-tab-${idToActivate}`);
         const contentPane = document.getElementById(`pipeline-content-${idToActivate}`);
@@ -1030,6 +824,15 @@ function activateTab(idToActivate: number | string) {
         const contentPane = document.getElementById(`pipeline-content-${idToActivate}`);
         if (tabButton) tabButton.classList.add('active');
         if (contentPane) contentPane.classList.add('active');
+        
+        // Rehydrate the agentic UI if switching to agentic-refinements tab
+        if (idToActivate === 'agentic-refinements' && contentPane) {
+            import('./React/ReactAgenticIntegration').then(({ rehydrateReactAgenticUI }) => {
+                rehydrateReactAgenticUI(contentPane);
+            }).catch(err => {
+                console.error('Failed to rehydrate React agentic UI:', err);
+            });
+        }
 
     } else if (currentMode !== 'deepthink' && currentMode !== 'react') {
         activePipelineId = idToActivate as number;
@@ -1043,39 +846,65 @@ function activateTab(idToActivate: number | string) {
     }
 }
 function renderPipelines() {
-    if (currentMode === 'deepthink') {
+    (window as any).pipelinesState = pipelinesState;
+    
+    // Get main header element
+    const mainHeaderContent = document.querySelector('.main-header-content') as HTMLElement;
+    
+    if (currentMode === 'agentic') {
+        // Show header and tabs for agentic mode
+        if (mainHeaderContent) mainHeaderContent.style.display = '';
+        if (tabsNavContainer) tabsNavContainer.style.display = '';
+        renderAgenticMode();
+        return;
+    } else if (currentMode === 'generativeui') {
+        // Show header and tabs for generativeui mode
+        if (mainHeaderContent) mainHeaderContent.style.display = '';
+        if (tabsNavContainer) tabsNavContainer.style.display = '';
+        renderGenerativeUIMode();
+        return;
+    } else if (currentMode === 'contextual') {
+        // Contextual mode doesn't use header/tabs - they're hidden in renderContextualMode
+        renderContextualMode();
+        return;
+    } else if (currentMode === 'adaptive-deepthink') {
+        // Adaptive Deepthink mode doesn't use header/tabs - they're hidden in renderAdaptiveDeepthinkMode
+        renderAdaptiveDeepthinkMode();
+        return;
+    } else if (currentMode === 'deepthink') {
+        // Show header and tabs for deepthink mode
+        if (mainHeaderContent) mainHeaderContent.style.display = '';
+        if (tabsNavContainer) tabsNavContainer.style.display = '';
         // Clear containers first
-        tabsNavContainer.innerHTML = '';
+        clearTabsContainer();
         pipelinesContentContainer.innerHTML = '';
         // Render deepthink UI if there's an active pipeline, otherwise show initial state
         if (activeDeepthinkPipeline) {
             renderActiveDeepthinkPipeline();
-        } else {
-            // Show initial deepthink UI
-            tabsNavContainer.innerHTML = '<div class="tab-button deepthink-initial active">Deepthink Analysis</div>';
-            pipelinesContentContainer.innerHTML = '<div class="content-pane deepthink-initial active"><div class="status-message">Enter a challenge above and click "Deepthink" to begin analysis.</div></div>';
         }
         return;
     } else if (currentMode === 'react') {
-        tabsNavContainer.innerHTML = '';
+        // Show header for react mode
+        if (mainHeaderContent) mainHeaderContent.style.display = '';
+        clearTabsContainer();
         pipelinesContentContainer.innerHTML = '';
         return;
     }
-    tabsNavContainer.innerHTML = '';
+
+    // Show header and tabs container for other modes (website, etc.)
+    if (mainHeaderContent) mainHeaderContent.style.display = '';
+    if (tabsNavContainer) tabsNavContainer.style.display = '';
+    clearTabsContainer();
     pipelinesContentContainer.innerHTML = '';
 
-    if (pipelinesState.length === 0) {
-        tabsNavContainer.innerHTML = '<p class="no-pipelines-message">No variants selected. Please choose at least one variant or import a configuration.</p>';
-        pipelinesContentContainer.innerHTML = '';
-        return;
-    }
 
-    pipelinesState.forEach(pipeline => {
+    // Check if there are any pipelines
+    pipelinesState.forEach((pipeline, index) => {
         const tabButton = document.createElement('button');
-        tabButton.className = `tab-button status-${pipeline.status}`;
-        tabButton.textContent = `Variant ${pipeline.id + 1} (T: ${pipeline.temperature.toFixed(1)})`;
+        tabButton.className = 'tab-button';
         tabButton.setAttribute('role', 'tab');
-        tabButton.setAttribute('aria-controls', `pipeline-content-${pipeline.id}`);
+        tabButton.setAttribute('aria-selected', (pipeline.id === activePipelineId).toString());
+        tabButton.textContent = `Pipeline ${index + 1}`;
         tabButton.setAttribute('id', `pipeline-tab-${pipeline.id}`);
         tabButton.addEventListener('click', () => activateTab(pipeline.id));
         tabsNavContainer.appendChild(tabButton);
@@ -1098,10 +927,57 @@ function renderPipelines() {
         // Stop button is now part of the iteration card header during processing
         updatePipelineStatusUI(pipeline.id, pipeline.status);
 
-        pipeline.iterations.forEach(iter => {
-            attachIterationActionButtons(pipeline.id, iter.iterationNumber);
-        });
+
     });
+
+    // Add View Evolution button at the absolute right
+    // Always show button if there are pipelines (even during processing)
+    if (pipelinesState.length > 0) {
+        const resolvePipelineForEvolution = () => {
+            const activePipeline = activePipelineId
+                ? pipelinesState.find((p) => p.id === activePipelineId)
+                : null;
+            if (activePipeline) return activePipeline;
+
+            const firstWithIterations = pipelinesState.find((p) => p.iterations && p.iterations.length > 0);
+            return firstWithIterations ?? pipelinesState[0];
+        };
+
+        const viewEvolutionBtn = document.createElement('button');
+        viewEvolutionBtn.id = 'main-view-evolution-button';
+        viewEvolutionBtn.className = 'main-view-evolution-button';
+
+        const initialPipeline = resolvePipelineForEvolution();
+        const hasIterations = initialPipeline?.iterations && initialPipeline.iterations.length > 0;
+        const isProcessing = initialPipeline?.status === 'running';
+
+        if (!hasIterations && !isProcessing) {
+            viewEvolutionBtn.setAttribute('title', 'No iterations generated yet. A placeholder view will open.');
+        } else if (isProcessing && !hasIterations) {
+            viewEvolutionBtn.setAttribute('title', 'Experiment in progress – latest evolution will appear as iterations generate.');
+        } else {
+            viewEvolutionBtn.setAttribute('title', 'View content evolution timeline');
+        }
+
+        viewEvolutionBtn.innerHTML = `
+            <span class="material-symbols-outlined">movie</span>
+            <span class="button-text">View Evolution</span>
+        `;
+
+        viewEvolutionBtn.addEventListener('click', async () => {
+            const { openEvolutionViewer } = await import('./Components/DiffModal');
+            const targetPipeline = resolvePipelineForEvolution();
+
+            if (!targetPipeline) {
+                // Removed console.warn
+                return;
+            }
+
+            openEvolutionViewer(targetPipeline.id);
+        });
+
+        tabsNavContainer.appendChild(viewEvolutionBtn);
+    }
 }
 
 function getEmptyStateMessage(status: IterationData['status'], contentType: string): string {
@@ -1128,7 +1004,7 @@ function renderIteration(pipelineId: number, iter: IterationData): string {
 
     let promptsContent = '';
     if (currentMode === 'website') {
-        if (iter.requestPromptContent_InitialGenerate) promptsContent += `<h6 class="prompt-title">Initial HTML Generation Prompt:</h6>${renderMathContent(iter.requestPromptContent_InitialGenerate)}`;
+        if (iter.requestPromptContent_InitialGenerate) promptsContent += `<h6 class="prompt-title">Initial Generation Prompt:</h6>${renderMathContent(iter.requestPromptContent_InitialGenerate)}`;
         if (iter.requestPromptContent_FeatureImplement) promptsContent += `<h6 class="prompt-title">Feature Implementation & Stabilization Prompt:</h6>${renderMathContent(iter.requestPromptContent_FeatureImplement)}`;
         if (iter.requestPromptContent_BugFix) promptsContent += `<h6 class="prompt-title">HTML Bug Fix/Polish & Completion Prompt:</h6>${renderMathContent(iter.requestPromptContent_BugFix)}`;
         if (iter.requestPromptFeatures_Suggest) promptsContent += `<h6 class="prompt-title">Feature Suggestion Prompt:</h6>${renderMathContent(iter.requestPromptFeatures_Suggest)}`;
@@ -1155,8 +1031,6 @@ function renderIteration(pipelineId: number, iter: IterationData): string {
                         <span class="model-section-title">Generated Content</span>
                         <div class="code-actions">
                              <button class="compare-output-button button" data-pipeline-id="${pipelineId}" data-iteration-number="${iter.iterationNumber}" data-content-type="html" type="button" ${!hasContent ? 'disabled' : ''}><span class="material-symbols-outlined">compare_arrows</span><span class="button-text">Compare</span></button>
-                             <button id="copy-html-${pipelineId}-${iter.iterationNumber}" class="button" type="button" ${!hasContent ? 'disabled' : ''}><span class="material-symbols-outlined">content_copy</span><span class="button-text">Copy</span></button>
-                             <button id="download-html-${pipelineId}-${iter.iterationNumber}" class="button" type="button" ${!hasContent ? 'disabled' : ''}><span class="material-symbols-outlined">download</span><span class="button-text">Download</span></button>
                         </div>
                     </div>
                     <div class="scrollable-content-area custom-scrollbar">${htmlContent}</div>
@@ -1165,33 +1039,47 @@ function renderIteration(pipelineId: number, iter: IterationData): string {
     }
 
     let suggestionsHtml = '';
-    const suggestionsToDisplay = iter.suggestedFeatures;
-    if (currentMode === 'website' && suggestionsToDisplay && suggestionsToDisplay.length > 0) {
-        const title = "Suggested Next Steps";
+    const suggestionsToDisplay = iter.suggestedFeaturesContent;
+    if (currentMode === 'website' && suggestionsToDisplay && suggestionsToDisplay.trim() !== '') {
+        const title = "Feature Suggestions";
         suggestionsHtml = `<div class="model-detail-section">
             <h5 class="model-section-title">${title}</h5>
-            <ul class="suggestion-list">${suggestionsToDisplay.map(f => `<li><p>${escapeHtml(f)}</p></li>`).join('')}</ul>
+            <div class="feature-suggestions-container">
+                ${renderMathContent(suggestionsToDisplay)}
+            </div>
         </div>`;
     }
 
     let previewHtml = '';
     if (currentMode === 'website') {
         const isEmptyGenContent = isEmptyOrPlaceholderHtml(iter.generatedContent);
-        const previewContainerId = `preview-container-${pipelineId}-${iter.iterationNumber}`;
         const fullscreenButtonId = `fullscreen-btn-${pipelineId}-${iter.iterationNumber}`;
         const hasContentForPreview = iter.generatedContent && !isEmptyGenContent && isHtmlContent(iter.generatedContent);
         let previewContent;
         if (hasContentForPreview) {
-            const iframeSandboxOptions = "allow-scripts allow-same-origin allow-forms allow-popups";
+            const iframeSandboxOptions = "allow-scripts allow-forms allow-popups allow-modals";
             const previewFrameId = `preview-iframe-${pipelineId}-${iter.iterationNumber}`;
             previewContent = `<iframe id="${previewFrameId}" sandbox="${iframeSandboxOptions}" title="Content Preview for Iteration ${iter.iterationNumber} of Pipeline ${pipelineId + 1}" style="width: 100%; height: 100%; border: none;"></iframe>`;
-            
-            // Use srcdoc approach like the compare modal for better consistency
+
+            // Use blob URL for better isolation than srcdoc
             setTimeout(() => {
                 const iframe = document.getElementById(previewFrameId) as HTMLIFrameElement;
                 if (iframe && iter.generatedContent) {
-                    iframe.srcdoc = iter.generatedContent;
+                    // Create a blob URL for complete isolation
+                    const blob = new Blob([iter.generatedContent], { type: 'text/html' });
+                    const blobUrl = URL.createObjectURL(blob);
+
+                    // Set the iframe src to the blob URL
+                    iframe.src = blobUrl;
+
+                    // Clean up blob URL when iframe is removed or page unloads
+                    iframe.addEventListener('load', () => {
+                        // Revoke after a delay to ensure content is loaded
+                        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+                    });
                 }
+                // Attach event listeners after iframe is set up
+                attachIterationEventListeners(pipelineId, iter.iterationNumber);
             }, 0);
         } else {
             const noPreviewMessage = getEmptyStateMessage(iter.status, 'Preview');
@@ -1239,16 +1127,48 @@ function renderIteration(pipelineId: number, iter: IterationData): string {
 
 
 
+// Helper function to attach event listeners to iteration elements
+function attachIterationEventListeners(pipelineId: number, iterationNumber: number) {
+    // Use setTimeout to ensure DOM elements are ready
+    setTimeout(() => {
+        // Attach fullscreen button listener
+        const fullscreenBtn = document.getElementById(`fullscreen-btn-${pipelineId}-${iterationNumber}`);
+        if (fullscreenBtn && !fullscreenBtn.hasAttribute('data-listener-attached')) {
+            fullscreenBtn.setAttribute('data-listener-attached', 'true');
+            fullscreenBtn.onclick = async () => {
+                // Reuse the same fullscreen preview helper as DiffModal
+                const { openLivePreviewFullscreen } = await import('./Components/ActionButton');
+                const pipeline = pipelinesState.find(p => p.id === pipelineId);
+                const iter = pipeline?.iterations.find(it => it.iterationNumber === iterationNumber);
+                const html = iter?.generatedContent;
+                if (html) {
+                    openLivePreviewFullscreen(html);
+                }
+            };
+        }
+
+        // Attach compare button listener
+        const compareBtn = document.querySelector(`[data-pipeline-id="${pipelineId}"][data-iteration-number="${iterationNumber}"]`) as HTMLButtonElement;
+        if (compareBtn && !compareBtn.hasAttribute('data-listener-attached')) {
+            compareBtn.setAttribute('data-listener-attached', 'true');
+            compareBtn.onclick = () => {
+                openDiffModal(pipelineId, iterationNumber, 'html');
+            };
+        }
+    }, 0);
+}
+
+
 // Global functions for code block actions
-(window as any).toggleCodeBlock = function(codeId: string) {
+(window as any).toggleCodeBlock = function (codeId: string) {
     const codeContent = document.getElementById(codeId);
     const toggleBtn = document.getElementById(`toggle-${codeId}`);
     const container = codeContent?.closest('.code-block-container');
-    
+
     if (!codeContent || !toggleBtn || !container) return;
-    
+
     const isExpanded = codeContent.classList.contains('expanded');
-    
+
     if (isExpanded) {
         codeContent.classList.remove('expanded');
         codeContent.classList.add('collapsed');
@@ -1264,73 +1184,72 @@ function renderIteration(pipelineId: number, iter: IterationData): string {
     }
 };
 
-(window as any).copyCodeBlock = async function(codeId: string) {
+// Copy code block with green feedback
+(window as any).copyCodeBlock = async function (codeId: string) {
     try {
         const codeElement = document.getElementById(codeId);
         if (!codeElement) return;
-        
+
         const codeText = codeElement.textContent || '';
         await navigator.clipboard.writeText(codeText);
-        
-        // Visual feedback
-        const copyBtn = document.querySelector(`[onclick="copyCodeBlock('${codeId}')"]`);
+
+        const copyBtn = document.querySelector(`.copy-code-btn[data-code-id="${codeId}"]`) as HTMLElement | null;
         if (copyBtn) {
-            const originalText = copyBtn.innerHTML;
-            copyBtn.innerHTML = `
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="20,6 9,17 4,12"></polyline>
-                </svg>
-            `;
+            const isLightMode = document.body.classList.contains('light-mode');
+            const accentColor = isLightMode ? '#2E7D32' : '#00C853';
+            const accentBg = isLightMode ? 'rgba(46, 125, 50, 0.2)' : 'rgba(0, 200, 83, 0.25)';
+            const accentBorder = isLightMode ? 'rgba(46, 125, 50, 0.35)' : 'rgba(0, 200, 83, 0.4)';
+
+            // Store original styles
+            const originalStyle = copyBtn.getAttribute('style') || '';
+
+            // Force inline styles with setAttribute (highest priority)
+            copyBtn.setAttribute('style', `
+                color: ${accentColor} !important;
+                background: ${accentBg} !important;
+                background-color: ${accentBg} !important;
+                border: 2px solid ${accentBorder} !important;
+                box-shadow: 0 0 12px ${accentBorder} !important;
+                opacity: 1 !important;
+                transform: scale(1) !important;
+                filter: none !important;
+            `);
+
+            copyBtn.classList.add('copied');
+
+            // Force SVG color change directly
+            const svg = copyBtn.querySelector('svg');
+            if (svg) {
+                svg.querySelectorAll('rect, path, polyline, line, circle').forEach((shape) => {
+                    shape.setAttribute('stroke', accentColor);
+                    shape.setAttribute('fill', 'none');
+                });
+            }
+
+            // Remove after delay
             setTimeout(() => {
-                copyBtn.innerHTML = originalText;
-            }, 1000);
+                copyBtn.setAttribute('style', originalStyle);
+
+                // Reset SVG to currentColor
+                if (svg) {
+                    svg.querySelectorAll('rect, path, polyline, line, circle').forEach((shape) => {
+                        shape.setAttribute('stroke', 'currentColor');
+                    });
+                }
+            }, 1200);
         }
     } catch (err) {
-        console.error('Failed to copy code:', err);
+        // Removed console.error
     }
 };
 
-(window as any).downloadCodeBlock = function(codeId: string) {
-    try {
-        const codeElement = document.getElementById(codeId);
-        if (!codeElement) return;
-        
-        const codeText = codeElement.textContent || '';
-        const blob = new Blob([codeText], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `code-${codeId}.txt`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
-        // Visual feedback
-        const downloadBtn = document.querySelector(`[onclick="downloadCodeBlock('${codeId}')"]`);
-        if (downloadBtn) {
-            const originalText = downloadBtn.innerHTML;
-            downloadBtn.innerHTML = `
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="20,6 9,17 4,12"></polyline>
-                </svg>
-            `;
-            setTimeout(() => {
-                downloadBtn.innerHTML = originalText;
-            }, 1000);
-        }
-    } catch (err) {
-        console.error('Failed to download code:', err);
-    }
-};
 
 async function copyToClipboard(text: string, buttonElement: HTMLButtonElement) {
     if (buttonElement.disabled) return;
 
     const buttonTextElement = buttonElement.querySelector<HTMLSpanElement>('.button-text');
     if (!buttonTextElement) {
-        console.error("Button is missing required '.button-text' span for status updates.", buttonElement);
+        // Removed console.error
         return;
     }
 
@@ -1347,7 +1266,7 @@ async function copyToClipboard(text: string, buttonElement: HTMLButtonElement) {
             buttonElement.disabled = false;
         }, 2000);
     } catch (err) {
-        console.error('Failed to copy text: ', err);
+        // Removed console.error
         buttonTextElement.textContent = 'Copy Failed';
         buttonElement.classList.add('copy-failed');
         setTimeout(() => {
@@ -1358,71 +1277,40 @@ async function copyToClipboard(text: string, buttonElement: HTMLButtonElement) {
     }
 }
 
-function attachIterationActionButtons(pipelineId: number, iterationNumber: number) {
-    const pipeline = pipelinesState.find(p => p.id === pipelineId);
-    if (!pipeline) return;
-    const iter = pipeline.iterations.find(it => it.iterationNumber === iterationNumber);
-    if (!iter) return;
 
-    if (currentMode === 'website') {
-        const canDownloadOrCopyHtml = !!iter.generatedContent && !isEmptyOrPlaceholderHtml(iter.generatedContent);
-
-        const downloadButton = document.querySelector<HTMLButtonElement>(`#download-html-${pipelineId}-${iterationNumber}`);
-        if (downloadButton) {
-            downloadButton.onclick = () => {
-                if (iter.generatedContent) {
-                    downloadFile(iter.generatedContent, `website_pipeline-${pipelineId + 1}_iter-${iter.iterationNumber}_temp-${pipeline.temperature}.html`, 'text/html');
-                }
-            };
-            downloadButton.disabled = !canDownloadOrCopyHtml;
-        }
-
-        const copyButton = document.querySelector<HTMLButtonElement>(`#copy-html-${pipelineId}-${iterationNumber}`);
-        if (copyButton) {
-            copyButton.dataset.hasContent = String(canDownloadOrCopyHtml);
-            copyButton.onclick = () => {
-                if (iter.generatedContent) copyToClipboard(iter.generatedContent, copyButton);
-            };
-            copyButton.disabled = !canDownloadOrCopyHtml;
-        }
-
-        const fullscreenButton = document.querySelector<HTMLButtonElement>(`#fullscreen-btn-${pipelineId}-${iterationNumber}`);
-        if (fullscreenButton) {
-            fullscreenButton.onclick = () => {
-                const iteration = pipelinesState[pipelineId]?.iterations.find(iter => iter.iterationNumber === iterationNumber);
-                if (iteration?.generatedContent) {
-                    openLivePreviewFullscreen(iteration.generatedContent);
-                }
-            };
-            fullscreenButton.disabled = !canDownloadOrCopyHtml;
-        }
-    }
-}
 
 function isEmptyOrPlaceholderHtml(html?: string): boolean {
     return !html || html.trim() === '' || html.includes('<!-- No HTML generated yet') || html.includes('<!-- No valid HTML was generated') || html.includes('<!-- HTML generation cancelled. -->');
 }
 
 
-function updateIterationUI(pipelineId: number, iterationNumber: number) {
+
+
+
+
+
+function updateIterationUI(pipelineId: number, iterationIndex: number) {
     const pipeline = pipelinesState.find(p => p.id === pipelineId);
-    if (!pipeline) return;
-    const iter = pipeline.iterations.find(it => it.iterationNumber === iterationNumber);
-    if (!iter) return;
+    if (!pipeline || !pipeline.iterations[iterationIndex]) return;
 
-    const iterationElement = document.getElementById(`iteration-${pipelineId}-${iterationNumber}`);
-    if (!iterationElement) return;
+    const iter = pipeline.iterations[iterationIndex];
+    const iterationElement = document.getElementById(`iteration-${pipelineId}-${iter.iterationNumber}`);
 
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = renderIteration(pipelineId, iter);
-    const newContentFirstChild = tempDiv.firstElementChild;
+    if (iterationElement) {
+        // Re-render the entire iteration element
+        const newHtml = renderIteration(pipelineId, iter);
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = newHtml;
+        const newElement = tempDiv.firstElementChild;
 
-    if (newContentFirstChild) {
-        iterationElement.replaceWith(newContentFirstChild);
-        attachIterationActionButtons(pipelineId, iterationNumber);
+        if (newElement && iterationElement.parentNode) {
+            iterationElement.parentNode.replaceChild(newElement, iterationElement);
+
+            // Re-attach event listeners for buttons
+            attachIterationEventListeners(pipelineId, iter.iterationNumber);
+        }
     }
 }
-
 
 function updatePipelineStatusUI(pipelineId: number, status: PipelineState['status']) {
     const pipeline = pipelinesState.find(p => p.id === pipelineId);
@@ -1460,789 +1348,14 @@ function updatePipelineStatusUI(pipelineId: number, status: PipelineState['statu
     updateControlsState();
 }
 
-async function callGemini(promptOrParts: string | Part[], temperature: number, modelToUse: string, systemInstruction?: string, isJsonOutput: boolean = false, topP?: number): Promise<GenerateContentResponse> {
-    if (!ai) throw new Error("Gemini API client not initialized.");
-    const contents: Part[] = typeof promptOrParts === 'string' ? [{ text: promptOrParts }] : promptOrParts;
-    const config: any = { temperature };
-    if (topP !== undefined) config.topP = topP;
-    if (systemInstruction) config.systemInstruction = systemInstruction;
-    if (isJsonOutput) config.responseMimeType = "application/json";
-    const response = await ai.models.generateContent({ model: modelToUse, contents: { parts: contents }, config: config });
-    return response;
-}
+// AI service function now handled by routing system
+const callGemini = callAI;
 
-function cleanHtmlOutput(rawHtml: string): string {
-    if (typeof rawHtml !== 'string') return '';
-    let textToClean = rawHtml.trim();
 
-    // Handle single-line HTML by converting \n to actual newlines
-    textToClean = textToClean.replace(/\\n/g, '\n');
-    textToClean = textToClean.replace(/\\t/g, '\t');
-    textToClean = textToClean.replace(/\\"/g, '"');
-    
-    // Try to find the start of the HTML document
-    const lowerText = textToClean.toLowerCase();
-    let startIndex = lowerText.indexOf('<!doctype');
-    if (startIndex === -1) {
-        startIndex = lowerText.indexOf('<html');
-    }
 
-    if (startIndex !== -1) {
-        // Try to find the end of the HTML document
-        const endIndex = textToClean.lastIndexOf('</html>');
-        if (endIndex !== -1 && endIndex + '</html>'.length > startIndex) {
-            return textToClean.substring(startIndex, endIndex + '</html>'.length).trim();
-        } else {
-            const potentialDoc = textToClean.substring(startIndex).trim();
-            const isNearBeginning = startIndex < 20 || textToClean.substring(0, startIndex).trim().length < 10;
-            if (isNearBeginning && potentialDoc.length > 100 && (potentialDoc.toLowerCase().includes("<body") || potentialDoc.toLowerCase().includes("<head") || potentialDoc.toLowerCase().includes("<div"))) {
-                console.warn(`cleanHtmlOutput: HTML document started but '</html>' tag was missing. Returning potentially truncated document starting with '${potentialDoc.substring(0, 30)}...'.`);
-                return potentialDoc;
-            }
-            console.warn(`cleanHtmlOutput: HTML document started but '</html>' tag was missing. Conditions for truncated HTML not met. Falling through to return original de-fenced and trimmed text.`);
-        }
-    }
 
-    return textToClean;
-}
 
-function cleanTextOutput(rawText: string): string {
-    if (typeof rawText !== 'string') return '';
-    return rawText.trim(); // Already handled by cleanOutputByType
-}
 
-function cleanOutputByType(rawOutput: string, type: string = 'text'): string {
-    if (typeof rawOutput !== 'string') return '';
-    let textToClean = rawOutput.trim();
-
-
-    const fenceRegex = /^```(\w*)?\s*\n?([\s\S]*?)\n?\s*```$/s;
-    const fenceMatch = textToClean.match(fenceRegex);
-
-    if (fenceMatch && fenceMatch[2]) { // fenceMatch[2] is the content inside the fence
-        textToClean = fenceMatch[2].trim();
-    }
-    // After potential fence removal, trim again.
-    // This is crucial for JSON.parse and general cleanliness.
-    textToClean = textToClean.trim();
-
-    if (type === 'html') {
-        // cleanHtmlOutput has specific logic to extract valid HTML structure,
-        // potentially discarding preamble/postamble even if no fences were present initially,
-        // or if fences were already stripped.
-        return cleanHtmlOutput(textToClean); // textToClean here is already fence-stripped and trimmed
-    }
-
-    if (type === 'json') {
-        // Special handling for JSON to fix newline and special character issues
-        return cleanJsonOutput(textToClean);
-    }
-
-    // For 'text', 'markdown', 'python', etc., after the above fence removal and trimming,
-    // return the result. The caller is responsible for further processing like JSON.parse().
-    return textToClean;
-}
-
-// New function to properly clean JSON output
-function cleanJsonOutput(jsonString: string): string {
-    if (!jsonString || typeof jsonString !== 'string') return jsonString;
-    
-    let cleaned = jsonString.trim();
-    
-    // Remove markdown code block fences if present
-    if (cleaned.startsWith('```json') || cleaned.startsWith('```')) {
-        const lines = cleaned.split('\n');
-        // Remove first line (```json or ```)
-        lines.shift();
-        // Remove last line if it's just ```
-        if (lines.length > 0 && lines[lines.length - 1].trim() === '```') {
-            lines.pop();
-        }
-        cleaned = lines.join('\n').trim();
-    }
-    
-    // Handle both JSON objects and arrays
-    let jsonStart = -1;
-    let jsonEnd = -1;
-    
-    // Look for array start
-    const arrayStart = cleaned.indexOf('[');
-    const arrayEnd = cleaned.lastIndexOf(']');
-    
-    // Look for object start
-    const objectStart = cleaned.indexOf('{');
-    const objectEnd = cleaned.lastIndexOf('}');
-    
-    // Determine which comes first and use appropriate bounds
-    if (arrayStart !== -1 && (objectStart === -1 || arrayStart < objectStart)) {
-        jsonStart = arrayStart;
-        jsonEnd = arrayEnd;
-    } else if (objectStart !== -1) {
-        jsonStart = objectStart;
-        jsonEnd = objectEnd;
-    }
-    
-    if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-        cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
-    }
-    
-    // Normalize smart quotes early
-    cleaned = cleaned.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
-
-    // Convert Python-style triple-quoted strings for known fields into valid JSON strings
-    // This handles cases like: "search_block": """multi-line code...""" or with stray surrounding quotes
-    // We target common patch value fields explicitly to avoid over-replacing unrelated content
-    const tripleQuotedFieldRe = /(["']?(?:search_block|replace_with|new_content|content|insert|insert_content|value|replacement|replace|with|to|new_value|search|target|match|pattern|searchBlock|newContent|replaceWith)["']?\s*:\s*)(?:"\s*)?(?:"""|''')([\s\S]*?)(?:"""|''')\s*(?:"\s*)?/g;
-    cleaned = cleaned.replace(tripleQuotedFieldRe, (_m, prefix: string, inner: string) => {
-        try {
-            // JSON.stringify will escape newlines, quotes and backslashes appropriately and include surrounding quotes
-            return prefix + JSON.stringify(inner);
-        } catch {
-            // Fallback: basic escaping
-            const escaped = inner.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t").replace(/\"/g, '\\"').replace(/"/g, '\\"');
-            return prefix + '"' + escaped + '"';
-        }
-    });
-
-    // Also normalize any standalone triple-quoted strings that may appear (very rare but possible)
-    cleaned = cleaned.replace(/"""([\s\S]*?)"""/g, (_m, inner: string) => JSON.stringify(inner));
-    cleaned = cleaned.replace(/'''([\s\S]*?)'''/g, (_m, inner: string) => JSON.stringify(inner));
-
-    // Try to fix common JSON issues
-    try {
-        // First, try to parse as-is to see if it's already valid
-        JSON.parse(cleaned);
-        return cleaned;
-    } catch (e) {
-        console.warn("JSON parsing failed, attempting to fix common issues:", e);
-        
-        // More robust string content fixing
-        let fixed = cleaned;
-        
-        // Fix unescaped quotes and newlines within string values
-        // This is a more careful approach that preserves JSON structure
-        try {
-            // More robust approach: fix escaped characters and string content
-            fixed = fixed
-                // Fix bad escape sequences like \n\n -> \\n
-                .replace(/\\([^"\\nrtbfuv/])/g, '\\\\$1')
-                // Fix unescaped quotes within strings
-                .replace(/"([^"]*?)"([^,}\]\s])/g, '"$1\\"$2')
-                // Fix unescaped newlines in string values
-                .replace(/"([^"]*?)\n([^"]*?)"/g, '"$1\\n$2"')
-                // Fix unescaped carriage returns
-                .replace(/"([^"]*?)\r([^"]*?)"/g, '"$1\\r$2"')
-                // Fix unescaped tabs
-                .replace(/"([^"]*?)\t([^"]*?)"/g, '"$1\\t$2"')
-                // Remove trailing commas
-                .replace(/,\s*([}\]])/g, '$1')
-                // Fix unquoted keys
-                .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
-            
-            // Try parsing the fixed version
-            JSON.parse(fixed);
-            return fixed;
-        } catch (e2) {
-            console.warn("Advanced JSON fixing failed, trying aggressive cleanup:", e2);
-            
-            // Fallback: very aggressive character-by-character fixes
-            try {
-                let basicFixed = cleaned
-                    // Remove any trailing commas
-                    .replace(/,\s*([}\]])/g, '$1')
-                    // Fix common quote issues
-                    .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":')
-                    // Escape all backslashes first
-                    .replace(/\\/g, '\\\\')
-                    // Then fix specific escape sequences
-                    .replace(/\\\\n/g, '\\n')
-                    .replace(/\\\\r/g, '\\r')
-                    .replace(/\\\\t/g, '\\t')
-                    // Basic newline escaping - more aggressive
-                    .replace(/\n/g, '\\n')
-                    .replace(/\r/g, '\\r')
-                    .replace(/\t/g, '\\t');
-                
-                JSON.parse(basicFixed);
-                return basicFixed;
-            } catch (e3) {
-                console.warn("All JSON fixing attempts failed, returning cleaned original:", e3);
-                return cleaned;
-            }
-        }
-    }
-}
-
-// ---------- GENERALIZED CONTENT PATCHING (Refine mode) ----------
-
-type ContentPatchOperation = {
-    operation: 'replace' | 'insert_after' | 'insert_before' | 'delete';
-    search_block: string;
-    replace_with?: string;
-    new_content?: string;
-    marker?: string; // For XML format insert_before/insert_after operations
-};
-
-// Detect if content is HTML by checking for html tags
-function isHtmlContent(content: string): boolean {
-    if (!content || typeof content !== 'string') return false;
-    const trimmed = content.trim();
-    // Check for common HTML patterns - be more permissive than requiring full HTML document
-    return trimmed.includes('<html>') || 
-           trimmed.includes('<!DOCTYPE') || 
-           (trimmed.includes('<head>') && trimmed.includes('<body>')) ||
-           (trimmed.includes('<div') && trimmed.includes('<style')) ||
-           (trimmed.includes('<script') && trimmed.includes('<style'));
-}
-
-// Helper: escape regex special characters to build literal patterns
-function escapeRegex(str: string): string {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-// Normalize text for better matching by removing extra whitespace and normalizing quotes
-function normalizeText(text: string): string {
-    return text
-        .replace(/\s+/g, ' ') // Normalize whitespace to single spaces
-        .replace(/[""'']/g, '"') // Normalize quotes
-        .replace(/[–—]/g, '-') // Normalize dashes  
-        .trim();
-}
-
-// Extract key phrases from text for semantic matching
-function extractKeyPhrases(text: string, maxPhrases: number = 3): string[] {
-    const normalized = normalizeText(text);
-    const sentences = normalized.split(/[.!?]+/).filter(s => s.trim().length > 10);
-    
-    // Get distinctive phrases (avoid common words)
-    const phrases = sentences
-        .map(s => s.trim())
-        .filter(s => s.length > 15 && s.length < 100)
-        .slice(0, maxPhrases);
-    
-    return phrases.length > 0 ? phrases : [normalized.substring(0, 50)];
-}
-
-// Helper: find a flexible match where whitespace differences are tolerated
-// Returns { start, end } of the matched range, or null if not found
-function findFlexibleMatch(haystack: string, needle: string): { start: number; end: number } | null {
-    if (!needle) return null;
-    
-    // Strategy 1: Direct exact match
-    const direct = haystack.indexOf(needle);
-    if (direct !== -1) {
-        return { start: direct, end: direct + needle.length };
-    }
-
-    // Strategy 2: Normalized text matching
-    const normalizedHaystack = normalizeText(haystack);
-    const normalizedNeedle = normalizeText(needle);
-    const normalizedMatch = normalizedHaystack.indexOf(normalizedNeedle);
-    if (normalizedMatch !== -1) {
-        // Find the original position by counting characters
-        let originalPos = 0;
-        let normalizedPos = 0;
-        while (normalizedPos < normalizedMatch && originalPos < haystack.length) {
-            if (normalizeText(haystack.charAt(originalPos)) === normalizedHaystack.charAt(normalizedPos)) {
-                normalizedPos++;
-            }
-            originalPos++;
-        }
-        return { start: originalPos, end: originalPos + needle.length };
-    }
-
-    // Strategy 3: Flexible whitespace regex matching
-    const pattern = escapeRegex(needle).replace(/\s+/g, '\\s+');
-    try {
-        const re = new RegExp(pattern, 'ms');
-        const match = re.exec(haystack);
-        if (match && typeof match.index === 'number') {
-            return { start: match.index, end: match.index + match[0].length };
-        }
-    } catch (e) {
-        console.warn('findFlexibleMatch: Regex matching failed', e);
-    }
-
-    // Strategy 4: Progressive substring matching (try shorter portions)
-    const lines = needle.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    if (lines.length > 1) {
-        for (let lineCount = Math.max(1, lines.length - 2); lineCount <= lines.length; lineCount++) {
-            const subset = lines.slice(0, lineCount).join('\n');
-            const subsetMatch = haystack.indexOf(subset);
-            if (subsetMatch !== -1) {
-                console.log(`findFlexibleMatch: Found partial match using ${lineCount}/${lines.length} lines`);
-                return { start: subsetMatch, end: subsetMatch + subset.length };
-            }
-        }
-    }
-
-    // Strategy 5: Key phrase matching for semantic similarity
-    const keyPhrases = extractKeyPhrases(needle);
-    for (const phrase of keyPhrases) {
-        const phraseMatch = haystack.indexOf(phrase);
-        if (phraseMatch !== -1) {
-            console.log(`findFlexibleMatch: Found match via key phrase: "${phrase.substring(0, 30)}..."`);
-            return { start: phraseMatch, end: phraseMatch + phrase.length };
-        }
-    }
-
-    // Strategy 6: Word-order flexible matching for short needles
-    if (needle.length < 200) {
-        const words = needle.split(/\s+/).filter(w => w.length > 2);
-        if (words.length >= 3) {
-            const wordPattern = words.map(w => escapeRegex(w)).join('\\s+(?:\\S+\\s+){0,3}');
-            try {
-                const wordRe = new RegExp(wordPattern, 'i');
-                const wordMatch = wordRe.exec(haystack);
-                if (wordMatch && typeof wordMatch.index === 'number') {
-                    console.log(`findFlexibleMatch: Found fuzzy word-order match`);
-                    return { start: wordMatch.index, end: wordMatch.index + wordMatch[0].length };
-                }
-            } catch (e) {
-                // Ignore word matching errors
-            }
-        }
-    }
-
-    return null;
-}
-
-// Generalized content application function
-function applyContentPatches(currentContent: string, patches: ContentPatchOperation[]): string {
-    // Create a copy of the content to avoid reference issues
-    let modifiedContent = typeof currentContent === 'string' ? currentContent : '';
-    if (!Array.isArray(patches) || patches.length === 0) {
-        console.log('applyContentPatches: No valid patches to apply');
-        return modifiedContent;
-    }
-
-    console.log(`applyContentPatches: Applying ${patches.length} patches to content (${modifiedContent.length} chars)`);
-    
-    // Store original content length for comparison
-    const originalLength = modifiedContent.length;
-    
-    for (let i = 0; i < patches.length; i++) {
-        const rawPatch = patches[i];
-        if (!rawPatch || typeof rawPatch !== 'object') {
-            console.warn(`applyContentPatches: Patch ${i + 1}: Skipping invalid patch (not an object):`, rawPatch);
-            continue;
-        }
-
-        const op = String((rawPatch as any).operation || '').toLowerCase() as ContentPatchOperation['operation'];
-        const searchBlock = (rawPatch as any).search_block ?? '';
-        const replaceWith = (rawPatch as any).replace_with ?? '';
-        const newContent = (rawPatch as any).new_content ?? '';
-
-        if (!op || !searchBlock || typeof searchBlock !== 'string') {
-            console.warn(`applyContentPatches: Patch ${i + 1}: Skipping patch with missing/invalid operation or search_block:`, rawPatch);
-            continue;
-        }
-
-        console.log(`applyContentPatches: Patch ${i + 1}: ${op} operation on block: "${searchBlock.substring(0, 60)}${searchBlock.length > 60 ? '...' : ''}"`);        
-        
-        try {
-            const beforeLength = modifiedContent.length;
-            
-            const match = findFlexibleMatch(modifiedContent, searchBlock);
-
-            if (op === 'replace') {
-                if (match) {
-                    modifiedContent = modifiedContent.slice(0, match.start) + replaceWith + modifiedContent.slice(match.end);
-                    console.log(`applyContentPatches: Patch ${i + 1}: Successfully applied replace (${beforeLength} -> ${modifiedContent.length} chars)`);
-                } else {
-                    console.warn(`applyContentPatches: Patch ${i + 1}: replace - search_block not found (even with whitespace-flex match). Patch skipped.`);
-                }
-            } else if (op === 'insert_after') {
-                if (match) {
-                    const insertPoint = match.end;
-                    modifiedContent = modifiedContent.slice(0, insertPoint) + newContent + modifiedContent.slice(insertPoint);
-                    console.log(`applyContentPatches: Patch ${i + 1}: Successfully applied insert_after (${beforeLength} -> ${modifiedContent.length} chars)`);
-                } else {
-                    // Fallback: try anchor-line insertion using the longest significant line from search_block
-                    const lines = String(searchBlock).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-                    let anchors: string[] = [];
-                    if (lines.length > 0) {
-                        const longest = [...lines].sort((a, b) => b.length - a.length)[0];
-                        const first = lines[0];
-                        const last = lines[lines.length - 1];
-                        anchors = Array.from(new Set([longest, first, last].filter(Boolean)));
-                    }
-                    let inserted = false;
-                    for (const anchor of anchors) {
-                        const aMatch = findFlexibleMatch(modifiedContent, anchor);
-                        if (aMatch) {
-                            const insertPoint = aMatch.end;
-                            modifiedContent = modifiedContent.slice(0, insertPoint) + newContent + modifiedContent.slice(insertPoint);
-                            console.log(`applyContentPatches: Patch ${i + 1}: insert_after applied via anchor fallback. Anchor: "${anchor.substring(0, 60)}${anchor.length > 60 ? '...' : ''}"`);
-                            inserted = true;
-                            break;
-                        }
-                    }
-                    if (!inserted) {
-                        console.warn(`applyContentPatches: Patch ${i + 1}: insert_after - search_block not found. Anchor fallback also failed. Patch skipped.`);
-                    }
-                }
-            } else if (op === 'insert_before') {
-                if (match) {
-                    modifiedContent = modifiedContent.slice(0, match.start) + newContent + modifiedContent.slice(match.start);
-                    console.log(`applyContentPatches: Patch ${i + 1}: Successfully applied insert_before (${beforeLength} -> ${modifiedContent.length} chars)`);
-                } else {
-                    // Fallback: try anchor-line insertion before the best matching anchor line
-                    const lines = String(searchBlock).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-                    let anchors: string[] = [];
-                    if (lines.length > 0) {
-                        const longest = [...lines].sort((a, b) => b.length - a.length)[0];
-                        const first = lines[0];
-                        const last = lines[lines.length - 1];
-                        anchors = Array.from(new Set([longest, first, last].filter(Boolean)));
-                    }
-                    let inserted = false;
-                    for (const anchor of anchors) {
-                        const aMatch = findFlexibleMatch(modifiedContent, anchor);
-                        if (aMatch) {
-                            modifiedContent = modifiedContent.slice(0, aMatch.start) + newContent + modifiedContent.slice(aMatch.start);
-                            console.log(`applyContentPatches: Patch ${i + 1}: insert_before applied via anchor fallback. Anchor: "${anchor.substring(0, 60)}${anchor.length > 60 ? '...' : ''}"`);
-                            inserted = true;
-                            break;
-                        }
-                    }
-                    if (!inserted) {
-                        console.warn(`applyContentPatches: Patch ${i + 1}: insert_before - search_block not found. Anchor fallback also failed. Patch skipped.`);
-                    }
-                }
-            } else if (op === 'delete') {
-                if (match) {
-                    modifiedContent = modifiedContent.slice(0, match.start) + modifiedContent.slice(match.end);
-                    console.log(`applyContentPatches: Patch ${i + 1}: Successfully applied delete (${beforeLength} -> ${modifiedContent.length} chars)`);
-                } else {
-                    console.warn(`applyContentPatches: Patch ${i + 1}: delete - search_block not found (flex). Patch skipped.`);
-                }
-            } else {
-                console.warn(`applyContentPatches: Patch ${i + 1}: Unsupported operation '${op}'. Skipping.`, rawPatch);
-            }
-        } catch (e) {
-            console.warn(`applyContentPatches: Patch ${i + 1}: Error applying patch. Skipping this patch.`, e, rawPatch);
-        }
-    }
-    
-    console.log(`applyContentPatches: Completed. Final content length: ${modifiedContent.length} chars (original: ${originalLength} chars)`);
-    
-    // Add a safeguard to prevent extremely large content growth
-    if (modifiedContent.length > originalLength * 10 && originalLength > 1000) {
-        console.warn(`applyContentPatches: Content grew significantly (${originalLength} -> ${modifiedContent.length}). This might indicate an issue.`);
-    }
-    
-    return modifiedContent;
-}
-
-// Parse content patches from XML string  
-function parseContentPatchesFromXml(rawXmlString: string): ContentPatchOperation[] | null {
-    if (!rawXmlString || typeof rawXmlString !== 'string') {
-        console.warn('parseContentPatchesFromXml: No rawXmlString provided');
-        return null;
-    }
-
-    // Clean up the XML string
-    let cleanedXml = rawXmlString.trim();
-    
-    // Extract the changes section
-    const changesMatch = cleanedXml.match(/<changes>([\s\S]*?)<\/changes>/i);
-    if (!changesMatch) {
-        console.warn('parseContentPatchesFromXml: No <changes> section found in XML');
-        return null;
-    }
-    
-    const changesContent = changesMatch[1];
-    console.log('parseContentPatchesFromXml: Extracted changes content:', changesContent.substring(0, 200) + '...');
-
-    // Parse individual change elements
-    const changeRegex = /<change>([\s\S]*?)<\/change>/gi;
-    const changes: ContentPatchOperation[] = [];
-    let match;
-    
-    while ((match = changeRegex.exec(changesContent)) !== null) {
-        const changeContent = match[1];
-        console.log('parseContentPatchesFromXml: Processing change:', changeContent.substring(0, 100) + '...');
-        
-        const operation = parseChangeOperation(changeContent);
-        if (operation) {
-            changes.push(operation);
-        }
-    }
-    
-    if (changes.length === 0) {
-        console.warn('parseContentPatchesFromXml: No valid change operations found');
-        return null;
-    }
-    
-    console.log(`parseContentPatchesFromXml: Successfully parsed ${changes.length} operations`);
-    return changes;
-}
-
-// Helper function to parse individual change operation
-function parseChangeOperation(changeContent: string): ContentPatchOperation | null {
-    // Extract CDATA content helper
-    const extractCDATA = (tag: string, content: string): string => {
-        const regex = new RegExp(`<${tag}><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`, 'i');
-        const match = content.match(regex);
-        return match ? match[1] : '';
-    };
-    
-    // Check for search/replace pattern
-    const searchContent = extractCDATA('search', changeContent);
-    const replaceContent = extractCDATA('replace', changeContent);
-    
-    if (searchContent && replaceContent) {
-        return {
-            operation: 'replace',
-            search_block: searchContent,
-            replace_with: replaceContent
-        };
-    }
-    
-    // Check for insert_after pattern
-    const insertAfterContent = extractCDATA('insert_after', changeContent);
-    const markerAfterContent = extractCDATA('marker', changeContent);
-    
-    if (insertAfterContent && markerAfterContent) {
-        return {
-            operation: 'insert_after',
-            search_block: markerAfterContent,
-            new_content: insertAfterContent
-        };
-    }
-    
-    // Check for insert_before pattern
-    const insertBeforeContent = extractCDATA('insert_before', changeContent);
-    const markerBeforeContent = extractCDATA('marker', changeContent);
-    
-    if (insertBeforeContent && markerBeforeContent) {
-        return {
-            operation: 'insert_before', 
-            search_block: markerBeforeContent,
-            new_content: insertBeforeContent
-        };
-    }
-    
-    // Check for delete pattern
-    const deleteContent = extractCDATA('delete', changeContent);
-    
-    if (deleteContent) {
-        return {
-            operation: 'delete',
-            search_block: deleteContent
-        };
-    }
-    
-    console.warn('parseChangeOperation: Could not parse change operation:', changeContent.substring(0, 100) + '...');
-    return null;
-}
-
-// Legacy JSON parser (kept for backward compatibility)
-function parseContentPatchesFromJson(rawJsonString: string): ContentPatchOperation[] | null {
-    if (!rawJsonString || typeof rawJsonString !== 'string') {
-        console.warn('parseContentPatchesFromJson: No rawJsonString provided');
-        return null;
-    }
-    
-    let parsedAny: any;
-    try {
-        parsedAny = parseJsonSafe(rawJsonString);
-        if (!parsedAny) {
-            console.warn('parseContentPatchesFromJson: parseJsonSafe returned null/undefined');
-            return null;
-        }
-    } catch (e) {
-        console.warn('parseContentPatchesFromJson: parseJsonSafe failed. Raw (first 300 chars):', rawJsonString.substring(0, 300), e);
-        return null;
-    }
-
-    const containers = ['patches', 'operations', 'edits', 'changes'];
-    const getArrayFromContainer = (obj: any): any[] | null => {
-        if (Array.isArray(obj)) return obj;
-        if (obj && typeof obj === 'object') {
-            for (const key of containers) {
-                if (Array.isArray(obj[key])) return obj[key];
-            }
-        }
-        return null;
-    };
-
-    const maybeArray = getArrayFromContainer(parsedAny);
-    if (!maybeArray) {
-        console.warn('parseContentPatchesFromJson: No patches array found in parsed JSON. Keys:', parsedAny && typeof parsedAny === 'object' ? Object.keys(parsedAny) : 'n/a');
-        return null;
-    }
-
-    const pick = (o: any, keys: string[]): any => {
-        for (const k of keys) {
-            if (o && Object.prototype.hasOwnProperty.call(o, k)) return o[k];
-        }
-        return undefined;
-    };
-
-    const normalizeOp = (opRaw: any): ContentPatchOperation['operation'] | '' => {
-        const s = String(opRaw || '').toLowerCase().trim().replace(/[-\s]+/g, '_');
-        if (s === 'replace' || s === 'insert_after' || s === 'insert_before' || s === 'delete') return s as ContentPatchOperation['operation'];
-        return '';
-    };
-
-    const normalized: ContentPatchOperation[] = [];
-    for (const item of maybeArray) {
-        if (!item || typeof item !== 'object') continue;
-        const op = normalizeOp(pick(item, ['operation', 'op', 'action']));
-        const searchBlock = pick(item, ['search_block', 'search', 'target', 'match', 'pattern', 'searchBlock']);
-        const replaceWith = pick(item, ['replace_with', 'replacement', 'replace', 'with', 'new_value', 'to', 'replaceWith']);
-        const newContent = pick(item, ['new_content', 'content', 'insert', 'insert_content', 'value', 'newContent']);
-
-        if (!op || typeof searchBlock !== 'string') continue;
-        if (op === 'replace' && typeof replaceWith !== 'string') continue;
-        if ((op === 'insert_after' || op === 'insert_before') && typeof newContent !== 'string') continue;
-
-        normalized.push({ operation: op, search_block: searchBlock, replace_with: replaceWith, new_content: newContent });
-    }
-
-    if (normalized.length === 0) {
-        console.warn('parseContentPatchesFromJson: No valid patch operations after normalization.');
-        return null;
-    }
-    return normalized;
-}
-
-// Unified parser that detects format and uses appropriate parser
-function parseContentPatches(rawString: string): ContentPatchOperation[] | null {
-    if (!rawString || typeof rawString !== 'string') {
-        console.warn('parseContentPatches: No rawString provided');
-        return null;
-    }
-    
-    const trimmed = rawString.trim();
-    
-    // Detect XML format
-    if (trimmed.includes('</changes>') && trimmed.includes('</change>')) {
-        console.log('parseContentPatches: Detected XML format, using XML parser');
-        return parseContentPatchesFromXml(rawString);
-    }
-    
-    // Fallback to JSON format
-    console.log('parseContentPatches: Detected JSON format, using JSON parser');
-    return parseContentPatchesFromJson(rawString);
-}
-
-
-function generateFallbackFeaturesFromString(text: string): string[] {
-    const listItemsRegex = /(?:^\s*[-*+]|\d+\.)\s+(.*)/gm;
-    let matches;
-    const features: string[] = [];
-    if (typeof text === 'string') {
-        while ((matches = listItemsRegex.exec(text)) !== null) {
-            features.push(matches[1].trim());
-            if (features.length >= 2) break;
-        }
-    }
-    if (features.length > 0) return features.slice(0, 2);
-    console.warn("generateFallbackFeaturesFromString: Could not extract 2 features from string, using generic fallbacks.");
-    return ["Add a clear call to action", "Improve visual hierarchy"].slice(0, 2);
-}
-
-function generateFallbackCritiqueFromString(text: string, count: number = 3): string[] {
-    const listItemsRegex = /(?:^\s*[-*+]|\d+\.)\s+(.*)/gm;
-    let matches;
-    const critique: string[] = [];
-    if (typeof text === 'string') {
-        while ((matches = listItemsRegex.exec(text)) !== null) {
-            critique.push(matches[1].trim());
-            if (critique.length >= count) break;
-        }
-    }
-    if (critique.length > 0) return critique.slice(0, count);
-    console.warn(`generateFallbackCritiqueFromString: Could not extract ${count} critique points. Using generic fallbacks.`);
-    const fallbacks = ["Consider developing the main character's motivation further.", "Explore adding more sensory details to the descriptions.", "Check the pacing of the current section; it might be too fast or too slow."];
-    return fallbacks.slice(0, count);
-}
-
-function generateFallbackStrategies(text: string, count: number): string[] {
-    const listItemsRegex = /(?:^\s*[-*+]|\d+\.)\s+(.*)/gm;
-    let matches;
-    const strategies: string[] = [];
-
-    while ((matches = listItemsRegex.exec(text)) !== null && strategies.length < count) {
-        strategies.push(matches[1].trim());
-    }
-
-    if (strategies.length > 0 && strategies.length <= count) return strategies;
-    if (strategies.length > count) return strategies.slice(0, count);
-
-    console.warn(`generateFallbackStrategies: Could not extract ${count} strategies. Using generic fallbacks.`);
-    const fallbacks = [
-        "Try to simplify the problem statement or break it into smaller parts.",
-        "Identify relevant formulas or theorems.",
-        "Work through the problem step by step.",
-        "Check for any given constraints or conditions.",
-        "Consider alternative approaches or methods."
-    ];
-    return fallbacks.slice(0, count);
-}
-
-
-function parseJsonSuggestions(rawJsonString: string, suggestionKey: 'features' | 'suggestions' | 'strategies' | 'sub_strategies' = 'features', expectedCount: number = 2): string[] {
-    if (typeof rawJsonString !== 'string' || !rawJsonString.trim()) {
-        console.warn(`parseJsonSuggestions: Input string is empty or not a string. Using fallback for ${suggestionKey}.`);
-        if (suggestionKey === 'features') return generateFallbackFeaturesFromString('');
-        if (suggestionKey === 'strategies' || suggestionKey === 'sub_strategies') return generateFallbackStrategies('', expectedCount);
-        return generateFallbackCritiqueFromString('', expectedCount);
-    }
-
-    const cleanedJsonString = cleanOutputByType(rawJsonString, 'json');
-
-    try {
-        const parsed = JSON.parse(cleanedJsonString);
-        let items: string[] = [];
-
-        // Standard case: {"suggestionKey": ["item1", "item2"]}
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Array.isArray(parsed[suggestionKey]) && parsed[suggestionKey].every((f: any) => typeof f === 'string')) {
-            items = parsed[suggestionKey];
-        }
-        // Handles cases where the JSON is just an array of strings: ["item1", "item2"]
-        else if (Array.isArray(parsed) && parsed.every((item: any) => typeof item === 'string')) {
-            items = parsed;
-        }
-        // Fallback for less structured JSON: if the primary key is different but it contains an array of strings
-        else if (typeof parsed === 'object' && parsed !== null) {
-            for (const key in parsed) {
-                if (Array.isArray(parsed[key]) && parsed[key].every((s: any) => typeof s === 'string')) {
-                    items = parsed[key];
-                    console.warn(`parseJsonSuggestions: Used fallback key "${key}" for suggestions as primary key "${suggestionKey}" was not found or malformed. Parsed object had keys: ${Object.keys(parsed).join(', ')}`);
-                    break;
-                }
-            }
-        }
-
-        if (items.length > 0) {
-            if (items.length < expectedCount) {
-                console.warn(`parseJsonSuggestions: Parsed ${items.length} ${suggestionKey}, expected ${expectedCount}. Padding with fallbacks.`);
-                const fallbacks = (suggestionKey === 'features') ? generateFallbackFeaturesFromString('') :
-                    (suggestionKey === 'strategies' || suggestionKey === 'sub_strategies') ? generateFallbackStrategies('', expectedCount - items.length) :
-                        generateFallbackCritiqueFromString('', expectedCount - items.length);
-                return items.concat(fallbacks.slice(0, expectedCount - items.length));
-            }
-            return items.slice(0, expectedCount); // Ensure we don't return more than expected
-        }
-
-        // If no items found via expected structures, attempt generic string list extraction from original raw string
-        console.warn(`parseJsonSuggestions: Parsed JSON for ${suggestionKey} is not in the expected format or empty. Attempting string fallback from original content. Parsed object:`, parsed, "Cleaned string for parsing:", cleanedJsonString, "Original string (first 300 chars):", rawJsonString.substring(0, 300));
-        if (suggestionKey === 'features') return generateFallbackFeaturesFromString(rawJsonString);
-        if (suggestionKey === 'strategies' || suggestionKey === 'sub_strategies') return generateFallbackStrategies(rawJsonString, expectedCount);
-        return generateFallbackCritiqueFromString(rawJsonString, expectedCount);
-
-    } catch (e) {
-        console.error(`parseJsonSuggestions: Failed to parse JSON for ${suggestionKey}:`, e, "Cleaned string for parsing:", cleanedJsonString, "Original string (first 300 chars):", rawJsonString.substring(0, 300));
-        // Fallback to extracting from the original raw string if JSON parsing fails completely
-        if (suggestionKey === 'features') return generateFallbackFeaturesFromString(rawJsonString);
-        if (suggestionKey === 'strategies' || suggestionKey === 'sub_strategies') return generateFallbackStrategies(rawJsonString, expectedCount);
-        return generateFallbackCritiqueFromString(rawJsonString, expectedCount);
-    }
-}
 
 
 async function runPipeline(pipelineId: number, initialRequest: string) {
@@ -2253,11 +1366,11 @@ async function runPipeline(pipelineId: number, initialRequest: string) {
     updatePipelineStatusUI(pipelineId, 'running');
 
     let currentContent = "";
-    let currentSuggestions: string[] = [];
+    let currentSuggestions: string = ''; // Changed from array to string for markdown content
 
 
-    const totalPipelineSteps = currentMode === 'website' ? TOTAL_STEPS_WEBSITE : 0;
-    const numMainRefinementLoops = currentMode === 'website' ? NUM_WEBSITE_REFINEMENT_ITERATIONS : 0;
+    const numMainRefinementLoops = currentMode === 'website' ? getSelectedRefinementStages() : 0;
+    const totalPipelineSteps = currentMode === 'website' ? 1 + numMainRefinementLoops + 1 : 0;
 
     for (let i = 0; i < totalPipelineSteps; i++) {
         const iteration = pipeline.iterations[i];
@@ -2267,7 +1380,7 @@ async function runPipeline(pipelineId: number, initialRequest: string) {
             updateIterationUI(pipelineId, i);
             for (let j = i + 1; j < pipeline.iterations.length; j++) {
                 pipeline.iterations[j].status = 'cancelled';
-                pipeline.iterations[j].error = 'Process execution was stopped by the user.';
+                pipeline.iterations[j].error = 'Process execution was stopped by user.';
                 updateIterationUI(pipelineId, j);
             }
             updatePipelineStatusUI(pipelineId, 'stopped');
@@ -2276,15 +1389,38 @@ async function runPipeline(pipelineId: number, initialRequest: string) {
 
         // Reset prompts and outputs for current iteration (website mode only)
         iteration.requestPromptContent_InitialGenerate = iteration.requestPromptContent_FeatureImplement = iteration.requestPromptContent_BugFix = iteration.requestPromptFeatures_Suggest = undefined;
-        iteration.generatedRawContent = undefined; // Clear raw HTML output
+        iteration.contentBeforeBugFix = undefined; // Clear content before bug fix
         iteration.error = undefined;
         // Website-only fields are managed; non-website fields no longer exist
 
         try {
-            const makeApiCall = async (userPrompt: string, systemInstruction: string, isJson: boolean, stepDesc: string): Promise<string> => {
+            // Helper function to get custom model for an agent
+            const getAgentModel = (agentKey: string): string | undefined => {
+                if (currentMode === 'website') {
+                    const modelField = `model_${agentKey}` as keyof typeof customPromptsWebsiteState;
+                    const selectedModel = customPromptsWebsiteState[modelField] as string | undefined;
+                    return selectedModel;
+                } else if (currentMode === 'deepthink') {
+                    const modelField = `model_${agentKey}` as keyof typeof customPromptsDeepthinkState;
+                    const selectedModel = customPromptsDeepthinkState[modelField] as string | undefined;
+                    return selectedModel;
+                } else if (currentMode === 'react') {
+                    const modelField = `model_${agentKey}` as keyof typeof customPromptsReactState;
+                    const selectedModel = customPromptsReactState[modelField] as string | undefined;
+                    return selectedModel;
+                }
+                return undefined;
+            };
+
+            const makeApiCall = async (userPrompt: string, systemInstruction: string, isJson: boolean, stepDesc: string, agentKey?: string): Promise<string> => {
                 if (!pipeline) throw new Error("Pipeline context lost");
                 if (pipeline.isStopRequested) throw new PipelineStopRequestedError(`Stop requested before API call: ${stepDesc}`);
                 let responseText = "";
+                const customModel = agentKey ? getAgentModel(agentKey) : undefined;
+                const modelToUse: string = customModel ?? pipeline.modelName;
+                if (!modelToUse) {
+                    throw new Error(`No model specified for ${stepDesc}. Please select a model for this agent or set a global model.`);
+                }
                 for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
                     if (pipeline.isStopRequested) throw new PipelineStopRequestedError(`Stop requested during retry for: ${stepDesc}`);
                     iteration.retryAttempt = attempt;
@@ -2293,13 +1429,13 @@ async function runPipeline(pipelineId: number, initialRequest: string) {
                     if (attempt > 0) await new Promise(resolve => setTimeout(resolve, INITIAL_DELAY_MS * Math.pow(BACKOFF_FACTOR, attempt)));
 
                     try {
-                        const apiResponse = await callGemini(userPrompt, pipeline.temperature, pipeline.modelName, systemInstruction, isJson);
+                        const apiResponse = await callGemini(userPrompt, pipeline.temperature, modelToUse, systemInstruction, isJson, getSelectedTopP());
                         responseText = apiResponse.text;
                         iteration.status = 'processing';
                         updateIterationUI(pipelineId, i);
                         return responseText;
                     } catch (e: any) {
-                        console.warn(`Pipeline ${pipelineId}, Iter ${i} (${stepDesc}), Attempt ${attempt + 1} failed: ${e.message}`);
+                        // Removed console.warn
                         iteration.error = `Attempt ${attempt + 1} for ${stepDesc} failed: ${e.message || 'Unknown API error'}`;
                         if (e.details) iteration.error += `\nDetails: ${JSON.stringify(e.details)}`;
                         if (e.status) iteration.error += `\nStatus: ${e.status}`;
@@ -2320,114 +1456,126 @@ async function runPipeline(pipelineId: number, initialRequest: string) {
                     const userPromptInitialGen = renderPrompt(customPromptsWebsiteState.user_initialGen, { initialIdea: initialRequest, currentContent: currentContent });
                     iteration.requestPromptContent_InitialGenerate = userPromptInitialGen;
                     {
-                        const initialGenResponse = await makeApiCall(userPromptInitialGen, customPromptsWebsiteState.sys_initialGen, false, "Initial HTML Generation");
+                        const initialGenResponse = await makeApiCall(userPromptInitialGen, customPromptsWebsiteState.sys_initialGen, false, "Initial HTML Generation", "initialGen");
                         // For initial generation, expect full content output
                         currentContent = initialGenResponse;
-                        iteration.generatedRawContent = currentContent; // Store initial generation
+                        iteration.contentBeforeBugFix = currentContent; // Store initial generation before bug fix
+                    }
+
+                    // Apply quality mode system prompt if enabled
+                    let bugFixSystemPrompt = customPromptsWebsiteState.sys_initialBugFix;
+                    if (currentEvolutionMode === 'quality') {
+                        bugFixSystemPrompt = `${QUALITY_MODE_SYSTEM_PROMPT}\n\n${bugFixSystemPrompt}`;
                     }
 
                     const userPromptInitialBugFix = renderPrompt(customPromptsWebsiteState.user_initialBugFix, { initialIdea: initialRequest, currentContent: currentContent || placeholderContent });
                     iteration.requestPromptContent_BugFix = userPromptInitialBugFix;
                     {
-                        const bugfixResponse = await makeApiCall(userPromptInitialBugFix, customPromptsWebsiteState.sys_initialBugFix, false, "Initial Content Bug Fix (XML Patches)");
-                        const patches = parseContentPatches(bugfixResponse);
-                        if (patches && patches.length > 0) {
-                            // Create a copy of currentContent to avoid reference issues
-                            const contentBeforePatches = currentContent || "";
-                            currentContent = applyContentPatches(contentBeforePatches, patches);
-                            iteration.generatedContent = isHtmlContent(currentContent) ? cleanHtmlOutput(currentContent) : currentContent;
-                            iteration.providedPatchesJson = cleanOutputByType(bugfixResponse, 'json');
-                            iteration.providedPatchesContentType = isHtmlContent(currentContent) ? 'html' : 'text';
-                        } else {
-                            // Fallback: treat response as full content if JSON invalid or empty
-                            const fallbackContent = cleanOutputByType(bugfixResponse, isHtmlContent(bugfixResponse) ? 'html' : 'text');
-                            if (fallbackContent && fallbackContent.length > 0) {
-                                currentContent = isHtmlContent(fallbackContent) ? cleanHtmlOutput(fallbackContent) : fallbackContent;
-                            }
-                            iteration.generatedContent = currentContent;
-                        }
+                        const bugfixResponse = await makeApiCall(userPromptInitialBugFix, bugFixSystemPrompt, false, "Initial Bug Fix & Polish - Full Content", "initialBugFix");
+                        // Now expecting full updated content directly
+                        currentContent = bugfixResponse;
+                        iteration.generatedContent = isHtmlContent(currentContent) ? cleanHtmlOutput(currentContent) : currentContent;
                     }
 
-                    const userPromptInitialFeatures = renderPrompt(customPromptsWebsiteState.user_initialFeatureSuggest, { initialIdea: initialRequest, currentContent: currentContent || placeholderContent });
-                    iteration.requestPromptFeatures_Suggest = userPromptInitialFeatures;
-                    // Use the selected model for feature suggestions
-                    const featuresJsonString = await callGemini(userPromptInitialFeatures, pipeline.temperature, pipeline.modelName, customPromptsWebsiteState.sys_initialFeatureSuggest, true).then(response => response.text);
-                    iteration.suggestedFeatures = parseJsonSuggestions(featuresJsonString, 'features', 5);
-                    currentSuggestions = iteration.suggestedFeatures;
-                } else if (i <= numMainRefinementLoops) {
-                    const featuresToImplementStr = currentSuggestions.join('; ');
-                    const userPromptRefineImplement = renderPrompt(customPromptsWebsiteState.user_refineStabilizeImplement, { currentContent: currentContent || placeholderContent, featuresToImplementStr });
-                    iteration.requestPromptContent_FeatureImplement = userPromptRefineImplement;
-                    {
-                        const refineImplementResponse = await makeApiCall(userPromptRefineImplement, customPromptsWebsiteState.sys_refineStabilizeImplement, false, `Stabilization & Feature Impl (Iter ${i}) - XML Patches`);
-                        const patches = parseContentPatches(refineImplementResponse);
-                        if (patches && patches.length > 0) {
-                            // Create a copy of currentContent to avoid reference issues
-                            const contentBeforePatches = currentContent || "";
-                            currentContent = applyContentPatches(contentBeforePatches, patches);
-                            iteration.providedPatchesJson = cleanOutputByType(refineImplementResponse, 'json');
-                            iteration.providedPatchesContentType = isHtmlContent(currentContent) ? 'html' : 'text';
-                        } else {
-                            // Fallback: treat response as full content if JSON invalid or empty
-                            const fallbackContent = cleanOutputByType(refineImplementResponse, isHtmlContent(refineImplementResponse) ? 'html' : 'text');
-                            if (fallbackContent && fallbackContent.length > 0) {
-                                currentContent = isHtmlContent(fallbackContent) ? cleanHtmlOutput(fallbackContent) : fallbackContent;
-                            }
+                    // Only run feature suggestions if not in 'off' mode
+                    if (currentEvolutionMode !== 'off') {
+                        // Apply quality mode system prompt if enabled
+                        let featureSuggestSystemPrompt = customPromptsWebsiteState.sys_initialFeatureSuggest;
+                        if (currentEvolutionMode === 'quality') {
+                            featureSuggestSystemPrompt = `${QUALITY_MODE_SYSTEM_PROMPT}\n\n${featureSuggestSystemPrompt}`;
                         }
-                        iteration.generatedRawContent = currentContent; // Store content after feature implementation
+
+                        const userPromptInitialFeatures = renderPrompt(customPromptsWebsiteState.user_initialFeatureSuggest, { initialIdea: initialRequest, currentContent: currentContent || placeholderContent });
+                        iteration.requestPromptFeatures_Suggest = userPromptInitialFeatures;
+                        // Use the selected model for feature suggestions
+                        const featuresModel = getAgentModel("initialFeatures") || pipeline.modelName;
+                        if (!featuresModel) {
+                            throw new Error("No model specified for initial feature suggestions. Please select a model for this agent or set a global model.");
+                        }
+                        const featuresContent = await callGemini(userPromptInitialFeatures, pipeline.temperature, featuresModel, featureSuggestSystemPrompt, true, getSelectedTopP()).then((response: any) => response.text);
+                        iteration.suggestedFeaturesContent = featuresContent;
+                        currentSuggestions = featuresContent || ''; // Store as markdown string instead of array
+                    } else {
+                        // In 'off' mode, skip feature suggestions
+                        iteration.suggestedFeaturesContent = '';
+                        currentSuggestions = '';
+                    }
+                } else if (i <= numMainRefinementLoops) {
+                    // Skip refine stabilize & implement agent if in 'off' mode
+                    if (currentEvolutionMode !== 'off') {
+                        // Apply quality mode system prompt if enabled
+                        let refineImplementSystemPrompt = customPromptsWebsiteState.sys_refineStabilizeImplement;
+                        if (currentEvolutionMode === 'quality') {
+                            refineImplementSystemPrompt = `${QUALITY_MODE_SYSTEM_PROMPT}\n\n${refineImplementSystemPrompt}`;
+                        }
+
+                        const userPromptRefineImplement = renderPrompt(customPromptsWebsiteState.user_refineStabilizeImplement, { currentContent: currentContent || placeholderContent, suggestedFeatures: currentSuggestions });
+                        iteration.requestPromptContent_FeatureImplement = userPromptRefineImplement;
+                        {
+                            const refineImplementResponse = await makeApiCall(userPromptRefineImplement, refineImplementSystemPrompt, false, `Stabilization & Feature Impl (Iter ${i}) - Full Content`, "refineStabilizeImplement");
+                            // Now expecting full updated content directly
+                            currentContent = refineImplementResponse;
+                            iteration.contentBeforeBugFix = currentContent; // Store content before bug fix (after feature implementation)
+                        }
+                    } else {
+                        // In 'off' mode, skip the refine stabilize & implement step
+                        iteration.requestPromptContent_FeatureImplement = 'Skipped (Evolution Mode: Off)';
+                    }
+
+                    // Apply quality mode system prompt if enabled
+                    let refineBugFixSystemPrompt = customPromptsWebsiteState.sys_refineBugFix;
+                    if (currentEvolutionMode === 'quality') {
+                        refineBugFixSystemPrompt = `${QUALITY_MODE_SYSTEM_PROMPT}\n\n${refineBugFixSystemPrompt}`;
                     }
 
                     const userPromptRefineBugFix = renderPrompt(customPromptsWebsiteState.user_refineBugFix, { currentContent: currentContent || placeholderContent });
                     iteration.requestPromptContent_BugFix = userPromptRefineBugFix;
                     {
-                        const bugfixResponse = await makeApiCall(userPromptRefineBugFix, customPromptsWebsiteState.sys_refineBugFix, false, `Bug Fix & Completion (Iter ${i}) - XML Patches`);
-                        const patches = parseContentPatches(bugfixResponse);
-                        if (patches && patches.length > 0) {
-                            // Create a copy of currentContent to avoid reference issues
-                            const contentBeforePatches = currentContent || "";
-                            currentContent = applyContentPatches(contentBeforePatches, patches);
-                            iteration.generatedContent = isHtmlContent(currentContent) ? cleanHtmlOutput(currentContent) : currentContent;
-                            iteration.providedPatchesJson = cleanOutputByType(bugfixResponse, 'json');
-                            iteration.providedPatchesContentType = isHtmlContent(currentContent) ? 'html' : 'text';
-                        } else {
-                            // Fallback: treat response as full content if JSON invalid or empty
-                            const fallbackContent = cleanOutputByType(bugfixResponse, isHtmlContent(bugfixResponse) ? 'html' : 'text');
-                            if (fallbackContent && fallbackContent.length > 0) {
-                                currentContent = isHtmlContent(fallbackContent) ? cleanHtmlOutput(fallbackContent) : fallbackContent;
-                            }
-                            iteration.generatedContent = currentContent;
-                        }
+                        const bugfixResponse = await makeApiCall(userPromptRefineBugFix, refineBugFixSystemPrompt, false, `Bug Fix & Completion (Iter ${i}) - Full Content`, "refineBugFix");
+                        // Now expecting full updated content directly
+                        currentContent = bugfixResponse;
+                        iteration.generatedContent = isHtmlContent(currentContent) ? cleanHtmlOutput(currentContent) : currentContent;
                     }
 
-                    const userPromptRefineFeatures = renderPrompt(customPromptsWebsiteState.user_refineFeatureSuggest, { initialIdea: initialRequest, currentContent: currentContent || placeholderContent });
-                    iteration.requestPromptFeatures_Suggest = userPromptRefineFeatures;
-                    // Use the selected model for feature suggestions
-                    const featuresJsonString = await callGemini(userPromptRefineFeatures, pipeline.temperature, pipeline.modelName, customPromptsWebsiteState.sys_refineFeatureSuggest, true).then(response => response.text);
-                    iteration.suggestedFeatures = parseJsonSuggestions(featuresJsonString, 'features', 5);
-                    currentSuggestions = iteration.suggestedFeatures;
+                    // Only run feature suggestions if not in 'off' mode
+                    if (currentEvolutionMode !== 'off') {
+                        // Apply quality mode system prompt if enabled
+                        let refineFeatureSuggestSystemPrompt = customPromptsWebsiteState.sys_refineFeatureSuggest;
+                        if (currentEvolutionMode === 'quality') {
+                            refineFeatureSuggestSystemPrompt = `${QUALITY_MODE_SYSTEM_PROMPT}\n\n${refineFeatureSuggestSystemPrompt}`;
+                        }
+
+                        const userPromptRefineFeatures = renderPrompt(customPromptsWebsiteState.user_refineFeatureSuggest, { initialIdea: initialRequest, currentContent: currentContent || placeholderContent });
+                        iteration.requestPromptFeatures_Suggest = userPromptRefineFeatures;
+                        // Use the selected model for feature suggestions
+                        const refineFeatureModel = getAgentModel("refineFeatures") || pipeline.modelName;
+                        if (!refineFeatureModel) {
+                            throw new Error("No model specified for refine feature suggestions. Please select a model for this agent or set a global model.");
+                        }
+                        const featuresContent = await callGemini(userPromptRefineFeatures, pipeline.temperature, refineFeatureModel, refineFeatureSuggestSystemPrompt, true, getSelectedTopP()).then((response: any) => response.text);
+                        iteration.suggestedFeaturesContent = featuresContent;
+                        currentSuggestions = featuresContent || ''; // Store as markdown string instead of array
+                    } else {
+                        // In 'off' mode, skip feature suggestions
+                        iteration.suggestedFeaturesContent = '';
+                        currentSuggestions = '';
+                    }
                 } else {
+                    // Apply quality mode system prompt if enabled
+                    let finalPolishSystemPrompt = customPromptsWebsiteState.sys_finalPolish;
+                    if (currentEvolutionMode === 'quality') {
+                        finalPolishSystemPrompt = `${QUALITY_MODE_SYSTEM_PROMPT}\n\n${finalPolishSystemPrompt}`;
+                    }
+
                     const userPromptFinalPolish = renderPrompt(customPromptsWebsiteState.user_finalPolish, { currentContent: currentContent || placeholderContent });
                     iteration.requestPromptContent_BugFix = userPromptFinalPolish; // Re-using bugfix field for UI display of final polish prompt
                     {
-                        const finalPolishResponse = await makeApiCall(userPromptFinalPolish, customPromptsWebsiteState.sys_finalPolish, false, "Final Polish - XML Patches");
-                        const patches = parseContentPatches(finalPolishResponse);
-                        if (patches && patches.length > 0) {
-                            // Create a copy of currentContent to avoid reference issues
-                            const contentBeforePatches = currentContent || "";
-                            currentContent = applyContentPatches(contentBeforePatches, patches);
-                            iteration.generatedContent = isHtmlContent(currentContent) ? cleanHtmlOutput(currentContent) : currentContent;
-                            iteration.providedPatchesJson = cleanOutputByType(finalPolishResponse, 'json');
-                            iteration.providedPatchesContentType = isHtmlContent(currentContent) ? 'html' : 'text';
-                        } else {
-                            // Fallback: treat response as full content if JSON invalid or empty
-                            const fallbackContent = cleanOutputByType(finalPolishResponse, isHtmlContent(finalPolishResponse) ? 'html' : 'text');
-                            if (fallbackContent && fallbackContent.length > 0) {
-                                currentContent = isHtmlContent(fallbackContent) ? cleanHtmlOutput(fallbackContent) : fallbackContent;
-                            }
-                            iteration.generatedContent = currentContent;
-                        }
+                        const finalPolishResponse = await makeApiCall(userPromptFinalPolish, finalPolishSystemPrompt, false, "Final Polish - Full Content", "finalPolish");
+                        // Now expecting full updated content directly
+                        currentContent = finalPolishResponse;
+                        iteration.generatedContent = isHtmlContent(currentContent) ? cleanHtmlOutput(currentContent) : currentContent;
                     }
-                    iteration.suggestedFeatures = [];
+                    iteration.suggestedFeaturesContent = "";
                 }
             }
             // If an error occurred within a try-catch inside the agent logic (e.g. JSON parse error),
@@ -2473,16 +1621,7 @@ function escapeHtml(unsafe: string): string {
     return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
-function downloadFile(content: string | Blob, fileName: string, contentType: string) {
-    const a = document.createElement("a");
-    const file = (content instanceof Blob) ? content : new Blob([content], { type: contentType });
-    a.href = URL.createObjectURL(file);
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    URL.revokeObjectURL(a.href);
-    document.body.removeChild(a);
-}
+// Removed duplicate downloadFile function - using modular ActionButton system
 async function createAndDownloadReactProjectZip() {
     if (!activeReactPipeline || !activeReactPipeline.finalAppendedCode) {
         alert("No React project code available to download.");
@@ -2512,7 +1651,7 @@ async function createAndDownloadReactProjectZip() {
 
     if (files.length === 0 && finalCode.length > 0) {
         // Fallback for cases where no markers are present in the output.
-        console.warn("No file markers found in the aggregated code. Assuming single file 'src/App.tsx'.");
+        // Removed console.warn
         files.push({ path: "src/App.tsx", content: finalCode });
     }
 
@@ -2524,12 +1663,15 @@ async function createAndDownloadReactProjectZip() {
 
     try {
         const zipBlob = await zip.generateAsync({ type: 'blob' });
-        downloadFile(zipBlob, `react-app-${activeReactPipeline.id}.zip`, 'application/zip');
+        const { downloadFile } = await import('./Components/ActionButton');
+        downloadFile(zipBlob as any, `react-app-${activeReactPipeline.id}.zip`, 'application/zip');
     } catch (error) {
-        console.error("Error generating React project zip:", error);
+        // Removed console.error
         alert("Failed to generate zip file. See console for details.");
     }
 }
+// Make function globally accessible for ReactAgenticIntegration
+(window as any).createAndDownloadReactProjectZip = createAndDownloadReactProjectZip;
 
 
 function handleGlobalFullscreenChange() {
@@ -2556,43 +1698,63 @@ function handleGlobalFullscreenChange() {
 }
 document.addEventListener('fullscreenchange', handleGlobalFullscreenChange);
 
-function exportConfiguration() {
-    if (isGenerating) {
-        alert("Cannot export configuration while generation is in progress.");
-        return;
-    }
-    const selectedOriginalIndices: number[] = [];
-    if (currentMode === 'website') { // Website only
-        pipelineSelectorsContainer.querySelectorAll<HTMLInputElement>('input[type="checkbox"]:checked').forEach(checkbox => {
-            selectedOriginalIndices.push(parseInt(checkbox.dataset.temperatureIndex || "-1", 10));
-        });
-    }
-
+async function exportConfiguration() {
     const config: ExportedConfig = {
-        currentMode: currentMode,
+        currentMode,
+        currentEvolutionMode,
         initialIdea: initialIdeaInput.value,
-        selectedModel: modelSelectElement.value,
-        selectedOriginalTemperatureIndices: selectedOriginalIndices,
-        pipelinesState: JSON.parse(JSON.stringify(pipelinesState.map(p => {
-            const { tabButtonElement, contentElement, stopButtonElement, ...rest } = p;
-            return rest;
-        }))),
-        activeDeepthinkPipeline: currentMode === 'deepthink' ? JSON.parse(JSON.stringify(activeDeepthinkPipeline)) : null,
-        activeReactPipeline: currentMode === 'react' ? JSON.parse(JSON.stringify(activeReactPipeline)) : null,
-        activePipelineId: (currentMode !== 'deepthink' && currentMode !== 'react') ? activePipelineId : null,
-        activeDeepthinkProblemTabId: (currentMode === 'deepthink' && activeDeepthinkPipeline) ? activeDeepthinkPipeline.activeTabId : undefined,
-        // activeReactProblemTabId: (currentMode === 'react' && activeReactPipeline) ? activeReactPipeline.activeTabId : undefined, // For React worker tabs
-        globalStatusText: "Ready.",
-        globalStatusClass: "status-idle",
+        selectedModel: getSelectedModel(),
+        selectedOriginalTemperatureIndices: [],
+        pipelinesState,
+        activeDeepthinkPipeline: activeDeepthinkPipeline ?? null,
+        activeReactPipeline: activeReactPipeline ?? null,
+        embeddedAgenticState: activeReactPipeline ? getActiveAgenticState() : null,
+        activeAgenticState: currentMode === 'agentic' ? getActiveAgenticState() : null,
+        activeGenerativeUIState: currentMode === 'generativeui' ? getActiveGenerativeUIState() : null,
+        activeContextualState: currentMode === 'contextual' ? getContextualState() : null,
+        activeAdaptiveDeepthinkState: currentMode === 'adaptive-deepthink' ? getAdaptiveDeepthinkState() : null,
+        activePipelineId,
+        activeDeepthinkProblemTabId: activeDeepthinkPipeline?.activeTabId ?? '',
+        globalStatusText: '',
+        globalStatusClass: '',
         customPromptsWebsite: customPromptsWebsiteState,
         customPromptsDeepthink: customPromptsDeepthinkState,
-        customPromptsReact: customPromptsReactState, // Added for React
-        isCustomPromptsOpen: isCustomPromptsOpen,
+        customPromptsReact: customPromptsReactState,
+        customPromptsAgentic: customPromptsAgenticState,
+        customPromptsAdaptiveDeepthink: customPromptsAdaptiveDeepthinkState,
+        customPromptsContextual: customPromptsContextualState,
+        isCustomPromptsOpen: false,
+        // Export all model parameters
+        modelParameters: {
+            temperature: getSelectedTemperature(),
+            topP: getSelectedTopP(),
+            refinementStages: getSelectedRefinementStages(),
+            strategiesCount: getSelectedStrategiesCount(),
+            subStrategiesCount: getSelectedSubStrategiesCount(),
+            hypothesisCount: getSelectedHypothesisCount(),
+            redTeamAggressiveness: getSelectedRedTeamAggressiveness(),
+            refinementEnabled: getRefinementEnabled(),
+            skipSubStrategies: getSkipSubStrategies(),
+            dissectedObservationsEnabled: getDissectedObservationsEnabled(),
+            iterativeCorrectionsEnabled: getIterativeCorrectionsEnabled(),
+            provideAllSolutionsToCorrectors: getProvideAllSolutionsToCorrectors()
+        }
     };
-    const configJson = JSON.stringify(config, null, 2);
-    downloadFile(configJson, `iterative_studio_config_${currentMode}.json`, 'application/json');
+
+    const configString = JSON.stringify(config, null, 2);
+    const blob = new Blob([configString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const timestamp = new Date().toISOString().replace(/[:]/g, '-').split('.')[0];
+    a.download = `iterative-studio-config-${timestamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 }
-function handleImportConfiguration(event: Event) {
+
+async function handleImportConfiguration(event: Event) {
     if (isGenerating) {
         alert("Cannot import configuration while generation is in progress.");
         return;
@@ -2623,7 +1785,7 @@ function handleImportConfiguration(event: Event) {
                 if (!(field.key in importedConfig) || typeof importedConfig[field.key] !== field.type) {
                     // Allow customPrompts to be potentially undefined if not present, will use defaults
                     if (field.type === 'object' && importedConfig[field.key] === undefined) {
-                        console.warn(`Configuration field '${field.key}' is missing, will use defaults.`);
+                        // Removed console.warn
                     } else {
                         throw new Error(`Invalid configuration: Missing or malformed critical field '${field.key}'. Expected type '${field.type}', got '${typeof importedConfig[field.key]}'.`);
                     }
@@ -2631,7 +1793,27 @@ function handleImportConfiguration(event: Event) {
             }
 
             currentMode = importedConfig.currentMode;
-            (document.querySelector(`input[name="appMode"][value="${currentMode}"]`) as HTMLInputElement).checked = true;
+            const modeRadio = document.querySelector(`input[name="app-mode"][value="${currentMode}"]`) as HTMLInputElement;
+            if (modeRadio) {
+                modeRadio.checked = true;
+            }
+
+            // Restore evolution convergence mode
+            if (importedConfig.currentEvolutionMode !== undefined) {
+                currentEvolutionMode = importedConfig.currentEvolutionMode;
+                // Update button states
+                const evolutionButtons = document.querySelectorAll('.evolution-convergence-button');
+                evolutionButtons.forEach(button => {
+                    const buttonValue = (button as HTMLElement).dataset.value;
+                    if (buttonValue === currentEvolutionMode) {
+                        button.classList.add('active');
+                    } else {
+                        button.classList.remove('active');
+                    }
+                });
+                // Update description
+                updateEvolutionModeDescription(currentEvolutionMode);
+            }
 
             initialIdeaInput.value = importedConfig.initialIdea;
             if (currentMode === 'deepthink') {
@@ -2647,13 +1829,54 @@ function handleImportConfiguration(event: Event) {
                 (window as any).reinitializeSidebarControls();
             }
 
+            // Restore model parameters AFTER sidebar controls are initialized
+            // Use setTimeout to ensure UI elements are fully ready
+            if (importedConfig.modelParameters) {
+                const params = importedConfig.modelParameters;
+                setTimeout(() => {
+                    const modelConfig = routingManager.getModelConfigManager();
+                    
+                    // Update all parameters
+                    if (params.temperature !== undefined) modelConfig.updateParameter('temperature', params.temperature);
+                    if (params.topP !== undefined) modelConfig.updateParameter('topP', params.topP);
+                    if (params.refinementStages !== undefined) modelConfig.updateParameter('refinementStages', params.refinementStages);
+                    if (params.strategiesCount !== undefined) modelConfig.updateParameter('strategiesCount', params.strategiesCount);
+                    if (params.subStrategiesCount !== undefined) modelConfig.updateParameter('subStrategiesCount', params.subStrategiesCount);
+                    if (params.hypothesisCount !== undefined) modelConfig.updateParameter('hypothesisCount', params.hypothesisCount);
+                    if (params.redTeamAggressiveness !== undefined) modelConfig.updateParameter('redTeamAggressiveness', params.redTeamAggressiveness);
+                    if (params.refinementEnabled !== undefined) modelConfig.updateParameter('refinementEnabled', params.refinementEnabled);
+                    if (params.skipSubStrategies !== undefined) modelConfig.updateParameter('skipSubStrategies', params.skipSubStrategies);
+                    if (params.dissectedObservationsEnabled !== undefined) modelConfig.updateParameter('dissectedObservationsEnabled', params.dissectedObservationsEnabled);
+                    if (params.iterativeCorrectionsEnabled !== undefined) modelConfig.updateParameter('iterativeCorrectionsEnabled', params.iterativeCorrectionsEnabled);
+                    
+                    // Sync UI with the restored parameters
+                    const modelSelectionUI = routingManager.getModelSelectionUI();
+                    if (modelSelectionUI) {
+                        modelSelectionUI.syncUIWithParameters();
+                    }
+
+                    // Re-render mode-specific UI so imported parameters influence the layout
+                    if (currentMode === 'deepthink' && activeDeepthinkPipeline) {
+                        renderActiveDeepthinkPipeline();
+                        if (activeDeepthinkPipeline.activeTabId) {
+                            activateTab(activeDeepthinkPipeline.activeTabId);
+                        }
+                    } else if (currentMode === 'react') {
+                        renderReactModePipeline();
+                        if (activeReactPipeline && activeReactPipeline.activeTabId) {
+                            activateTab(activeReactPipeline.activeTabId);
+                        }
+                    }
+                }, 150); // Slightly longer delay to ensure sidebar controls are ready
+            }
+
             if (currentMode === 'deepthink') {
                 const importedPipeline = importedConfig.activeDeepthinkPipeline;
                 activeDeepthinkPipeline = importedPipeline ? {
                     ...importedPipeline,
                     isStopRequested: false,
                     status: (importedPipeline.status === 'processing' || importedPipeline.status === 'stopping') ? 'idle' : importedPipeline.status,
-                    activeTabId: importedConfig.activeDeepthinkProblemTabId || 'challenge-details',
+                    activeTabId: importedConfig.activeDeepthinkProblemTabId || 'strategic-solver',
                     // Preserve judge results but reset processing states
                     initialStrategies: importedPipeline.initialStrategies?.map(strategy => ({
                         ...strategy,
@@ -2665,7 +1888,23 @@ function handleImportConfiguration(event: Event) {
                         judgingRequestPrompt: strategy.judgingRequestPrompt,
                         judgingResponseText: strategy.judgingResponseText,
                         judgingError: strategy.judgingError,
+                        // Preserve sub-strategy data including critique fields
+                        subStrategies: strategy.subStrategies?.map(subStrategy => ({
+                            ...subStrategy,
+                            // Reset processing states but preserve completed data
+                            selfImprovementStatus: subStrategy.selfImprovementStatus === 'processing' || subStrategy.selfImprovementStatus === 'retrying' ? 'pending' : subStrategy.selfImprovementStatus,
+                            solutionCritiqueStatus: subStrategy.solutionCritiqueStatus === 'processing' || subStrategy.solutionCritiqueStatus === 'retrying' ? 'pending' : subStrategy.solutionCritiqueStatus,
+                        })) || []
                     })) || [],
+                    // Preserve solution critiques and dissected observations synthesis
+                    solutionCritiques: Array.isArray(importedPipeline.solutionCritiques) ? importedPipeline.solutionCritiques : [],
+                    solutionCritiquesStatus: importedPipeline.solutionCritiquesStatus === 'processing' ? 'pending' : importedPipeline.solutionCritiquesStatus,
+                    solutionCritiquesError: importedPipeline.solutionCritiquesError,
+                    dissectedObservationsSynthesis: importedPipeline.dissectedObservationsSynthesis,
+                    dissectedSynthesisRequestPrompt: importedPipeline.dissectedSynthesisRequestPrompt,
+                    dissectedSynthesisStatus: importedPipeline.dissectedSynthesisStatus === 'processing' || importedPipeline.dissectedSynthesisStatus === 'retrying' ? 'pending' : importedPipeline.dissectedSynthesisStatus,
+                    dissectedSynthesisError: importedPipeline.dissectedSynthesisError,
+                    dissectedSynthesisRetryAttempt: importedPipeline.dissectedSynthesisRetryAttempt,
                     finalJudgedBestSolution: importedPipeline.finalJudgedBestSolution,
                     finalJudgedBestStrategyId: importedPipeline.finalJudgedBestStrategyId,
                     finalJudgingRequestPrompt: importedPipeline.finalJudgingRequestPrompt,
@@ -2673,10 +1912,10 @@ function handleImportConfiguration(event: Event) {
                     finalJudgingError: importedPipeline.finalJudgingError,
                 } : null;
                 activePipelineId = null;
-                
+
                 // Sync the imported pipeline with the Deepthink module
                 setActiveDeepthinkPipelineForImport(activeDeepthinkPipeline);
-                
+
                 renderActiveDeepthinkPipeline();
                 if (activeDeepthinkPipeline && activeDeepthinkPipeline.activeTabId) {
                     activateTab(activeDeepthinkPipeline.activeTabId);
@@ -2685,10 +1924,69 @@ function handleImportConfiguration(event: Event) {
                 activeReactPipeline = importedConfig.activeReactPipeline ? {
                     ...importedConfig.activeReactPipeline,
                     isStopRequested: false,
-                    status: (importedConfig.activeReactPipeline.status === 'orchestrating' || importedConfig.activeReactPipeline.status === 'processing_workers' || importedConfig.activeReactPipeline.status === 'stopping') ? 'idle' : importedConfig.activeReactPipeline.status,
+                    status: (importedConfig.activeReactPipeline.status === 'orchestrating' || importedConfig.activeReactPipeline.status === 'agentic_orchestrating' || importedConfig.activeReactPipeline.status === 'processing_workers' || importedConfig.activeReactPipeline.status === 'stopping') ? 'idle' : importedConfig.activeReactPipeline.status,
                 } : null;
                 activePipelineId = null;
-            } else if (currentMode === 'website') {
+
+                // Restore embedded agentic state if available
+                if (importedConfig.embeddedAgenticState) {
+                    setActiveAgenticStateForImport(importedConfig.embeddedAgenticState);
+                }
+
+                // Re-render the React mode pipeline UI
+                renderReactModePipeline();
+
+                // Restore the active tab if available
+                if (activeReactPipeline && activeReactPipeline.activeTabId) {
+                    activateTab(activeReactPipeline.activeTabId);
+                }
+            } else if (currentMode === 'agentic') {
+                // Clear other mode states for Agentic mode
+                pipelinesState = [];
+                activeDeepthinkPipeline = null;
+                activeReactPipeline = null;
+                activePipelineId = null;
+
+                // Restore Agentic state first if available
+                if (importedConfig.activeAgenticState) {
+                    setActiveAgenticStateForImport(importedConfig.activeAgenticState);
+                }
+
+                // Render Agentic mode UI (after state is restored)
+                renderAgenticMode();
+            } else if (currentMode === 'generativeui') {
+                // Import GenerativeUI state
+                if (importedConfig.activeGenerativeUIState) {
+                    setActiveGenerativeUIStateForImport(importedConfig.activeGenerativeUIState);
+                }
+                renderGenerativeUIMode();
+            } else if (currentMode === 'contextual') {
+                // Import Contextual state
+                pipelinesState = [];
+                activeReactPipeline = null;
+                activeDeepthinkPipeline = null;
+                activePipelineId = null;
+                
+                // Restore Contextual state if available
+                if (importedConfig.activeContextualState) {
+                    setContextualStateForImport(importedConfig.activeContextualState);
+                }
+                
+                renderContextualMode();
+            } else if (currentMode === 'adaptive-deepthink') {
+                // Import Adaptive Deepthink state
+                pipelinesState = [];
+                activeReactPipeline = null;
+                activeDeepthinkPipeline = null;
+                activePipelineId = null;
+                
+                // Restore Adaptive Deepthink state if available
+                if (importedConfig.activeAdaptiveDeepthinkState) {
+                    setAdaptiveDeepthinkStateForImport(importedConfig.activeAdaptiveDeepthinkState);
+                }
+                
+                renderAdaptiveDeepthinkMode();
+            } else { // Website mode               
                 // Restore website mode pipelines state
                 pipelinesState = importedConfig.pipelinesState ? importedConfig.pipelinesState.map(pipeline => ({
                     ...pipeline,
@@ -2700,7 +1998,7 @@ function handleImportConfiguration(event: Event) {
                     }))
                 })) : [];
                 activePipelineId = importedConfig.activePipelineId;
-                
+
                 // Re-render the pipelines UI
                 renderPipelines();
             }
@@ -2711,14 +2009,23 @@ function handleImportConfiguration(event: Event) {
             const importedDeepthinkPrompts = importedConfig.customPromptsDeepthink || createDefaultCustomPromptsDeepthink(NUM_INITIAL_STRATEGIES_DEEPTHINK, NUM_SUB_STRATEGIES_PER_MAIN_DEEPTHINK);
             customPromptsDeepthinkState = JSON.parse(JSON.stringify(importedDeepthinkPrompts));
 
-            const importedReactPrompts = importedConfig.customPromptsReact || defaultCustomPromptsReact; // Using defaultCustomPromptsReact directly
+            const importedReactPrompts = importedConfig.customPromptsReact || createDefaultCustomPromptsReact();
             customPromptsReactState = JSON.parse(JSON.stringify(importedReactPrompts));
+
+            const importedAgenticPrompts = importedConfig.customPromptsAgentic || { systemPrompt: AGENTIC_SYSTEM_PROMPT };
+            customPromptsAgenticState = JSON.parse(JSON.stringify(importedAgenticPrompts));
+
+            const importedAdaptiveDeepthinkPrompts = importedConfig.customPromptsAdaptiveDeepthink || createDefaultCustomPromptsAdaptiveDeepthink();
+            customPromptsAdaptiveDeepthinkState = JSON.parse(JSON.stringify(importedAdaptiveDeepthinkPrompts));
+
+            const importedContextualPrompts = importedConfig.customPromptsContextual || createDefaultCustomPromptsContextual();
+            customPromptsContextualState = JSON.parse(JSON.stringify(importedContextualPrompts));
 
             updateCustomPromptTextareasFromState();
 
             updateControlsState();
         } catch (error: any) {
-            console.error("Error importing configuration:", error);
+            // Removed console.error
         } finally {
             if (fileInputTarget) fileInputTarget.value = '';
         }
@@ -2735,7 +2042,7 @@ function handleImportConfiguration(event: Event) {
 // ---------- REACT MODE SPECIFIC FUNCTIONS ----------
 
 async function startReactModeProcess(userRequest: string) {
-    if (!ai) {
+    if (!hasValidApiKey()) {
         return;
     }
     isGenerating = true;
@@ -2757,6 +2064,7 @@ async function startReactModeProcess(userRequest: string) {
         status: 'orchestrating',
         isStopRequested: false,
         activeTabId: 'orchestrator', // Default to orchestrator tab
+        agenticRefineStarted: false,
     };
     renderReactModePipeline();
 
@@ -2774,13 +2082,13 @@ async function startReactModeProcess(userRequest: string) {
             renderReactModePipeline(); // Update UI to show retrying or initial processing state
 
             try {
-                const selectedModel = modelSelectElement.value || "gemini-2.5-pro"; // Fallback if not selected
+                const orchestratorModel: string = customPromptsReactState.model_orchestrator || getSelectedModel();
 
-                const apiResponse = await callGemini(orchestratorUserPrompt, getSelectedTemperature(), selectedModel, orchestratorSysPrompt, true, getSelectedTopP()); // Expecting JSON output
+                const apiResponse = await callGemini(orchestratorUserPrompt, getSelectedTemperature(), orchestratorModel, orchestratorSysPrompt, true, getSelectedTopP()); // Expecting JSON output
                 orchestratorResponseText = apiResponse.text;
                 break;
             } catch (e: any) {
-                console.warn(`React Orchestrator, Attempt ${attempt + 1} failed: ${e.message}`);
+                // Removed console.warn
                 activeReactPipeline.error = `Orchestrator Attempt ${attempt + 1} failed: ${e.message || 'Unknown API error'}`;
                 if (attempt === MAX_RETRIES) {
                     throw e; // Rethrow after max retries
@@ -2808,14 +2116,38 @@ async function startReactModeProcess(userRequest: string) {
                 }
             });
 
-            activeReactPipeline.status = 'processing_workers'; // Next status
+            // NEW ARCHITECTURE: Don't run workers immediately
+            // Instead, prepare the initial content for the embedded agentic agent
+            activeReactPipeline.status = 'agentic_orchestrating';
+            
+            // Prepare initial content as proper files for the agentic agent
+            // File 1: Plan.md - Using FILE marker format for consistency
+            let initialContent = `// --- FILE: Plan.md ---
+${parsedOrchestratorOutput.plan_txt}
+
+`;
+            
+            // File 2: WorkerAgentsPrompts.json - structured format for easy parsing
+            const workerPromptsJson = {
+                worker_agents: parsedOrchestratorOutput.worker_agents_prompts.map((agentPromptData: any, index: number) => ({
+                    id: index + 1,
+                    title: agentPromptData.title,
+                    system_instruction: agentPromptData.system_instruction,
+                    user_prompt_template: agentPromptData.user_prompt_template
+                }))
+            };
+            
+            initialContent += `// --- FILE: WorkerAgentsPrompts.json ---
+${JSON.stringify(workerPromptsJson, null, 2)}
+
+`;
+            
+            activeReactPipeline.initialAgenticContent = initialContent;
+            activeReactPipeline.workerPromptsData = parsedOrchestratorOutput.worker_agents_prompts;
             renderReactModePipeline();
 
-            // Kick off worker agents in parallel
-            await runReactWorkerAgents();
-
         } catch (parseError: any) {
-            console.error("Failed to parse Orchestrator JSON response:", parseError, "Cleaned JSON string:", orchestratorJson, "Raw response:", orchestratorResponseText);
+            // Removed console.error
             activeReactPipeline.error = `Failed to parse Orchestrator JSON: ${parseError.message}. Check console for details.`;
             throw new Error(`Orchestrator output parsing error: ${parseError.message}`);
         }
@@ -2830,19 +2162,20 @@ async function startReactModeProcess(userRequest: string) {
                 if (!activeReactPipeline.error) activeReactPipeline.error = error.message || "An unknown error occurred in React Orchestrator.";
             }
         }
-        console.error("Error in React Mode Orchestration process:", error);
+        // Removed console.error
     } finally {
-        if (activeReactPipeline && activeReactPipeline.status !== 'processing_workers' && activeReactPipeline.status !== 'orchestrating' && activeReactPipeline.status !== 'orchestrating_retrying' && activeReactPipeline.status !== 'stopping') {
+        if (activeReactPipeline && activeReactPipeline.status !== 'agentic_orchestrating' && activeReactPipeline.status !== 'orchestrating' && activeReactPipeline.status !== 'orchestrating_retrying' && activeReactPipeline.status !== 'stopping') {
             isGenerating = false;
         }
         updateControlsState();
         renderReactModePipeline();
     }
 }
+// Make renderReactModePipeline globally accessible for ReactAgenticIntegration
 function renderReactModePipeline() {
     if (currentMode !== 'react' || !tabsNavContainer || !pipelinesContentContainer) {
         if (currentMode !== 'react' && tabsNavContainer && pipelinesContentContainer) {
-            tabsNavContainer.innerHTML = '';
+            clearTabsContainer();
             pipelinesContentContainer.innerHTML = '';
         }
         return;
@@ -2855,62 +2188,111 @@ function renderReactModePipeline() {
 
     const pipeline = activeReactPipeline;
 
-    tabsNavContainer.innerHTML = '';
+    clearTabsContainer();
     pipelinesContentContainer.innerHTML = '';
 
-    // Orchestrator Tab
-    const orchestratorTab = document.createElement('button');
-    orchestratorTab.id = 'react-tab-orchestrator';
-    orchestratorTab.className = 'tab-button react-mode-tab';
-    orchestratorTab.textContent = 'Orchestrator';
-    orchestratorTab.setAttribute('role', 'tab');
-    orchestratorTab.setAttribute('aria-controls', 'pipeline-content-orchestrator');
-    orchestratorTab.addEventListener('click', () => activateTab('orchestrator'));
-    tabsNavContainer.appendChild(orchestratorTab);
+    // NO LONGER SHOWING ORCHESTRATOR TAB - Agentic Refinements is the default view
+    // Preview tab will be created after first successful build
 
-    // Orchestrator Pane
-    const orchestratorPane = document.createElement('div');
-    orchestratorPane.id = 'pipeline-content-orchestrator';
-    orchestratorPane.className = 'pipeline-content';
-    let orchestratorHtml = `<div class="react-orchestrator-pane model-detail-card">
-        <div class="model-detail-header">
-             <div class="model-title-area">
-                <h4 class="model-title">React App Orchestration</h4>
-             </div>
-             <div class="model-card-actions">
-                <span class="status-badge status-${pipeline.status}" id="react-orchestrator-status-text">${pipeline.status.replace(/_/g, ' ')}</span>
-                <button class="button" id="stop-react-pipeline-btn" title="Stop React App Generation" aria-label="Stop React App Generation" style="display: ${pipeline.status === 'orchestrating' || pipeline.status === 'processing_workers' ? 'inline-flex' : 'none'};">
-                    <span class="material-symbols-outlined">stop_circle</span><span class="button-text">${pipeline.status === 'stopping' ? 'Stopping...' : 'Stop'}</span>
-                </button>
-            </div>
-        </div>
-        <div class="model-detail-section">
-            <h5 class="model-section-title">User Request</h5>
-            <p><strong>Request:</strong> ${escapeHtml(pipeline.userRequest)}</p>
-        </div>`;
+    // ALWAYS SHOW Agentic Refinements tab (regardless of status)
+    // Create Agentic Refinements tab (now the default and primary tab)
+    const agenticTab = document.createElement('button');
+    agenticTab.id = 'react-tab-agentic-refinements';
+    agenticTab.className = 'tab-button react-mode-tab';
+    agenticTab.textContent = 'Agentic Refinements';
+    agenticTab.setAttribute('role', 'tab');
+    agenticTab.setAttribute('aria-controls', 'pipeline-content-agentic-refinements');
+    agenticTab.addEventListener('click', () => activateTab('agentic-refinements'));
+    (agenticTab.style as any).whiteSpace = 'nowrap';
+    // Insert as first tab
+    tabsNavContainer.appendChild(agenticTab);
+    
+    // Ensure Agentic Pane exists and is mounted
+    if (!document.getElementById('pipeline-content-agentic-refinements')) {
+        const agenticPane = document.createElement('div');
+        agenticPane.id = 'pipeline-content-agentic-refinements';
+        agenticPane.className = 'pipeline-content pipeline-fade-in';
+        agenticPane.style.padding = '0';
+        agenticPane.style.height = '100%';
+
+        const agenticContainer = document.createElement('div');
+        agenticContainer.id = 'agentic-refinements-container';
+        agenticContainer.style.height = '100vh';
+        agenticContainer.style.minHeight = '500px';
+        agenticContainer.style.width = '100%';
+        agenticPane.appendChild(agenticContainer);
+        pipelinesContentContainer.appendChild(agenticPane);
+
+        // Start or rehydrate Agentic inside this pane
+        if (pipeline.initialAgenticContent && !pipeline.agenticRefineStarted) {
+            pipeline.agenticRefineStarted = true;
+            // Start React-specific Agentic process
+            import('./React/ReactAgenticIntegration').then(({ startReactAgenticProcess }) => {
+                startReactAgenticProcess(
+                    agenticContainer,
+                    pipeline.initialAgenticContent || '',
+                    pipeline,
+                    customPromptsReactState,
+                    (content: string, isComplete?: boolean) => {
+                        if (activeReactPipeline) {
+                            activeReactPipeline.finalAppendedCode = content;
+                            // Update Monaco editor if it exists
+                            const monacoRoot = (window as any).__monacoEditorRoot;
+                            if (monacoRoot) {
+                                monacoRoot.render(
+                                    React.createElement(MonacoFileEditor, {
+                                        content: content,
+                                        onContentChange: (newContent: string) => {
+                                            if (activeReactPipeline) {
+                                                activeReactPipeline.finalAppendedCode = newContent;
+                                            }
+                                        },
+                                        onDownload: createAndDownloadReactProjectZip,
+                                        readOnly: true,
+                                        forceDarkTheme: false
+                                    })
+                                );
+                            }
+                            // Mark as completed when agentic agent exits
+                            if (isComplete && activeReactPipeline && activeReactPipeline.status !== 'completed') {
+                                activeReactPipeline.status = 'completed';
+                                renderReactModePipeline();
+                            }
+                        }
+                    }
+                );
+            });
+        } else if (pipeline.agenticRefineStarted) {
+            import('./React/ReactAgenticIntegration').then(({ rehydrateReactAgenticUI }) => {
+                rehydrateReactAgenticUI(agenticContainer);
+            });
+        } else {
+            // Show loading state when content is not ready yet
+            agenticContainer.innerHTML = `
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 1rem; color: var(--text-secondary);">
+                    <div class="spinner" style="width: 40px; height: 40px; border: 3px solid var(--border-color); border-top-color: var(--accent-blue); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                    <p style="font-size: 0.875rem;">Preparing React application files...</p>
+                    <p style="font-size: 0.75rem; opacity: 0.7;">Plan.md and WorkerAgentsPrompts.json will load shortly</p>
+                </div>
+            `;
+        }
+
+        const dlAgentic = document.getElementById('download-react-runnable-project-agentic');
+        if (dlAgentic) dlAgentic.addEventListener('click', createAndDownloadReactProjectZip);
+    }
+
+    // Show errors if any (without creating orchestrator pane)
     if (pipeline.error && (pipeline.status === 'failed' || (pipeline.status === 'error' && pipeline.stages.every(s => s.status === 'pending')))) {
-        orchestratorHtml += `<div class="status-message error"><pre>${escapeHtml(pipeline.error)}</pre></div>`;
+        const errorPane = document.createElement('div');
+        errorPane.className = 'pipeline-content';
+        errorPane.innerHTML = `<div class="status-message error"><pre>${escapeHtml(pipeline.error)}</pre></div>`;
+        pipelinesContentContainer.appendChild(errorPane);
     }
-    if (pipeline.orchestratorPlan) {
-        orchestratorHtml += `<details class="model-detail-section collapsible-section" open>
-            <summary class="model-section-title">Orchestrator's Plan (plan.txt)</summary>
-            <div class="scrollable-content-area custom-scrollbar"><pre>${escapeHtml(pipeline.orchestratorPlan)}</pre></div>
-        </details>`;
-    }
-    if (pipeline.orchestratorRawOutput) {
-        orchestratorHtml += `<details class="model-detail-section collapsible-section">
-            <summary class="model-section-title">Orchestrator Raw Output (Debug)</summary>
-            <div class="scrollable-content-area custom-scrollbar"><pre>${escapeHtml(pipeline.orchestratorRawOutput)}</pre></div>
-        </details>`;
-    }
-    orchestratorHtml += `</div>`;
-    orchestratorPane.innerHTML = orchestratorHtml;
-    pipelinesContentContainer.appendChild(orchestratorPane);
 
     const stopReactButton = document.getElementById('stop-react-pipeline-btn');
     if (stopReactButton) {
         stopReactButton.onclick = () => {
-            if (activeReactPipeline && (activeReactPipeline.status === 'orchestrating' || activeReactPipeline.status === 'processing_workers')) {
+            if (activeReactPipeline && (activeReactPipeline.status === 'orchestrating' || activeReactPipeline.status === 'agentic_orchestrating' || activeReactPipeline.status === 'processing_workers')) {
                 activeReactPipeline.isStopRequested = true;
                 activeReactPipeline.status = 'stopping';
                 renderReactModePipeline();
@@ -2920,18 +2302,24 @@ function renderReactModePipeline() {
     }
 
 
-    pipeline.stages.forEach(stage => {
-        const tabButtonId = `react-tab-worker-${stage.id}`;
-        const contentPaneId = `pipeline-content-worker-${stage.id}`;
+    // Worker tabs are now hidden until workers actually execute
+    // They will be updated when StartWorkerAgents() completes
+    if (pipeline.workersExecuted) {
+        pipeline.stages.forEach(stage => {
+            const tabButtonId = `react-tab-worker-${stage.id}`;
+            const contentPaneId = `pipeline-content-worker-${stage.id}`;
 
-        const tabButton = document.createElement('button');
-        tabButton.id = tabButtonId;
-        tabButton.className = `tab-button react-mode-tab status-${stage.status}`;
-        tabButton.textContent = stage.title || `Agent ${stage.id + 1}`;
-        tabButton.setAttribute('role', 'tab');
-        tabButton.setAttribute('aria-controls', contentPaneId);
-        tabButton.addEventListener('click', () => activateTab(`worker-${stage.id}`));
-        tabsNavContainer.appendChild(tabButton);
+            const tabButton = document.createElement('button');
+            tabButton.id = tabButtonId;
+            tabButton.className = `tab-button react-mode-tab status-${stage.status}`;
+            // Clean title: remove any leading 'Agent N:' and keep full title (scroll header instead of truncating)
+            const cleanTitle = (stage.title || `Worker ${stage.id + 1}`).replace(/^Agent\s*\d+\s*:\s*/i, '').trim();
+            tabButton.textContent = cleanTitle;
+            (tabButton.style as any).whiteSpace = 'nowrap';
+            tabButton.setAttribute('role', 'tab');
+            tabButton.setAttribute('aria-controls', contentPaneId);
+            tabButton.addEventListener('click', () => activateTab(`worker-${stage.id}`));
+            tabsNavContainer.appendChild(tabButton);
 
         const workerContentPane = document.createElement('div');
         workerContentPane.id = contentPaneId;
@@ -2977,10 +2365,6 @@ function renderReactModePipeline() {
                         <div class="model-detail-section">
                             <div class="code-block-header">
                                 <span class="model-section-title">Generated Code/Content</span>
-                                <div class="code-actions">
-                                    <button class="button copy-react-worker-code-btn" data-worker-id="${stage.id}" title="Copy Code Snippet" ${!hasContent ? 'disabled' : ''}><span class="material-symbols-outlined">content_copy</span><span class="button-text">Copy</span></button>
-                                    <button class="button download-react-worker-code-btn" data-worker-id="${stage.id}" title="Download Code Snippet" ${!hasContent ? 'disabled' : ''}><span class="material-symbols-outlined">download</span><span class="button-text">Download</span></button>
-                                </div>
                             </div>
                             <div class="code-block-wrapper scrollable-content-area custom-scrollbar">${contentBlock}</div>
                         </div>
@@ -3003,55 +2387,155 @@ function renderReactModePipeline() {
 
         const downloadBtn = workerContentPane.querySelector('.download-react-worker-code-btn');
         if (downloadBtn) {
-            downloadBtn.addEventListener('click', (e) => {
+            downloadBtn.addEventListener('click', async (e) => {
                 const workerId = parseInt((e.currentTarget as HTMLElement).dataset.workerId || "-1", 10);
                 const stage = activeReactPipeline?.stages.find(s => s.id === workerId);
                 if (stage?.generatedContent) {
                     const safeTitle = stage.title.replace(/[\s&/\\?#]+/g, '_').toLowerCase();
+                    const { downloadFile } = await import('./Components/ActionButton');
                     downloadFile(stage.generatedContent, `react_worker_${stage.id}_${safeTitle}.txt`, 'text/plain');
                 }
             });
         }
     });
+    }
 
     if (pipeline.finalAppendedCode) {
         const finalOutputPane = document.createElement('div');
-        const finalCodeHtml = renderMathContent(`\`\`\`tsx\n${pipeline.finalAppendedCode}\n\`\`\``);
-
+        finalOutputPane.className = 'react-final-output-pane';
+        // Make the explorer take full available space inside the tab
         finalOutputPane.innerHTML = `
-            <div class="react-final-output-pane model-detail-card">
-                <div class="model-detail-header">
-                    <h4 class="model-title">Final Aggregated Application Code</h4>
-                    <div class="model-card-actions">
-                        <button id="download-react-runnable-project" class="button" type="button"><span class="material-symbols-outlined">archive</span><span class="button-text">Download Project (.zip)</span></button>
-                    </div>
-                </div>
-                <p>The following is a concatenation of outputs from successful worker agents. File markers (e.g., // --- FILE: src/App.tsx ---) should indicate intended file paths.</p>
-                <div class="code-block-wrapper scrollable-content-area custom-scrollbar" style="max-height: 60vh;">${finalCodeHtml}</div>
-            </div>
+            <div id="monaco-editor-mount" style="height: calc(100vh - 12rem); min-height: 500px; margin-top: 0;"></div>
         `;
         // Find the orchestrator pane and insert this after it.
         const orchestratorDiv = document.getElementById('pipeline-content-orchestrator');
         orchestratorDiv?.appendChild(finalOutputPane);
 
-        const downloadRunnableProjectButton = document.getElementById('download-react-runnable-project');
-        if (downloadRunnableProjectButton && pipeline.finalAppendedCode) {
-            downloadRunnableProjectButton.addEventListener('click', createAndDownloadReactProjectZip);
+        // Mount the Monaco editor component
+        const mountPoint = document.getElementById('monaco-editor-mount');
+        if (mountPoint && pipeline.finalAppendedCode) {
+            // Check if root already exists, otherwise create a new one
+            let root = (window as any).__monacoEditorRoot;
+            if (!root) {
+                root = ReactDOM.createRoot(mountPoint);
+                (window as any).__monacoEditorRoot = root;
+            }
+
+            const handleContentChange = (newContent: string) => {
+                if (activeReactPipeline) {
+                    activeReactPipeline.finalAppendedCode = newContent;
+                }
+            };
+
+            root.render(
+                React.createElement(MonacoFileEditor, {
+                    content: pipeline.finalAppendedCode,
+                    onContentChange: handleContentChange,
+                    onDownload: createAndDownloadReactProjectZip,
+                    readOnly: false,
+                    forceDarkTheme: false
+                })
+            );
+        }
+
+        // If late-rendered and Agentic tab not created yet (safety), create it here
+        if (!document.getElementById('react-tab-agentic-refinements') && pipeline.finalAppendedCode) {
+            const agenticTabLate = document.createElement('button');
+            agenticTabLate.id = 'react-tab-agentic-refinements';
+            agenticTabLate.className = 'tab-button react-mode-tab';
+            agenticTabLate.textContent = 'Agentic Refinements';
+            agenticTabLate.setAttribute('role', 'tab');
+            agenticTabLate.setAttribute('aria-controls', 'pipeline-content-agentic-refinements');
+            agenticTabLate.addEventListener('click', () => activateTab('agentic-refinements'));
+            // Insert as first tab (no orchestrator tab anymore)
+            if (tabsNavContainer.firstChild) {
+                tabsNavContainer.insertBefore(agenticTabLate, tabsNavContainer.firstChild);
+            } else {
+                tabsNavContainer.appendChild(agenticTabLate);
+            }
         }
     }
+
+    // Create Preview Pane only if we have a preview URL
+    if (pipeline.previewUrl) {
+        // Create preview tab if it doesn't exist
+        if (!document.getElementById('react-tab-preview')) {
+            const previewTab = document.createElement('button');
+            previewTab.id = 'react-tab-preview';
+            previewTab.className = 'tab-button react-mode-tab';
+            previewTab.textContent = 'Preview';
+            previewTab.setAttribute('role', 'tab');
+            previewTab.setAttribute('aria-controls', 'pipeline-content-preview');
+            previewTab.addEventListener('click', () => activateTab('preview'));
+            
+            // Insert preview tab after agentic refinements tab
+            const agenticTab = document.getElementById('react-tab-agentic-refinements');
+            if (agenticTab && agenticTab.nextSibling) {
+                tabsNavContainer.insertBefore(previewTab, agenticTab.nextSibling);
+            } else {
+                tabsNavContainer.appendChild(previewTab);
+            }
+        }
+        
+        const previewPane = document.createElement('div');
+        previewPane.id = 'pipeline-content-preview';
+        previewPane.className = 'pipeline-content';
+        previewPane.style.height = '100%';
+        previewPane.style.position = 'relative';
+        previewPane.style.display = 'flex';
+        previewPane.style.flexDirection = 'column';
+        
+        previewPane.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border-color); background: var(--card-bg-color);">
+                <h3 style="margin: 0; font-size: 1rem; font-weight: 600; color: var(--text-color);">Live Preview</h3>
+                <button 
+                    id="react-preview-open-new-tab" 
+                    class="button primary-action"
+                    style="display: flex; align-items: center; gap: 6px; padding: 0.5rem 1rem;"
+                    title="Open preview in new browser tab"
+                >
+                    <span class="material-symbols-outlined" style="font-size: 18px;">open_in_new</span>
+                    <span>Open in New Tab</span>
+                </button>
+            </div>
+            <div style="flex: 1; position: relative; overflow: hidden;">
+                <iframe 
+                    src="${pipeline.previewUrl}" 
+                    style="width: 100%; height: 100%; border: none; background: white;"
+                    sandbox="allow-scripts allow-same-origin"
+                ></iframe>
+            </div>
+        `;
+        pipelinesContentContainer.appendChild(previewPane);
+        
+        // Add event listener for "Open in New Tab" button
+        setTimeout(() => {
+            const openNewTabBtn = document.getElementById('react-preview-open-new-tab');
+            if (openNewTabBtn && pipeline.previewUrl) {
+                openNewTabBtn.addEventListener('click', () => {
+                    window.open(pipeline.previewUrl, '_blank');
+                });
+            }
+        }, 0);
+    }
+    
+    // Ensure the tab list starts scrolled to the beginning
+    const tabsNavContainerEl = document.getElementById('tabs-nav-container');
+    if (tabsNavContainerEl) (tabsNavContainerEl as HTMLElement).scrollLeft = 0;
 
     if (pipeline.activeTabId) {
         activateTab(pipeline.activeTabId);
     } else {
-        activateTab(`orchestrator`);
+        activateTab('agentic-refinements'); // Default to Agentic Refinements tab
     }
     updateControlsState();
 }
-
+// Assign to window for global access from ReactAgenticIntegration
+(window as any).renderReactModePipeline = renderReactModePipeline;
 
 async function runReactWorkerAgents() {
     if (!activeReactPipeline || activeReactPipeline.status !== 'processing_workers') {
-        console.error("RunReactWorkerAgents called in an invalid state.");
+        // Removed console.error
         return;
     }
     renderReactModePipeline(); // Update UI to show workers starting
@@ -3066,7 +2550,7 @@ async function runReactWorkerAgents() {
         if (!stage.systemInstruction || !stage.userPrompt) {
             stage.status = 'error';
             stage.error = "Missing system instruction or user prompt template from Orchestrator.";
-            console.error(`Worker Agent ${stage.id} missing prompts.`);
+            // Removed console.error
             renderReactModePipeline();
             return stage;
         }
@@ -3095,10 +2579,10 @@ async function runReactWorkerAgents() {
                 renderReactModePipeline();
 
                 try {
-                    const selectedModel = modelSelectElement.value || "gemini-2.5-pro";
+                    const workerModel: string = customPromptsReactState.model_worker || getSelectedModel();
                     const workerTemp = 0.7; // Moderate temperature for workers
 
-                    const apiResponse = await callGemini(stage.renderedUserPrompt, workerTemp, selectedModel, stage.systemInstruction, false);
+                    const apiResponse = await callGemini(stage.renderedUserPrompt, workerTemp, workerModel, stage.systemInstruction, false);
                     stageResponseText = apiResponse.text;
                     stage.generatedContent = cleanOutputByType(stageResponseText, 'text'); // Assuming text/code output
                     stage.status = 'completed';
@@ -3106,7 +2590,7 @@ async function runReactWorkerAgents() {
                     renderReactModePipeline();
                     break; // Exit retry loop on success
                 } catch (e: any) {
-                    console.warn(`Worker Agent ${stage.id}, Attempt ${attempt + 1} failed: ${e.message}`);
+                    // Removed console.warn
                     stage.error = `Attempt ${attempt + 1} failed: ${e.message || 'Unknown API error'}`;
                     if (attempt === MAX_RETRIES) {
                         renderReactModePipeline();
@@ -3115,7 +2599,7 @@ async function runReactWorkerAgents() {
                 }
             }
         } catch (error: any) {
-            console.error(`Worker Agent ${stage.id} failed all retries:`, error);
+            // Removed console.error
             stage.status = 'error';
             if (!stage.error) stage.error = error.message || `Worker Agent ${stage.id} failed.`;
             if (error instanceof PipelineStopRequestedError) {
@@ -3138,8 +2622,9 @@ async function runReactWorkerAgents() {
         } else if (anyAgentFailed) {
             activeReactPipeline.status = 'failed';
         } else {
-            activeReactPipeline.status = 'completed';
+            // Don't mark as completed yet - wait for agentic agent to exit
             aggregateReactOutputs();
+            // Status remains 'processing_workers' until agentic agent exits
         }
     }
 
@@ -3149,13 +2634,12 @@ async function runReactWorkerAgents() {
 }
 
 function aggregateReactOutputs() {
-    if (!activeReactPipeline || activeReactPipeline.status !== 'completed') {
-        console.warn("aggregateReactOutputs called when pipeline not completed or pipeline doesn't exist.");
-        if (activeReactPipeline) activeReactPipeline.finalAppendedCode = "Error: Could not aggregate outputs due to pipeline status.";
+    if (!activeReactPipeline) {
+        // Removed console.warn
         return;
     }
 
-    let combinedCode = `/* --- React Application Code --- */\n/* Generated by Gemini Iterative Studio */\n/* User Request: ${activeReactPipeline.userRequest} */\n\n`;
+    let combinedCode = `/* --- React Application Code --- */\n/* Generated by Iterative Studio */\n/* User Request: ${activeReactPipeline.userRequest} */\n\n`;
     combinedCode += `/* --- Orchestrator Plan (plan.txt) --- */\n/*\n${activeReactPipeline.orchestratorPlan || "No plan generated."}\n*/\n\n`;
 
     activeReactPipeline.stages.forEach(stage => {
@@ -3175,18 +2659,20 @@ function aggregateReactOutputs() {
 
 
 function initializeUI() {
-    initializeApiKey();
+    // Initialize routing system
+    initializeRouting();
 
+    // Refresh providers to update available models
+    routingManager.refreshProviders();
 
-    renderPipelineSelectors();
+    // Variants removed: no pipeline selector rendering
     initializeCustomPromptTextareas();
     updateUIAfterModeChange(); // Called early to set up initial UI based on default mode
 
     if (generateButton) {
         generateButton.addEventListener('click', async () => {
-            if (!ai) { // Double check if API client is not initialized
-                alert("API Key is not configured. Please ensure the process.env.API_KEY is set or provide one manually.");
-                initializeApiKey(); // Try to re-initialize
+            if (!hasValidApiKey()) { // Double check if any provider is configured
+                alert("No providers are configured. Please configure at least one AI provider using the 'Add Providers' button.");
                 return;
             }
             const initialIdea = initialIdeaInput.value.trim();
@@ -3199,13 +2685,16 @@ function initializeUI() {
                 await startDeepthinkAnalysisProcess(initialIdea, currentProblemImageBase64, currentProblemImageMimeType);
             } else if (currentMode === 'react') {
                 await startReactModeProcess(initialIdea);
+            } else if (currentMode === 'agentic') {
+                await startAgenticProcess(initialIdea);
+            } else if (currentMode === 'generativeui') {
+                await startGenerativeUIProcess(initialIdea);
+            } else if (currentMode === 'contextual') {
+                await startContextualProcess(initialIdea, customPromptsContextualState);
+            } else if (currentMode === 'adaptive-deepthink') {
+                await startAdaptiveDeepthinkProcess(initialIdea, customPromptsAdaptiveDeepthinkState, currentProblemImageBase64, currentProblemImageMimeType);
             } else { // Website mode
                 initPipelines();
-                if (pipelinesState.length === 0) {
-                    alert("Please select at least one variant (temperature) to run.");
-                    return;
-                }
-
                 const runningPromises = pipelinesState.map(p => runPipeline(p.id, initialIdea));
 
                 try {
@@ -3219,13 +2708,18 @@ function initializeUI() {
     }
 
     if (appModeSelector) {
-        appModeSelector.querySelectorAll('input[name="appMode"]').forEach(radio => {
+        appModeSelector.querySelectorAll('input[name="app-mode"]').forEach(radio => {
             radio.addEventListener('change', (e) => {
                 currentMode = (e.target as HTMLInputElement).value as ApplicationMode;
                 updateUIAfterModeChange();
             });
         });
     }
+
+    // Initialize Agentic mode
+    initializeAgenticMode();
+    // Initialize GenerativeUI mode
+    initializeGenerativeUIMode();
 
 
     if (exportConfigButton) {
@@ -3235,121 +2729,27 @@ function initializeUI() {
         importConfigInput.addEventListener('change', handleImportConfiguration);
     }
 
-    // Prompts Modal Listeners
-    if (customizePromptsTrigger) {
-        customizePromptsTrigger.addEventListener('click', () => setPromptsModalVisible(true));
-    }
-    if (promptsModalCloseButton) {
-        promptsModalCloseButton.addEventListener('click', () => setPromptsModalVisible(false));
-    }
-    if (promptsModalOverlay) {
-        promptsModalOverlay.addEventListener('click', (e) => {
-            if (e.target === promptsModalOverlay) {
-                setPromptsModalVisible(false);
-            }
-        });
-    }
+    // Prompts Modal Listeners - Now handled by routing system
 
-    // Diff Modal Listeners
-    if (diffModalCloseButton) {
-        diffModalCloseButton.addEventListener('click', closeDiffModal);
-    }
-    if (diffModalOverlay) {
-        diffModalOverlay.addEventListener('click', (e) => {
-            if (e.target === diffModalOverlay) {
-                closeDiffModal();
-            }
-        });
-    }
-    
-    // Diff Mode Button Listeners
-    document.addEventListener('click', (e) => {
-        const target = e.target as HTMLElement;
-        if (target.closest('#instant-fixes-button')) {
-            activateDiffMode('instant-fixes');
-        } else if (target.closest('#global-compare-button')) {
-            activateDiffMode('global-compare');
-        } else if (target.closest('#diff-analysis-view-button')) {
-            const diffAnalysisButton = document.getElementById('diff-analysis-view-button');
-            if (diffAnalysisButton && !diffAnalysisButton.classList.contains('active')) {
-                activateInstantFixesView('diff-analysis');
-            } else {
-                activateInstantFixesView('side-by-side');
-            }
-        } else if (target.closest('#preview-button')) {
-            const previewButton = document.getElementById('preview-button');
-            if (previewButton && !previewButton.classList.contains('active')) {
-                activateInstantFixesView('preview');
-            } else {
-                activateInstantFixesView('side-by-side');
-            }
-        } else if (target.closest('#diff-view-toggle-button')) {
-            toggleDiffViewDropdown();
-        } else if (target.closest('.diff-view-option')) {
-            const option = target.closest('.diff-view-option') as HTMLElement;
-            const view = option.dataset.view as 'unified' | 'split';
-            if (view) {
-                activateDiffViewMode(view);
-                hideDiffViewDropdown();
-            }
-        } else if (target.closest('#copy-source-button')) {
-            copyPreviewContent('source');
-        } else if (target.closest('#copy-target-button')) {
-            copyPreviewContent('target');
-        } else if (target.closest('#download-source-button')) {
-            downloadPreviewContent('source');
-        } else if (target.closest('#download-target-button')) {
-            downloadPreviewContent('target');
-        } else if (target.closest('#fullscreen-source-button')) {
-            openPreviewFullscreen('source');
-        } else if (target.closest('#fullscreen-target-button')) {
-            openPreviewFullscreen('target');
-        } else if (target.closest('#view-provided-patches-button')) {
-            openPatchesModal();
-        } else {
-            // Close diff view dropdown if clicking outside
-            if (!target.closest('#diff-view-toggle')) {
-                hideDiffViewDropdown();
-            }
-        }
-    });
+    // API Key Listeners are now handled by the routing system
+
+    updateControlsState();
+
     // Event delegation for dynamically created "Compare" buttons and "View The Argument" buttons
     if (pipelinesContentContainer) {
         pipelinesContentContainer.addEventListener('click', (event) => {
             const target = event.target as HTMLElement;
-            if (target.classList.contains('compare-output-button')) {
-                const pipelineId = parseInt(target.dataset.pipelineId || "-1", 10);
-                const iterationNumber = parseInt(target.dataset.iterationNumber || "-1", 10);
-                const contentType = target.dataset.contentType as ('html' | 'text');
+            const button = target.closest('.compare-output-button') as HTMLElement | null;
+            if (button) {
+                const pipelineId = parseInt(button.dataset.pipelineId || "-1", 10);
+                const iterationNumber = parseInt(button.dataset.iterationNumber || "-1", 10);
+                const contentType = button.dataset.contentType as ('html' | 'text');
                 if (pipelineId !== -1 && iterationNumber !== -1 && (contentType === 'html' || contentType === 'text')) {
                     openDiffModal(pipelineId, iterationNumber, contentType);
                 }
-            } else if (target.closest('#view-provided-patches-button')) {
-                openPatchesModal();
             }
         });
     }
-
-    // API Key Listeners
-    saveApiKeyButton.addEventListener('click', () => {
-        const key = apiKeyInput.value.trim();
-        if (key) {
-            localStorage.setItem('gemini-api-key', key);
-            apiKeyInput.value = ''; // Clear input after save
-            initializeApiKey(); // Re-initialize
-            updateControlsState(); // Update button states
-        } else {
-            alert("Please enter a valid API Key.");
-        }
-    });
-
-    clearApiKeyButton.addEventListener('click', () => {
-        localStorage.removeItem('gemini-api-key');
-        initializeApiKey(); // Re-initialize
-        updateControlsState(); // Update button states
-    });
-
-    updateControlsState();
 
     // Patches modal controls
     const patchesCloseBtn = document.getElementById('patches-modal-close-button');
@@ -3368,1137 +2768,8 @@ function initializeUI() {
     }
 }
 
-// ---------- DIFF MODAL FUNCTIONS ----------
 
-let diffSourceData: { pipelineId: number, iterationNumber: number, contentType: 'html' | 'text', content: string, title: string } | null = null;
-let currentDiffViewMode: 'unified' | 'split' = 'split';
-let currentSourceContent: string = '';
-let currentTargetContent: string = '';
-let currentProvidedPatchesJson: string | null = null;
-let isShowingRawPatches: boolean = false;
-
-// Helper function to extract HTML from old format request prompts
-function extractHtmlFromRequestPrompt(requestPrompt: string): string | null {
-    if (!requestPrompt) return null;
-    
-    // Look for HTML code blocks in the request prompt
-    const htmlMatch = requestPrompt.match(/```html\n([\s\S]*?)\n```/);
-    if (htmlMatch && htmlMatch[1]) {
-        return htmlMatch[1].trim();
-    }
-    
-    // Alternative pattern without language specifier
-    const altMatch = requestPrompt.match(/```\n(<!DOCTYPE html[\s\S]*?)\n```/);
-    if (altMatch && altMatch[1]) {
-        return altMatch[1].trim();
-    }
-    
-    return null;
-}
-
-function openPatchesModal() {
-    if (!currentProvidedPatchesJson) {
-        alert("No patch data available for this iteration.");
-        return;
-    }
-
-    // Toggle between showing raw patches and current content
-    isShowingRawPatches = !isShowingRawPatches;
-    
-    // Update button text
-    const button = document.getElementById('view-provided-patches-button');
-    const buttonText = button?.querySelector('.button-text');
-    
-    if (isShowingRawPatches) {
-        // Show raw patches in right panel, original content in left
-        if (buttonText) buttonText.textContent = 'View Current Content';
-        
-        // Update left panel with original content
-        const diffSourceContent = document.getElementById('diff-source-content');
-        const diffSourceTitle = document.getElementById('diff-source-title');
-        if (diffSourceContent && currentSourceContent) {
-            diffSourceContent.innerHTML = `<pre class="custom-scrollbar" style="font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace; font-size: 1.1rem; line-height: 1.6; white-space: pre-wrap; margin: 0; padding: 16px; background: var(--bg-secondary); border-radius: 8px; overflow: auto;">${escapeHtml(currentSourceContent)}</pre>`;
-        }
-        if (diffSourceTitle) diffSourceTitle.textContent = 'Original Content';
-        
-        // Update right panel with raw patches
-        const diffTargetContent = document.getElementById('diff-target-content');
-        const diffTargetTitle = document.getElementById('diff-target-title');
-        if (diffTargetContent) {
-            // Format the raw patches for display
-            let displayContent = currentProvidedPatchesJson;
-            try {
-                // Try to pretty-print if it's JSON
-                if (currentProvidedPatchesJson.trim().startsWith('[') || currentProvidedPatchesJson.trim().startsWith('{')) {
-                    displayContent = JSON.stringify(JSON.parse(currentProvidedPatchesJson), null, 2);
-                }
-            } catch (e) {
-                // If not valid JSON, show as-is (likely XML format)
-                displayContent = currentProvidedPatchesJson;
-            }
-            
-            diffTargetContent.innerHTML = `<pre class="custom-scrollbar" style="font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace; font-size: 1.1rem; line-height: 1.6; white-space: pre-wrap; margin: 0; padding: 16px; background: var(--bg-secondary); border-radius: 8px; overflow: auto;">${escapeHtml(displayContent)}</pre>`;
-        }
-        if (diffTargetTitle) diffTargetTitle.textContent = 'Raw Agent Response (Patches)';
-        
-    } else {
-        // Show current comparison view - button should say what clicking it WILL do
-        if (buttonText) buttonText.textContent = 'View Provided Diff Format Patches';
-        
-        // Restore original side-by-side comparison
-        if (currentSourceContent && currentTargetContent) {
-            renderSideBySideComparison(currentSourceContent, currentTargetContent, 'Before Changes', 'After Changes');
-        }
-    }
-}
-
-// Ensure proper initial state when diff modal opens
-function resetPatchesToggleState() {
-    isShowingRawPatches = false; // Always start with normal comparison view
-    const button = document.getElementById('view-provided-patches-button');
-    const buttonText = button?.querySelector('.button-text');
-    if (buttonText) buttonText.textContent = 'View Provided Diff Format Patches';
-}
-
-function renderDiff(sourceText: string, targetText: string) {
-    // Store content in global variables for toggle functionality
-    currentSourceContent = sourceText;
-    currentTargetContent = targetText;
-    
-    // Choose the correct container based on the active panel (same logic as split view)
-    const globalComparePanel = document.getElementById('global-compare-panel');
-    const instantFixesPanel = document.getElementById('instant-fixes-panel');
-    let container: HTMLElement | null = null;
-
-    if (globalComparePanel && globalComparePanel.classList.contains('active')) {
-        container = document.getElementById('diff-viewer-panel');
-    } else if (instantFixesPanel && instantFixesPanel.classList.contains('active')) {
-        container = document.getElementById('instant-fixes-diff-viewer');
-    } else {
-        // Fallback: try global compare container first, then instant fixes
-        container = document.getElementById('diff-viewer-panel') || document.getElementById('instant-fixes-diff-viewer');
-    }
-    
-    if (!container) return;
-    
-    // Ensure parent containers can scroll in unified view (disable split lock on both containers)
-    const unifiedGlobalContainer = document.getElementById('diff-viewer-panel');
-    const unifiedInstantContainer = document.getElementById('instant-fixes-diff-viewer');
-    unifiedGlobalContainer?.classList.remove('diff-side-by-side-active');
-    unifiedInstantContainer?.classList.remove('diff-side-by-side-active');
-    const differences = Diff.diffLines(sourceText, targetText, { newlineIsToken: true });
-    
-    // Calculate diff statistics
-    let addedLines = 0;
-    let removedLines = 0;
-    let totalChanges = 0;
-    
-    differences.forEach(part => {
-        const lines = part.value.split('\n').filter(line => line !== '' || part.value.endsWith('\n'));
-        if (part.added) {
-            addedLines += lines.length;
-            totalChanges += lines.length;
-        } else if (part.removed) {
-            removedLines += lines.length;
-            totalChanges += lines.length;
-        }
-    });
-    
-    // Update header diff stats
-    updateHeaderDiffStats(sourceText, targetText);
-    
-    // Create diff content HTML with proper scrolling container like split view
-    let diffHtml = '<div class="diff-view-unified"><div class="diff-pane custom-scrollbar" style="font-family: \'JetBrains Mono\', \'Fira Code\', \'SF Mono\', \'Monaco\', \'Cascadia Code\', \'Roboto Mono\', Consolas, \'Courier New\', monospace; font-size: 1.1rem; line-height: 1.6;">';
-    let lineNumber = 1;
-    
-    // Process lines in batches for better performance
-    const allLines: Array<{line: string, colorClass: string, lineNum: number}> = [];
-    
-    differences.forEach(part => {
-        const lines = part.value.split('\n');
-        lines.forEach((line, index) => {
-            if (index === lines.length - 1 && line === '') return; // Skip empty last line
-            
-            const colorClass = part.added ? 'diff-added' : part.removed ? 'diff-removed' : 'diff-neutral';
-            allLines.push({ line, colorClass, lineNum: lineNumber });
-            
-            if (!part.removed) lineNumber++;
-        });
-    });
-
-    // Batch highlight lines for performance
-    const BATCH_SIZE = 50;
-    for (let i = 0; i < allLines.length; i += BATCH_SIZE) {
-        const batch = allLines.slice(i, i + BATCH_SIZE);
-        const combinedText = batch.map(item => item.line).join('\n');
-        const highlightedBatch = hljs.highlightAuto(combinedText).value.split('\n');
-        
-        batch.forEach((item, batchIndex) => {
-            const highlightedLine = highlightedBatch[batchIndex] || escapeHtml(item.line);
-            diffHtml += `<div class="diff-line-unified ${item.colorClass}" style="display: flex; margin: 0 !important; padding: 0 8px !important; line-height: 1.6 !important; border: none !important; min-height: auto !important; height: auto !important;">
-                <span style="display: inline-block; width: 40px; text-align: right; margin-right: 8px; opacity: 0.6; font-size: 1rem; padding: 0 !important; margin: 0 !important;">${item.lineNum}</span>
-                <span style="flex: 1; white-space: pre-wrap; padding: 0 !important; margin: 0 !important;">${highlightedLine}</span>
-            </div>`;
-        });
-    }
-    
-    diffHtml += '</div></div>';
-    
-    // Only show diff content (stats are in header now)
-    container.innerHTML = diffHtml;
-    
-    // Force refresh scrolling by triggering a layout recalculation
-    const scrollContainer = container.querySelector('.diff-pane.custom-scrollbar') as HTMLElement;
-    if (scrollContainer) {
-        // Force browser to recalculate scrollbar by temporarily changing overflow
-        scrollContainer.style.overflow = 'hidden';
-        requestAnimationFrame(() => {
-            scrollContainer.style.overflow = 'auto';
-        });
-    }
-}
-
-function renderSideBySideComparison(sourceText: string, targetText: string, sourceTitle: string, targetTitle: string) {
-    // Store content in global variables for preview controls
-    currentSourceContent = sourceText;
-    currentTargetContent = targetText;
-    
-    const diffSourceContent = document.getElementById('diff-source-content');
-    const diffTargetContent = document.getElementById('diff-target-content');
-    const diffSourceTitleElement = document.getElementById('diff-source-title');
-    const diffTargetTitleElement = document.getElementById('diff-target-title');
-    
-    if (!diffSourceContent || !diffTargetContent || !diffSourceTitleElement || !diffTargetTitleElement) return;
-    
-    // Update titles
-    diffSourceTitleElement.textContent = sourceTitle;
-    diffTargetTitleElement.textContent = targetTitle;
-    
-    // Update preview titles
-    const previewSourceTitle = document.getElementById('preview-source-title');
-    const previewTargetTitle = document.getElementById('preview-target-title');
-    if (previewSourceTitle) previewSourceTitle.textContent = sourceTitle;
-    if (previewTargetTitle) previewTargetTitle.textContent = targetTitle;
-    
-    // Calculate and update header diff stats
-    updateHeaderDiffStats(sourceText, targetText);
-    
-    // Render content using renderMathContent for proper rendering with syntax highlighting
-    const renderContent = (text: string) => {
-        return renderMathContent(text);
-    };
-    
-    diffSourceContent.innerHTML = renderContent(sourceText);
-    diffTargetContent.innerHTML = renderContent(targetText);
-    
-    // Update preview frames if content is HTML
-    if (diffSourceData && diffSourceData.contentType === 'html') {
-        const previewSourceFrame = document.getElementById('preview-source-frame') as HTMLIFrameElement;
-        const previewTargetFrame = document.getElementById('preview-target-frame') as HTMLIFrameElement;
-        
-        if (previewSourceFrame) {
-            const sourceBlob = new Blob([sourceText], { type: 'text/html' });
-            previewSourceFrame.src = URL.createObjectURL(sourceBlob);
-        }
-        
-        if (previewTargetFrame) {
-            const targetBlob = new Blob([targetText], { type: 'text/html' });
-            previewTargetFrame.src = URL.createObjectURL(targetBlob);
-        }
-    }
-    
-    // Apply syntax highlighting
-    if (typeof hljs !== 'undefined') {
-        diffSourceContent.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block as HTMLElement));
-        diffTargetContent.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block as HTMLElement));
-    }
-}
-
-function populateDiffTargetTree() {
-    if (!diffTargetTreeContainer || !diffSourceData) return;
-    diffTargetTreeContainer.innerHTML = ''; // Clear previous tree
-
-    pipelinesState.forEach(pipeline => {
-        const pipelineTitle = document.createElement('h5');
-        pipelineTitle.textContent = `Variant ${pipeline.id + 1} (T: ${pipeline.temperature.toFixed(1)})`;
-        diffTargetTreeContainer.appendChild(pipelineTitle);
-
-        pipeline.iterations.forEach(iter => {
-            const isSource = pipeline.id === diffSourceData!.pipelineId && iter.iterationNumber === diffSourceData!.iterationNumber;
-            let targetContent: string | undefined = undefined;
-            if (diffSourceData!.contentType === 'html') {
-                targetContent = iter.generatedContent;
-            } else { // text
-                targetContent = iter.generatedOrRevisedText || iter.generatedMainContent;
-            }
-
-            const itemDiv = document.createElement('div');
-            itemDiv.className = 'tree-item';
-            itemDiv.textContent = iter.title;
-            if (isSource || !targetContent) {
-                itemDiv.classList.add('disabled');
-                if (isSource) itemDiv.textContent += ' (Source A)';
-                else itemDiv.textContent += ' (No content)';
-            } else {
-                itemDiv.addEventListener('click', () => {
-                    if (targetContent) { // Should always be true if not disabled
-                        // Store the current content for toggle functionality
-                        currentSourceContent = diffSourceData!.content;
-                        currentTargetContent = targetContent;
-                        
-                        // Render based on current diff view mode
-                        if (currentDiffViewMode === 'unified') {
-                            renderDiff(diffSourceData!.content, targetContent);
-                        } else {
-                            renderDiffSideBySide(diffSourceData!.content, targetContent);
-                        }
-                        
-                        // Optionally highlight selected target
-                        diffTargetTreeContainer.querySelectorAll('.tree-item.selected').forEach(el => el.classList.remove('selected'));
-                        itemDiv.classList.add('selected');
-                    }
-                });
-            }
-            diffTargetTreeContainer.appendChild(itemDiv);
-        });
-    });
-}
-
-
-function openDiffModal(pipelineId: number, iterationNumber: number, contentType: 'html' | 'text') {
-    const pipeline = pipelinesState.find(p => p.id === pipelineId);
-    if (!pipeline) return;
-    const iteration = pipeline.iterations.find(iter => iter.iterationNumber === iterationNumber);
-    if (!iteration) return;
-
-    let sourceContent: string | undefined;
-    let targetContent: string | undefined;
-    let sourceTitle: string;
-    let targetTitle: string;
-
-    if (contentType === 'html') {
-        // For HTML mode, compare Request 1 (raw) vs Request 2 (bug fixed) within the same iteration
-        // Handle both old and new JSON formats
-        
-        if (iteration.generatedRawContent) {
-            // New format with separate raw and fixed versions
-            sourceContent = iteration.generatedRawContent;
-            targetContent = iteration.generatedContent;
-            
-            if (iteration.title.includes('Initial')) {
-                sourceTitle = "Initial Generation (Request 1)";
-                targetTitle = "Initial Bug Fix (Request 2)";
-            } else if (iteration.title.includes('Refinement') || iteration.title.includes('Stabilization') || iteration.title.includes('Feature')) {
-                sourceTitle = "Feature Implementation (Request 1)";
-                targetTitle = "Bug Fix & Completion (Request 2)";
-            } else {
-                sourceTitle = "Before Fixing";
-                targetTitle = "After Fixing";
-            }
-            currentProvidedPatchesJson = iteration.providedPatchesJson || null;
-        } else {
-            // Old format: extract raw HTML from request prompt
-            const rawHtmlFromPrompt = extractHtmlFromRequestPrompt(iteration.requestPromptContent_BugFix);
-            
-            if (rawHtmlFromPrompt) {
-                sourceContent = rawHtmlFromPrompt;
-                targetContent = iteration.generatedContent;
-                sourceTitle = "Before Bug Fix";
-                targetTitle = "After Bug Fix";
-                currentProvidedPatchesJson = iteration.providedPatchesJson || null;
-            } else {
-                // Fallback: compare with previous iteration if available
-                if (iteration.iterationNumber > 0) {
-                    const prevIteration = pipeline.iterations.find(iter => iter.iterationNumber === iteration.iterationNumber - 1);
-                    if (prevIteration?.generatedContent) {
-                        sourceContent = prevIteration.generatedContent;
-                        targetContent = iteration.generatedContent;
-                        sourceTitle = `Previous: ${prevIteration.title}`;
-                        targetTitle = `Current: ${iteration.title}`;
-                    } else {
-                        sourceContent = iteration.generatedContent;
-                        targetContent = iteration.generatedContent;
-                        sourceTitle = iteration.title;
-                        targetTitle = iteration.title;
-                    }
-                } else {
-                    sourceContent = iteration.generatedContent;
-                    targetContent = iteration.generatedContent;
-                    sourceTitle = iteration.title;
-                    targetTitle = iteration.title;
-                }
-            }
-        }
-    } else { // text mode
-        sourceContent = iteration.generatedOrRevisedText || iteration.generatedMainContent;
-        targetContent = sourceContent; // For non-HTML modes, we don't have the raw vs fixed distinction yet
-        sourceTitle = iteration.title;
-        targetTitle = iteration.title;
-    }
-
-    if (!sourceContent) {
-        alert("Source content is not available for comparison.");
-        return;
-    }
-
-    if (!targetContent) {
-        alert("Target content is not available for comparison.");
-        return;
-    }
-
-    diffSourceData = { pipelineId, iterationNumber, contentType, content: sourceContent, title: sourceTitle };
-
-    // Reset the patches toggle state to ensure proper initial button text
-    resetPatchesToggleState();
-
-    // Set up the modal for instant fixes mode by default
-    activateDiffMode('instant-fixes');
-    
-    // Show side-by-side comparison by default
-    renderSideBySideComparison(sourceContent, targetContent, sourceTitle, targetTitle);
-    
-    // Store content globally for diff view switching
-    currentSourceContent = sourceContent;
-    currentTargetContent = targetContent;
-    
-    // Initialize the diff view toggle button
-    updateDiffViewToggleButton(currentDiffViewMode);
-
-    // Set up global compare mode
-    if (diffSourceLabel) diffSourceLabel.textContent = `Variant ${pipelineId + 1} - ${iteration.title}`;
-    if (diffViewerPanel) {
-        // Show initial message for global compare
-        diffViewerPanel.innerHTML = '<div class="diff-no-selection empty-state-message"><p>Select a target (B) from the list to view differences.</p></div>';
-    }
-    populateDiffTargetTree();
-
-    if (diffModalOverlay) {
-        diffModalOverlay.style.display = 'flex';
-        setTimeout(() => diffModalOverlay.classList.add('is-visible'), 10);
-    }
-}
-
-function activateDiffMode(mode: 'instant-fixes' | 'global-compare') {
-    const instantFixesButton = document.getElementById('instant-fixes-button');
-    const globalCompareButton = document.getElementById('global-compare-button');
-    const instantFixesPanel = document.getElementById('instant-fixes-panel');
-    const globalComparePanel = document.getElementById('global-compare-panel');
-    const diffAnalysisButton = document.getElementById('diff-analysis-view-button');
-    const previewButton = document.getElementById('preview-button');
-    
-    if (!instantFixesButton || !globalCompareButton || !instantFixesPanel || !globalComparePanel || !diffAnalysisButton || !previewButton) return;
-    
-    // Update button states
-    instantFixesButton.classList.toggle('active', mode === 'instant-fixes');
-    globalCompareButton.classList.toggle('active', mode === 'global-compare');
-    
-    // Update panel visibility
-    instantFixesPanel.classList.toggle('active', mode === 'instant-fixes');
-    globalComparePanel.classList.toggle('active', mode === 'global-compare');
-    
-    // Show/hide and enable/disable view mode buttons based on mode
-    if (mode === 'instant-fixes') {
-        diffAnalysisButton.style.display = 'flex';
-        previewButton.style.display = 'flex';
-        // Reset to side-by-side view when switching to instant fixes
-        activateInstantFixesView('side-by-side');
-        hideDiffViewToggle(); // Hide toggle for side-by-side view
-    } else {
-        diffAnalysisButton.style.display = 'none';
-        previewButton.style.display = 'none';
-        // Reset button states when hiding
-        diffAnalysisButton.classList.remove('active');
-        previewButton.classList.remove('active');
-        showDiffViewToggle(); // Show toggle for global compare mode
-        
-        // If we have content available, render it in the current mode
-        if (currentSourceContent && currentTargetContent) {
-            if (currentDiffViewMode === 'unified') {
-                renderDiff(currentSourceContent, currentTargetContent);
-            } else {
-                renderDiffSideBySide(currentSourceContent, currentTargetContent);
-            }
-        }
-    }
-    
-    // Check if we have the necessary data and next iteration
-    if (diffSourceData) {
-        const pipeline = pipelinesState.find(p => p.id === diffSourceData.pipelineId);
-        const nextIteration = pipeline?.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber + 1);
-        const hasNextIteration = !!nextIteration;
-        const isHtmlContent = diffSourceData.contentType === 'html';
-        
-        // Handle instant fixes mode
-        if (mode === 'instant-fixes') {
-            // For HTML mode, compare Request 1 vs Request 2 within the same iteration
-            let targetContent: string | undefined;
-            let targetTitle: string;
-            
-            if (diffSourceData.contentType === 'html') {
-                const sourceIteration = pipeline.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber);
-                if (sourceIteration) {
-                    if (sourceIteration.generatedRawContent) {
-                        // New format: compare raw vs fixed within same iteration
-                        targetContent = sourceIteration.generatedContent; // Request 2 output
-                        currentProvidedPatchesJson = sourceIteration.providedPatchesJson || null;
-                        
-                        if (sourceIteration.title.includes('Initial')) {
-                            targetTitle = "Initial Bug Fix (Request 2)";
-                        } else if (sourceIteration.title.includes('Refinement') || sourceIteration.title.includes('Stabilization') || sourceIteration.title.includes('Feature')) {
-                            targetTitle = "Bug Fix & Completion (Request 2)";
-                        } else {
-                            targetTitle = "After Fixing";
-                        }
-                    } else {
-                        // Old format: check if we can extract raw HTML from request prompt
-                        const rawHtmlFromPrompt = extractHtmlFromRequestPrompt(sourceIteration.requestPromptContent_BugFix);
-                        
-                        if (rawHtmlFromPrompt) {
-                            targetContent = sourceIteration.generatedContent;
-                            targetTitle = "After Bug Fix";
-                            currentProvidedPatchesJson = sourceIteration.providedPatchesJson || null;
-                        } else {
-                            // Fallback: compare with previous iteration if available
-                            if (diffSourceData.iterationNumber > 0) {
-                                const prevIteration = pipeline.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber - 1);
-                                if (prevIteration?.generatedContent) {
-                                    targetContent = sourceIteration.generatedContent;
-                                    targetTitle = `Current: ${sourceIteration.title}`;
-                                }
-                            }
-                            
-                            if (!targetContent) {
-                                // Fallback: show same content
-                                targetContent = sourceIteration.generatedContent;
-                                targetTitle = sourceIteration.title;
-                            }
-                        }
-                    }
-                }
-            } else {
-                // For non-HTML modes, we don't have separate raw vs fixed versions yet
-                const sourceIteration = pipeline.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber);
-                // Fallback to generatedContent if present; otherwise leave undefined (no instant fixes for non-HTML)
-                targetContent = sourceIteration?.generatedContent;
-                targetTitle = sourceIteration?.title || "Target";
-            }
-            
-            if (targetContent) {
-                renderSideBySideComparison(diffSourceData.content, targetContent, diffSourceData.title, targetTitle);
-            }
-        }
-        
-        // Check if we have both raw and bug-fix versions within the same iteration
-        let hasBugFixVersion = false;
-        if (diffSourceData.contentType === 'html') {
-            const sourceIteration = pipeline.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber);
-            // New format: check for both generatedRawContent and generatedContent
-            // Old format: check if we can extract raw HTML from request prompt, or have a previous iteration
-            hasBugFixVersion = !!(sourceIteration?.generatedRawContent && sourceIteration?.generatedContent) ||
-                              (!sourceIteration?.generatedRawContent && (
-                                  extractHtmlFromRequestPrompt(sourceIteration?.requestPromptContent_BugFix || '') ||
-                                  (diffSourceData.iterationNumber > 0 && 
-                                   pipeline.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber - 1)?.generatedContent)
-                              ));
-        } else {
-            // For non-HTML modes, we don't have separate raw vs fixed versions yet
-            hasBugFixVersion = !!pipeline.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber);
-        }
-        
-        // Update button availability
-        instantFixesButton.disabled = !hasBugFixVersion;
-        diffAnalysisButton.disabled = !hasBugFixVersion || mode !== 'instant-fixes';
-        previewButton.disabled = !hasBugFixVersion || mode !== 'instant-fixes' || !isHtmlContent;
-        
-        if (!hasBugFixVersion) {
-            instantFixesButton.title = "No corresponding bug fixed/polished version available";
-            diffAnalysisButton.title = "No corresponding bug fixed/polished version available";
-            previewButton.title = "No corresponding bug fixed/polished version available";
-        } else if (!isHtmlContent) {
-            previewButton.title = "Preview only available for HTML content";
-            diffAnalysisButton.title = mode === 'instant-fixes' ? "" : "Only available in Instant Fixes mode";
-            instantFixesButton.title = "";
-        } else {
-            instantFixesButton.title = "";
-            diffAnalysisButton.title = mode === 'instant-fixes' ? "" : "Only available in Instant Fixes mode";
-            previewButton.title = mode === 'instant-fixes' ? "" : "Only available in Instant Fixes mode";
-        }
-    }
-}
-function renderDiffSideBySide(sourceText: string, targetText: string) {
-    // Store content in global variables for toggle functionality
-    currentSourceContent = sourceText;
-    currentTargetContent = targetText;
-
-    // Choose the correct container based on the active panel.
-    // When in Global Compare, we must render into 'diff-viewer-panel'.
-    // When in Instant Fixes, render into 'instant-fixes-diff-viewer'.
-    const globalComparePanel = document.getElementById('global-compare-panel');
-    const instantFixesPanel = document.getElementById('instant-fixes-panel');
-    let container: HTMLElement | null = null;
-
-    if (globalComparePanel && globalComparePanel.classList.contains('active')) {
-        container = document.getElementById('diff-viewer-panel');
-    } else if (instantFixesPanel && instantFixesPanel.classList.contains('active')) {
-        container = document.getElementById('instant-fixes-diff-viewer');
-    } else {
-        // Fallback: try global compare container first, then instant fixes
-        container = document.getElementById('diff-viewer-panel') || document.getElementById('instant-fixes-diff-viewer');
-    }
-    if (!container) return;
-    // Only the active split container should suppress its own scrolling
-    const globalContainer = document.getElementById('diff-viewer-panel');
-    const instantContainer = document.getElementById('instant-fixes-diff-viewer');
-    globalContainer?.classList.remove('diff-side-by-side-active');
-    instantContainer?.classList.remove('diff-side-by-side-active');
-    // Prevent parent container from scrolling; let panes handle scroll (for proper sync)
-    container.classList.add('diff-side-by-side-active');
-
-    // Calculate and update header diff stats
-    updateHeaderDiffStats(sourceText, targetText);
-
-    // Create side-by-side diff HTML
-    const diff = Diff.diffLines(sourceText, targetText, { newlineIsToken: true });
-    let leftPaneHtml = '';
-    let rightPaneHtml = '';
-    let leftLineNum = 1;
-    let rightLineNum = 1;
-
-    // Process lines in batches for better performance
-    const leftLines: Array<{line: string, type: 'added' | 'removed' | 'neutral' | 'placeholder', lineNum: number}> = [];
-    const rightLines: Array<{line: string, type: 'added' | 'removed' | 'neutral' | 'placeholder', lineNum: number}> = [];
-    
-    diff.forEach(part => {
-        const lines = part.value.split('\n').filter(l => l.length > 0);
-        if (part.added) {
-            lines.forEach(line => {
-                rightLines.push({ line, type: 'added', lineNum: rightLineNum++ });
-                leftLines.push({ line: '', type: 'placeholder', lineNum: 0 });
-            });
-        } else if (part.removed) {
-            lines.forEach(line => {
-                leftLines.push({ line, type: 'removed', lineNum: leftLineNum++ });
-                rightLines.push({ line: '', type: 'placeholder', lineNum: 0 });
-            });
-        } else {
-            lines.forEach(line => {
-                leftLines.push({ line, type: 'neutral', lineNum: leftLineNum++ });
-                rightLines.push({ line, type: 'neutral', lineNum: rightLineNum++ });
-            });
-        }
-    });
-
-    // Batch highlight lines for performance
-    const BATCH_SIZE = 20;
-    
-    // Process left pane in batches
-    for (let i = 0; i < leftLines.length; i += BATCH_SIZE) {
-        const batch = leftLines.slice(i, i + BATCH_SIZE);
-        const nonPlaceholderBatch = batch.filter(item => item.type !== 'placeholder');
-        const combinedText = nonPlaceholderBatch.map(item => item.line).join('\n');
-        const highlightedBatch = nonPlaceholderBatch.length > 0 ? hljs.highlightAuto(combinedText).value.split('\n') : [];
-        
-        let highlightedIndex = 0;
-        batch.forEach(item => {
-            if (item.type === 'placeholder') {
-                leftPaneHtml += `<div class="diff-line-split diff-placeholder" style="display: flex; margin: 0 !important; padding: 0 8px !important; line-height: 1.6 !important; opacity: 0.3; min-height: auto !important; height: auto !important;"><span style="display: inline-block; width: 40px; margin-right: 8px;"></span><span style="flex: 1;"></span></div>`;
-            } else {
-                const highlightedLine = highlightedBatch[highlightedIndex++] || escapeHtml(item.line);
-                const colorClass = item.type === 'added' ? 'diff-added' : item.type === 'removed' ? 'diff-removed' : 'diff-neutral';
-                leftPaneHtml += `<div class="diff-line-split ${colorClass}" style="display: flex; margin: 0 !important; padding: 0 8px !important; line-height: 1.6 !important; min-height: auto !important; height: auto !important;"><span style="display: inline-block; width: 40px; text-align: right; margin-right: 8px; opacity: 0.6; font-size: 1rem; padding: 0 !important; margin: 0 !important;">${item.lineNum}</span><span style="flex: 1; white-space: pre-wrap; padding: 0 !important; margin: 0 !important;">${highlightedLine}</span></div>`;
-            }
-        });
-    }
-    
-    // Process right pane in batches
-    for (let i = 0; i < rightLines.length; i += BATCH_SIZE) {
-        const batch = rightLines.slice(i, i + BATCH_SIZE);
-        const nonPlaceholderBatch = batch.filter(item => item.type !== 'placeholder');
-        const combinedText = nonPlaceholderBatch.map(item => item.line).join('\n');
-        const highlightedBatch = nonPlaceholderBatch.length > 0 ? hljs.highlightAuto(combinedText).value.split('\n') : [];
-        
-        let highlightedIndex = 0;
-        batch.forEach(item => {
-            if (item.type === 'placeholder') {
-                rightPaneHtml += `<div class="diff-line-split diff-placeholder" style="display: flex; margin: 0 !important; padding: 0 8px !important; line-height: 1.6 !important; opacity: 0.3; min-height: auto !important; height: auto !important;"><span style="display: inline-block; width: 40px; margin-right: 8px;"></span><span style="flex: 1;"></span></div>`;
-            } else {
-                const highlightedLine = highlightedBatch[highlightedIndex++] || escapeHtml(item.line);
-                const colorClass = item.type === 'added' ? 'diff-added' : item.type === 'removed' ? 'diff-removed' : 'diff-neutral';
-                rightPaneHtml += `<div class="diff-line-split ${colorClass}" style="display: flex; margin: 0 !important; padding: 0 8px !important; line-height: 1.6 !important; min-height: auto !important; height: auto !important;"><span style="display: inline-block; width: 40px; text-align: right; margin-right: 8px; opacity: 0.6; font-size: 1rem; padding: 0 !important; margin: 0 !important;">${item.lineNum}</span><span style="flex: 1; white-space: pre-wrap; padding: 0 !important; margin: 0 !important;">${highlightedLine}</span></div>`;
-            }
-        });
-    }
-
-    const diffHtml = `
-        <div class="diff-view-side-by-side">
-            <div id="diff-pane-left" class="diff-pane custom-scrollbar">
-                <pre style="font-family: var(--font-family)"><code>${leftPaneHtml}</code></pre>
-            </div>
-            <div id="diff-pane-right" class="diff-pane custom-scrollbar">
-                <pre style="font-family: var(--font-family)"><code>${rightPaneHtml}</code></pre>
-            </div>
-        </div>
-    `;
-
-    container.innerHTML = diffHtml;
-
-    // IMPORTANT: scope queries to the active container to avoid duplicate ID conflicts
-    const leftPane = container.querySelector('#diff-pane-left') as HTMLElement | null;
-    const rightPane = container.querySelector('#diff-pane-right') as HTMLElement | null;
-
-    if (leftPane && rightPane) {
-        let isSyncing = false;
-
-        const syncScroll = (source: HTMLElement, target: HTMLElement) => {
-            if (isSyncing) return;
-            isSyncing = true;
-
-            // Proportional vertical sync to handle minor height differences
-            const sMax = Math.max(1, source.scrollHeight - source.clientHeight);
-            const tMax = Math.max(1, target.scrollHeight - target.clientHeight);
-            const ratio = source.scrollTop / sMax;
-            target.scrollTop = Math.round(ratio * tMax);
-
-            // Direct horizontal sync
-            target.scrollLeft = source.scrollLeft;
-
-            requestAnimationFrame(() => { isSyncing = false; });
-        };
-
-        const onLeftScroll = () => syncScroll(leftPane, rightPane);
-        const onRightScroll = () => syncScroll(rightPane, leftPane);
-
-        // Scroll events (keyboard, programmatic, touchpad)
-        leftPane.addEventListener('scroll', onLeftScroll, { passive: true });
-        rightPane.addEventListener('scroll', onRightScroll, { passive: true });
-
-        // Wheel events for horizontal Shift+scroll
-        leftPane.addEventListener('wheel', (e) => {
-            if (e.shiftKey) {
-                e.preventDefault();
-                leftPane.scrollLeft += e.deltaY;
-                rightPane.scrollLeft = leftPane.scrollLeft;
-            }
-        }, { passive: false });
-
-        rightPane.addEventListener('wheel', (e) => {
-            if (e.shiftKey) {
-                e.preventDefault();
-                rightPane.scrollLeft += e.deltaY;
-                leftPane.scrollLeft = rightPane.scrollLeft;
-            }
-        }, { passive: false });
-
-        // Resize observer to keep proportional mapping accurate
-        const ro = new ResizeObserver(() => {
-            // Trigger a sync from the currently scrolled pane
-            if (leftPane.scrollTop >= rightPane.scrollTop) {
-                onLeftScroll();
-            } else {
-                onRightScroll();
-            }
-        });
-        ro.observe(leftPane);
-        ro.observe(rightPane);
-    }
-}
-function activateInstantFixesView(view: 'side-by-side' | 'diff-analysis' | 'preview') {
-    const diffAnalysisButton = document.getElementById('diff-analysis-view-button');
-    const previewButton = document.getElementById('preview-button');
-    const sideBySideView = document.getElementById('side-by-side-view');
-    const diffAnalysisView = document.getElementById('diff-analysis-view');
-    const previewView = document.getElementById('preview-view');
-    
-    if (!diffAnalysisButton || !previewButton || !sideBySideView || !diffAnalysisView || !previewView) return;
-    
-    // Update button states
-    diffAnalysisButton.classList.toggle('active', view === 'diff-analysis');
-    previewButton.classList.toggle('active', view === 'preview');
-    
-    // Update view visibility
-    sideBySideView.classList.toggle('active', view === 'side-by-side');
-    diffAnalysisView.classList.toggle('active', view === 'diff-analysis');
-    previewView.classList.toggle('active', view === 'preview');
-    
-    // Show/hide diff view toggle based on view
-    if (view === 'diff-analysis') {
-        // Don't show diff view toggle for diff analysis - always use split view
-        hideDiffViewToggle();
-        // Get target content properly for diff analysis
-        if (diffSourceData) {
-            const pipeline = pipelinesState.find(p => p.id === diffSourceData.pipelineId);
-            let analysisTargetContent: string | undefined;
-            
-            if (diffSourceData.contentType === 'html') {
-                const sourceIteration = pipeline?.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber);
-                analysisTargetContent = sourceIteration?.generatedContent;
-                currentProvidedPatchesJson = sourceIteration?.providedPatchesJson || null;
-            } else {
-                const sourceIteration = pipeline?.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber);
-                analysisTargetContent = sourceIteration?.generatedOrRevisedText || sourceIteration?.generatedMainContent;
-            }
-            
-            if (analysisTargetContent) {
-                // Store current content for toggle functionality
-                currentSourceContent = diffSourceData.content;
-                currentTargetContent = analysisTargetContent;
-                
-                // Always render split view for diff analysis
-                renderDiffSideBySide(diffSourceData.content, analysisTargetContent);
-            }
-        }
-    } else {
-        hideDiffViewToggle();
-    }
-    
-    // Handle different views
-    if (diffSourceData) {
-        const pipeline = pipelinesState.find(p => p.id === diffSourceData.pipelineId);
-        
-        // For HTML mode, compare Request 1 vs Request 2 within the same iteration
-        let targetContent: string | undefined;
-        let targetTitle: string;
-        
-        if (diffSourceData.contentType === 'html') {
-            const sourceIteration = pipeline?.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber);
-            if (sourceIteration) {
-                targetContent = sourceIteration.generatedContent; // Request 2 output
-                currentProvidedPatchesJson = sourceIteration.providedPatchesJson || null;
-                
-                if (sourceIteration.title.includes('Initial')) {
-                    targetTitle = "Initial Bug Fix (Request 2)";
-                } else if (sourceIteration.title.includes('Refinement') || sourceIteration.title.includes('Stabilization') || sourceIteration.title.includes('Feature')) {
-                    targetTitle = "Bug Fix & Completion (Request 2)";
-                } else {
-                    targetTitle = "After Fixing";
-                }
-            }
-        } else {
-            // For non-HTML modes, we don't have separate raw vs fixed versions yet
-            const sourceIteration = pipeline?.iterations.find(iter => iter.iterationNumber === diffSourceData.iterationNumber);
-            targetContent = sourceIteration?.generatedOrRevisedText || sourceIteration?.generatedMainContent;
-            targetTitle = sourceIteration?.title || "Target";
-        }
-        
-        if (targetContent) {
-            if (view === 'diff-analysis') {
-                // Store current content for toggle functionality
-                currentSourceContent = diffSourceData.content;
-                currentTargetContent = targetContent;
-                
-                // Always render split view for diff analysis
-                renderDiffSideBySide(diffSourceData.content, targetContent);
-            } else if (view === 'preview' && diffSourceData.contentType === 'html') {
-                renderHtmlPreview(diffSourceData.content, targetContent, diffSourceData.title, targetTitle);
-            } else if (view === 'side-by-side') {
-                renderSideBySideComparison(diffSourceData.content, targetContent, diffSourceData.title, targetTitle);
-            }
-        }
-    }
-}
-
-
-
-function renderHtmlPreview(sourceHtml: string, targetHtml: string, sourceTitle: string, targetTitle: string) {
-    const previewSourceFrame = document.getElementById('preview-source-frame') as HTMLIFrameElement;
-    const previewTargetFrame = document.getElementById('preview-target-frame') as HTMLIFrameElement;
-    const previewSourceTitleElement = document.getElementById('preview-source-title');
-    const previewTargetTitleElement = document.getElementById('preview-target-title');
-    
-    if (!previewSourceFrame || !previewTargetFrame || !previewSourceTitleElement || !previewTargetTitleElement) return;
-    
-    // Update titles
-    previewSourceTitleElement.textContent = sourceTitle;
-    previewTargetTitleElement.textContent = targetTitle;
-    
-    // Calculate and update header diff stats
-    updateHeaderDiffStats(sourceHtml, targetHtml);
-    
-    // Load HTML content into iframes
-    previewSourceFrame.srcdoc = sourceHtml;
-    previewTargetFrame.srcdoc = targetHtml;
-}
-
-
-function updateHeaderDiffStats(sourceText: string, targetText: string) {
-    const headerDiffStats = document.getElementById('header-diff-stats');
-    const additionsCount = document.getElementById('header-additions-count');
-    const deletionsCount = document.getElementById('header-deletions-count');
-    const totalCount = document.getElementById('header-total-count');
-    
-    if (!headerDiffStats || !additionsCount || !deletionsCount || !totalCount) return;
-    
-    const differences = Diff.diffLines(sourceText, targetText, { newlineIsToken: true });
-    
-    let addedLines = 0;
-    let removedLines = 0;
-    let totalChanges = 0;
-    
-    differences.forEach(part => {
-        const lines = part.value.split('\n').filter(line => line !== '' || part.value.endsWith('\n'));
-        if (part.added) {
-            addedLines += lines.length;
-            totalChanges += lines.length;
-        } else if (part.removed) {
-            removedLines += lines.length;
-            totalChanges += lines.length;
-        }
-    });
-    
-    // Update the header stats
-    additionsCount.textContent = `+${addedLines} lines`;
-    deletionsCount.textContent = `-${removedLines} lines`;
-    totalCount.textContent = `${totalChanges} changes`;
-    
-    // Show the stats with animation
-    headerDiffStats.classList.add('visible');
-}
-
-function hideHeaderDiffStats() {
-    const headerDiffStats = document.getElementById('header-diff-stats');
-    if (headerDiffStats) {
-        headerDiffStats.classList.remove('visible');
-    }
-}
-
-// Missing diff view toggle functions
-function toggleDiffViewDropdown() {
-    const dropdown = document.getElementById('diff-view-dropdown');
-    if (!dropdown) return;
-    
-    if (dropdown.classList.contains('visible')) {
-        hideDiffViewDropdown();
-    } else {
-        showDiffViewDropdown();
-    }
-}
-
-function showDiffViewDropdown() {
-    const dropdown = document.getElementById('diff-view-dropdown');
-    if (dropdown) {
-        dropdown.classList.add('visible');
-    }
-}
-
-function hideDiffViewDropdown() {
-    const dropdown = document.getElementById('diff-view-dropdown');
-    if (dropdown) {
-        dropdown.classList.remove('visible');
-    }
-}
-
-function showDiffViewToggle() {
-    const toggle = document.getElementById('diff-view-toggle');
-    if (toggle) {
-        toggle.classList.add('visible');
-    }
-}
-
-function hideDiffViewToggle() {
-    const toggle = document.getElementById('diff-view-toggle');
-    if (toggle) {
-        toggle.classList.remove('visible');
-    }
-}
-
-function updateDiffViewToggleButton(mode: 'unified' | 'split') {
-    const toggleButton = document.getElementById('diff-view-toggle-button');
-    const buttonText = toggleButton?.querySelector('.button-text');
-    const buttonIcon = toggleButton?.querySelector('.material-symbols-outlined');
-    
-    if (!toggleButton || !buttonText || !buttonIcon) return;
-    
-    if (mode === 'split') {
-        buttonText.textContent = 'Split View';
-        buttonIcon.textContent = 'view_column';
-    } else {
-        buttonText.textContent = 'Unified View';
-        buttonIcon.textContent = 'view_agenda';
-    }
-    
-    // Update dropdown options
-    const options = document.querySelectorAll('.diff-view-option');
-    options.forEach(option => {
-        const optionElement = option as HTMLElement;
-        if (optionElement.dataset.view === mode) {
-            optionElement.classList.add('active');
-        } else {
-            optionElement.classList.remove('active');
-        }
-    });
-}
-
-
-function activateDiffViewMode(mode: 'unified' | 'split') {
-    currentDiffViewMode = mode;
-    updateDiffViewToggleButton(mode);
-    
-    // Re-render the current diff with the new view mode
-    if (diffSourceData && currentSourceContent && currentTargetContent) {
-        const diffAnalysisView = document.getElementById('diff-analysis-view');
-        const globalComparePanel = document.getElementById('global-compare-panel');
-        const instantFixesPanel = document.getElementById('instant-fixes-panel');
-        
-        // For instant fixes mode - diff analysis view
-        if (instantFixesPanel && instantFixesPanel.classList.contains('active') && 
-            diffAnalysisView && diffAnalysisView.classList.contains('active')) {
-            // Diff analysis always uses split view
-            renderDiffSideBySide(currentSourceContent, currentTargetContent);
-        }
-        
-        // For global compare mode
-        if (globalComparePanel && globalComparePanel.classList.contains('active')) {
-            if (mode === 'unified') {
-                renderDiff(currentSourceContent, currentTargetContent);
-            } else {
-                renderDiffSideBySide(currentSourceContent, currentTargetContent);
-            }
-        }
-    }
-}
-
-
-function copyPreviewContent(type: 'source' | 'target') {
-    const content = type === 'source' ? currentSourceContent : currentTargetContent;
-    if (content) {
-        navigator.clipboard.writeText(content).then(() => {
-            // Show a brief success indication
-            const button = document.getElementById(`copy-${type}-button`);
-            if (button) {
-                const originalIcon = button.querySelector('.material-symbols-outlined');
-                if (originalIcon) {
-                    originalIcon.textContent = 'check';
-                    setTimeout(() => {
-                        originalIcon.textContent = 'content_copy';
-                    }, 1500);
-                }
-            }
-        }).catch(err => {
-            console.error('Failed to copy content:', err);
-            alert('Failed to copy content to clipboard');
-        });
-    }
-}
-
-function downloadPreviewContent(type: 'source' | 'target') {
-    const content = type === 'source' ? currentSourceContent : currentTargetContent;
-    const title = type === 'source' ? 'source' : 'target';
-    
-    if (content) {
-        const blob = new Blob([content], { type: 'text/html' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${title}-${Date.now()}.html`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }
-}
-
-function openPreviewFullscreen(type: 'source' | 'target') {
-    const content = type === 'source' ? currentSourceContent : currentTargetContent;
-    if (content) {
-        openLivePreviewFullscreen(content);
-    }
-}
-
-function openLivePreviewFullscreen(content: string) {
-    if (content) {
-        const newWindow = window.open('', '_blank');
-        if (newWindow) {
-            // Add escape key listener to close the window
-            const fullscreenContent = `
-                ${content}
-                <script>
-                    document.addEventListener('keydown', function(e) {
-                        if (e.key === 'Escape') {
-                            window.close();
-                        }
-                    });
-                    
-                    // Add visual indicator that escape closes the window
-                    const indicator = document.createElement('div');
-                    indicator.style.cssText = \`
-                        position: fixed;
-                        top: 10px;
-                        right: 10px;
-                        background: rgba(0,0,0,0.8);
-                        color: white;
-                        padding: 8px 12px;
-                        border-radius: 4px;
-                        font-family: system-ui, sans-serif;
-                        font-size: 12px;
-                        z-index: 10000;
-                        opacity: 0.7;
-                        pointer-events: none;
-                    \`;
-                    indicator.textContent = 'Press ESC to close';
-                    document.body.appendChild(indicator);
-                    
-                    // Hide indicator after 3 seconds
-                    setTimeout(() => {
-                        if (indicator.parentNode) {
-                            indicator.style.opacity = '0';
-                            setTimeout(() => indicator.remove(), 300);
-                        }
-                    }, 3000);
-                </script>
-            `;
-            
-            newWindow.document.write(fullscreenContent);
-            newWindow.document.close();
-        }
-    }
-}
-
-function closeDiffModal() {
-    if (diffModalOverlay) {
-        diffModalOverlay.classList.remove('is-visible');
-        diffModalOverlay.addEventListener('transitionend', () => {
-            if (!diffModalOverlay.classList.contains('is-visible')) {
-                diffModalOverlay.style.display = 'none';
-            }
-        }, { once: true });
-    }
-    
-    // Clear diff source data and content
-    diffSourceData = null;
-    currentSourceContent = '';
-    currentTargetContent = '';
-    
-    // Clear content and reset state
-    const diffSourceContent = document.getElementById('diff-source-content');
-    const diffTargetContent = document.getElementById('diff-target-content');
-    const instantFixesDiffViewer = document.getElementById('instant-fixes-diff-viewer');
-    
-    if (diffSourceContent) diffSourceContent.innerHTML = '';
-    if (diffTargetContent) diffTargetContent.innerHTML = '';
-    if (instantFixesDiffViewer) instantFixesDiffViewer.innerHTML = '<div class="empty-state-message"><p>Click "Diff Analysis" to see detailed line-by-line changes</p></div>';
-    if (diffViewerPanel) diffViewerPanel.innerHTML = '<div class="diff-no-selection empty-state-message"><p>Select a target (B) from the list to view differences.</p></div>';
-    
-    // Clear preview frames
-    const previewSourceFrame = document.getElementById('preview-source-frame') as HTMLIFrameElement;
-    const previewTargetFrame = document.getElementById('preview-target-frame') as HTMLIFrameElement;
-    if (previewSourceFrame) previewSourceFrame.src = 'about:blank';
-    if (previewTargetFrame) previewTargetFrame.src = 'about:blank';
-    
-    // Reset button states
-    const unifiedButton = document.getElementById('unified-view-button');
-    const splitButton = document.getElementById('split-view-button');
-    if (unifiedButton) unifiedButton.classList.remove('active');
-    if (splitButton) splitButton.classList.add('active');
-    currentDiffViewMode = 'split';
-    
-    // Hide header diff stats
-    hideHeaderDiffStats();
-}
-
-// ---------- END DIFF MODAL FUNCTIONS ----------
-
-// Red Team reasoning functions
-(window as any).toggleRedTeamReasoning = function(agentId: string) {
+(window as any).toggleRedTeamReasoning = function (agentId: string) {
     const content = document.getElementById(`red-team-reasoning-${agentId}`);
     if (content) {
         if (content.classList.contains('expanded')) {
@@ -4511,7 +2782,7 @@ function closeDiffModal() {
     }
 };
 
-(window as any).showFullRedTeamReasoning = function(agentId: string, fullContent: string) {
+(window as any).showFullRedTeamReasoning = function (agentId: string, fullContent: string) {
     const modal = document.getElementById('red-team-full-modal');
     const modalContent = document.getElementById('red-team-modal-content');
     if (modal && modalContent) {
@@ -4520,7 +2791,7 @@ function closeDiffModal() {
     }
 };
 
-(window as any).closeRedTeamModal = function() {
+(window as any).closeRedTeamModal = function () {
     const modal = document.getElementById('red-team-full-modal');
     if (modal) {
         modal.classList.remove('active');
@@ -4528,7 +2799,7 @@ function closeDiffModal() {
 };
 
 // Deepthink Red Team reasoning functions
-(window as any).toggleDeepthinkRedTeamReasoning = function(agentId: string) {
+(window as any).toggleDeepthinkRedTeamReasoning = function (agentId: string) {
     const content = document.getElementById(`deepthink-red-team-reasoning-${agentId}`);
     if (content) {
         if (content.classList.contains('expanded')) {
@@ -4541,7 +2812,7 @@ function closeDiffModal() {
     }
 };
 
-(window as any).showFullDeepthinkRedTeamReasoning = function(agentId: string, fullContent: string) {
+(window as any).showFullDeepthinkRedTeamReasoning = function (_agentId: string, fullContent: string) {
     const modal = document.getElementById('deepthink-red-team-full-modal');
     const modalContent = document.getElementById('deepthink-red-team-modal-content');
     if (modal && modalContent) {
@@ -4550,7 +2821,7 @@ function closeDiffModal() {
     }
 };
 
-(window as any).closeDeepthinkRedTeamModal = function() {
+(window as any).closeDeepthinkRedTeamModal = function () {
     const modal = document.getElementById('deepthink-red-team-full-modal');
     if (modal) {
         modal.classList.remove('active');
@@ -4559,14 +2830,13 @@ function closeDiffModal() {
 
 document.addEventListener('DOMContentLoaded', () => {
     initializeUI();
-    initializeSliderEventListeners();
-    
+
     // Initialize deepthink module with all required dependencies
     initializeDeepthinkModule({
-        ai,
+        getAIProvider: () => routingManager.getAIProvider(),
         callGemini,
         cleanOutputByType,
-        parseJsonSuggestions: parseJsonSuggestions as any,
+        parseJsonSuggestions: parseJsonSuggestions as any, // Only for Deepthink strategies
         parseJsonSafe,
         updateControlsState,
         escapeHtml: (str: string) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'),
@@ -4578,12 +2848,16 @@ document.addEventListener('DOMContentLoaded', () => {
         getSelectedHypothesisCount,
         getSelectedRedTeamAggressiveness,
         getRefinementEnabled,
+        getSkipSubStrategies,
+        getDissectedObservationsEnabled,
+        getIterativeCorrectionsEnabled,
+        getProvideAllSolutionsToCorrectors,
         cleanTextOutput,
         customPromptsDeepthinkState,
         tabsNavContainer: document.getElementById('tabs-nav-container'),
         pipelinesContentContainer: document.getElementById('pipelines-content-container'),
-        setActiveDeepthinkPipeline: (pipeline: DeepthinkPipelineState | null) => {
-            activeDeepthinkPipeline = pipeline;
+        setActiveDeepthinkPipeline: (pipeline: any) => {
+            activeDeepthinkPipeline = pipeline as any;
         }
     });
 
@@ -4607,8 +2881,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateUIAfterModeChange();
 
     const preloader = document.getElementById('preloader');
-    const sidebar = document.getElementById('controls-sidebar');
-    const mainContent = document.getElementById('main-content');
+    // Sidebar and main content elements handled by specific functions
 
     if (preloader) {
         preloader.classList.add('hidden');
@@ -4616,90 +2889,68 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Sidebar collapse/expand functionality
     let sidebarIsCollapsed = false;
-    
+
     function ensureExpandButton() {
-        const tabsContainer = document.getElementById('tabs-nav-container');
-        let expandButton = document.getElementById('sidebar-expand-button');
-        
-        if (!expandButton && tabsContainer) {
-            expandButton = document.createElement('button');
-            expandButton.id = 'sidebar-expand-button';
-            expandButton.className = 'sidebar-expand-button';
-            expandButton.setAttribute('aria-label', 'Expand Sidebar');
-            expandButton.setAttribute('title', 'Expand Sidebar');
+        // Button now exists in HTML, just show/hide it
+        const expandButton = document.getElementById('sidebar-expand-button');
+        if (expandButton) {
             expandButton.style.display = sidebarIsCollapsed ? 'flex' : 'none';
-            expandButton.innerHTML = '<span class="material-symbols-outlined">dock_to_left</span>';
-            
-            // Insert as first child of tabs container
-            tabsContainer.insertBefore(expandButton, tabsContainer.firstChild);
-            
-            // Add click listener
-            expandButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const controlsSidebar = document.getElementById('controls-sidebar');
-                const mainContent = document.getElementById('main-content');
-                
-                if (controlsSidebar) {
-                    // Force layout recalculation before transition
-                    controlsSidebar.offsetHeight;
-                    
-                    // Add transition and expand
-                    controlsSidebar.style.transition = 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)';
-                    controlsSidebar.classList.remove('collapsed');
-                    expandButton.style.display = 'none';
-                    sidebarIsCollapsed = false;
-                    
-                    // Force repaint to ensure smooth transition
-                    requestAnimationFrame(() => {
-                        // Trigger layout recalculation for main content
-                        if (mainContent) {
-                            mainContent.style.transform = 'translateZ(0)';
-                            setTimeout(() => {
-                                mainContent.style.transform = '';
-                            }, 300);
-                        }
-                    });
-                }
-            });
         }
-        
-        return expandButton;
     }
 
     function initializeSidebarControls() {
         const sidebarCollapseButton = document.getElementById('sidebar-collapse-button');
         const controlsSidebar = document.getElementById('controls-sidebar');
         const mainContent = document.getElementById('main-content');
-        
-        // Ensure expand button exists
-        ensureExpandButton();
+        const expandButton = document.getElementById('sidebar-expand-button');
+
+        // Initialize expand button visibility based on current state
+        if (controlsSidebar && controlsSidebar.classList.contains('collapsed')) {
+            sidebarIsCollapsed = true;
+            if (expandButton) {
+                expandButton.style.display = 'flex';
+            }
+        }
+
+        // Attach expand button handler (button exists in HTML)
+        if (expandButton) {
+            expandButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                if (controlsSidebar) {
+                    controlsSidebar.classList.remove('collapsed');
+                    sidebarIsCollapsed = false;
+                    expandButton.style.display = 'none';
+                }
+            });
+        }
 
         if (sidebarCollapseButton && controlsSidebar) {
             // Remove existing listeners to avoid duplicates
             const newCollapseButton = sidebarCollapseButton.cloneNode(true) as HTMLElement;
             sidebarCollapseButton.replaceWith(newCollapseButton);
-            
+
             newCollapseButton.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                
+
                 // Force layout recalculation before transition
                 controlsSidebar.offsetHeight;
-                
+
                 // Add transition class and collapse
                 controlsSidebar.style.transition = 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)';
                 controlsSidebar.classList.add('collapsed');
                 sidebarIsCollapsed = true;
-                
+
                 // Force repaint to ensure smooth transition
                 requestAnimationFrame(() => {
-                    // Ensure expand button exists and is visible
-                    const expandButton = ensureExpandButton();
-                    if (expandButton) {
-                        expandButton.style.display = 'flex';
+                    // Show expand button
+                    const expandBtn = document.getElementById('sidebar-expand-button');
+                    if (expandBtn) {
+                        expandBtn.style.display = 'flex';
                     }
-                    
+
                     // Trigger layout recalculation for main content
                     if (mainContent) {
                         mainContent.style.transform = 'translateZ(0)';
@@ -4709,33 +2960,59 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 });
             });
-            
         }
     }
 
-    // Global function to reinitialize sidebar controls (called from other functions)
-    (window as any).reinitializeSidebarControls = initializeSidebarControls;
+    // Theme Toggle Functionality
+    function initializeThemeToggle() {
+        // Load saved theme preference or default to dark mode
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        if (savedTheme === 'light') {
+            document.body.classList.add('light-mode');
+            const themeToggleButton = document.getElementById('theme-toggle-button');
+            const themeIcon = themeToggleButton?.querySelector('.material-symbols-outlined');
+            if (themeIcon) themeIcon.textContent = 'dark_mode';
+        }
 
-    // Initialize sidebar controls
+        // Use event delegation on document to ensure it always works
+        document.addEventListener('click', (e) => {
+            const target = e.target as HTMLElement;
+            const themeToggleButton = target.closest('#theme-toggle-button');
+
+            if (themeToggleButton) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const isLightMode = document.body.classList.toggle('light-mode');
+
+                // Query for icon each time to avoid stale references
+                const themeIcon = themeToggleButton.querySelector('.material-symbols-outlined');
+                if (themeIcon) {
+                    themeIcon.textContent = isLightMode ? 'dark_mode' : 'light_mode';
+                }
+
+                // Save preference
+                localStorage.setItem('theme', isLightMode ? 'light' : 'dark');
+            }
+        }, true); // Use capture phase to ensure we catch it first
+    }
+
+    // Global function to reinitialize sidebar controls (called from other functions)
+    (window as any).pipelinesState = pipelinesState;
+
+    // Initialize sidebar controls and theme toggle
     initializeSidebarControls();
-    
+    initializeThemeToggle();
+    initializeEvolutionConvergenceButtons();
+
     // Re-initialize sidebar controls whenever tabs are updated
     const observer = new MutationObserver(() => {
-        if (sidebarIsCollapsed) {
-            ensureExpandButton();
-        }
+        // Call ensureExpandButton to maintain button after tab changes
+        ensureExpandButton();
     });
-    
+
     const tabsContainer = document.getElementById('tabs-nav-container');
     if (tabsContainer) {
         observer.observe(tabsContainer, { childList: true, subtree: true });
     }
 });
-
-// Missing Deepthink functions moved to Deepthink.tsx module
-
-// runDeepthinkRedTeamEvaluation moved to Deepthink.tsx module
-
-// openDeepthinkSolutionModal moved to Deepthink.tsx module
-
-// closeSolutionModal moved to Deepthink.tsx module

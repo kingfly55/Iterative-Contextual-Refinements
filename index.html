@@ -7,14 +7,25 @@
     <title>Iterative Studio</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/diff2html/bundles/css/diff2html.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <link rel="stylesheet" href="index.css">
+    <link rel="stylesheet" href="Components/ActionButton.css">
     <link rel="stylesheet" href="Components/RenderMathMarkdown.css">
+    <link rel="stylesheet" href="Components/DiffModal.css">
+    <link rel="stylesheet" href="Components/PromptStyling.css">
+    <link rel="stylesheet" href="Contextual/ContextualUI.css">
+    <link rel="stylesheet" href="Routing/routing.css">
+    <link rel="stylesheet" href="Routing/prompts-modal.css">
+    <link rel="stylesheet" href="Routing/provider-management.css">
     <script type="importmap">
 {
   "imports": {
     "@google/genai": "https://esm.sh/@google/genai@^1.4.0",
+    "openai": "https://esm.sh/openai@^4.0.0",
+    "@anthropic-ai/sdk": "https://esm.sh/@anthropic-ai/sdk@^0.27.0",
     "diff": "https://esm.sh/diff@^8.0.2",
     "jszip": "https://esm.sh/jszip@^3.10.1",
     "marked": "https://esm.sh/marked@4.3.0",
@@ -39,16 +50,16 @@
             <aside id="controls-sidebar" class="inspector-panel custom-scrollbar" aria-labelledby="controls-sidebar-heading">
                 <header class="sidebar-header">
                     <div class="sidebar-header-content">
-                        <p id="api-key-status" class="api-key-status-message status-badge" aria-live="polite">Initializing...</p>
-                        <button id="sidebar-collapse-button" class="sidebar-collapse-button" aria-label="Collapse Sidebar" title="Collapse Sidebar">
-                            <span class="material-symbols-outlined">dock_to_right</span>
-                        </button>
-                    </div>
-                    <div id="api-key-form-container" style="display: none; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.75rem;">
-                        <input type="password" id="api-key-input" class="input-base" placeholder="Enter API Key">
-                        <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-                            <button id="save-api-key-button" class="button"><span class="material-symbols-outlined">save</span><span class="button-text">Save Key</span></button>
-                            <button id="clear-api-key-button" class="button"><span class="material-symbols-outlined">delete</span><span class="button-text">Clear Key</span></button>
+                        <div class="api-key-status-container">
+                            <!-- Provider management button will be inserted here by ProviderManagementUI -->
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <button id="theme-toggle-button" class="theme-toggle-button" aria-label="Toggle Theme" title="Toggle Light/Dark Mode">
+                                <span class="material-symbols-outlined">light_mode</span>
+                            </button>
+                            <button id="sidebar-collapse-button" class="sidebar-collapse-button" aria-label="Collapse Sidebar" title="Collapse Sidebar">
+                                <span class="material-symbols-outlined">dock_to_right</span>
+                            </button>
                         </div>
                     </div>
                 </header>
@@ -61,20 +72,51 @@
         
         
                     <div class="input-group">
-                        <label class="input-label">Application Mode</label>
                         <div id="app-mode-selector" class="radio-group-modern" role="radiogroup" aria-label="Select Application Mode">
-                           <label class="radio-label-modern">
-                                <input type="radio" name="appMode" value="website" checked>
-                                <span>Refine</span>
-                            </label>
-                            <label class="radio-label-modern">
-                                <input type="radio" name="appMode" value="deepthink">
-                                <span>Deepthink</span>
-                            </label>
-                            <label class="radio-label-modern">
-                                <input type="radio" name="appMode" value="react">
-                                <span>React</span>
-                            </label>
+                            <!-- Deepthink Section -->
+                            <div class="app-mode-section-label">Deepthink</div>
+                            <div class="radio-group-full-width-row">
+                                <label class="radio-label-modern radio-label-half-width">
+                                    <input type="radio" name="app-mode" value="deepthink">
+                                    <span>Deepthink</span>
+                                </label>
+                                <label class="radio-label-modern radio-label-half-width">
+                                    <input type="radio" name="app-mode" value="adaptive-deepthink">
+                                    <span>Adaptive Deepthink</span>
+                                </label>
+                            </div>
+                            
+                            <!-- Iterative Refinements Section -->
+                            <div class="app-mode-section-label">Iterative Refinements</div>
+                            <div class="radio-group-full-width-row">
+                                <label class="radio-label-modern radio-label-half-width">
+                                    <input type="radio" name="app-mode" value="website" checked>
+                                    <span>Refine</span>
+                                </label>
+                                <label class="radio-label-modern radio-label-half-width">
+                                    <input type="radio" name="app-mode" value="agentic">
+                                    <span>Agentic Refinements</span>
+                                </label>
+                            </div>
+                            <div class="radio-group-full-width-row">
+                                <label class="radio-label-modern radio-label-full-width">
+                                    <input type="radio" name="app-mode" value="contextual">
+                                    <span>Iterative Corrections (Solution Pool + Memory)</span>
+                                </label>
+                            </div>
+                            
+                            <!-- Experimental Section -->
+                            <div class="app-mode-section-label">Experimental (Not Recommended)</div>
+                            <div class="radio-group-full-width-row">
+                                <label class="radio-label-modern radio-label-half-width">
+                                    <input type="radio" name="app-mode" value="react">
+                                    <span>React</span>
+                                </label>
+                                <label class="radio-label-modern radio-label-half-width">
+                                    <input type="radio" name="app-mode" value="generativeui">
+                                    <span>Generative UI</span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                     
@@ -83,10 +125,8 @@
                         <div class="sidebar-section-content">
                             <div id="model-selection-container" class="input-group-tight">
                                 <label for="model-select" class="input-label">Model:</label>
-                                <select id="model-select" class="input-base" aria-label="Select Gemini Model">
-                                    <option value="gemini-2.5-pro">Gemini 2.5 Pro (Default)</option>
-                                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                                    <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
+                                <select id="model-select" class="input-base" aria-label="Select AI Model">
+                                    <!-- Options populated dynamically by routing system -->
                                 </select>
                             </div>
 
@@ -100,13 +140,69 @@
                                     <input type="range" id="top-p-slider" class="slider" min="0" max="1" step="0.05" value="0.95" aria-label="Top P slider">
                                 </div>
                                 <div class="input-group-tight">
-                                    <label for="strategies-slider" class="input-label">Strategies: <span id="strategies-value">3</span></label>
-                                    <input type="range" id="strategies-slider" class="slider" min="1" max="10" step="1" value="3" aria-label="Number of strategies slider">
+                                    <label for="refinement-stages-slider" class="input-label">Refinement Stages: <span id="refinement-stages-value">3</span></label>
+                                    <input type="range" id="refinement-stages-slider" class="slider" min="1" max="5" step="1" value="3" aria-label="Number of refinement stages slider">
                                 </div>
-                                <div class="input-group-tight">
-                                    <label for="sub-strategies-slider" class="input-label">Sub-strategies: <span id="sub-strategies-value">3</span></label>
-                                    <input type="range" id="sub-strategies-slider" class="slider" min="1" max="10" step="1" value="3" aria-label="Number of sub-strategies slider">
+                                <!-- Iterative Evolutions Convergence Container -->
+                                <div class="evolution-convergence-container">
+                                    <div class="evolution-convergence-header">
+                                        <span class="material-symbols-outlined evolution-convergence-icon">manage_search</span>
+                                        <span class="evolution-convergence-title">Iterative Evolutions Convergence</span>
+                                    </div>
+                                    <div class="evolution-convergence-buttons-wrapper">
+                                        <div class="evolution-convergence-buttons">
+                                            <button type="button" class="evolution-convergence-button" data-value="off">Off</button>
+                                            <button type="button" class="evolution-convergence-button active" data-value="novelty">Novelty</button>
+                                            <button type="button" class="evolution-convergence-button" data-value="quality">Quality</button>
+                                        </div>
+                                        <div class="evolution-convergence-description" id="evolution-convergence-description">
+                                            <span class="evolution-mode-text">Default mode with all agents active for balanced innovation and quality.</span>
+                                        </div>
+                                    </div>
                                 </div>
+                                
+                                <!-- Strategy Execution Options Container -->
+                                <div class="strategy-execution-container">
+                                    <div class="strategy-execution-header">
+                                        <span class="material-symbols-outlined">account_tree</span>
+                                        <span>Strategy Execution</span>
+                                    </div>
+                                    
+                                    <div class="strategy-execution-card">
+                                        <!-- Primary Strategy Count -->
+                                        <div class="strategy-execution-section">
+                                            <div class="input-group-tight">
+                                                <label for="strategies-slider" class="input-label">Strategies: <span id="strategies-value">3</span></label>
+                                                <input type="range" id="strategies-slider" class="slider" min="1" max="10" step="1" value="3" aria-label="Number of strategies slider">
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Sub-Strategies Control Group -->
+                                        <div class="strategy-execution-divider"></div>
+                                        
+                                        <div class="strategy-execution-section">
+                                            <div class="strategy-execution-main">
+                                                <div class="strategy-execution-left">
+                                                    <label class="toggle-label">
+                                                        <input type="checkbox" id="skip-sub-strategies-toggle" class="toggle-input">
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                    <div class="strategy-execution-info">
+                                                        <span class="strategy-execution-title">Sub-Strategies</span>
+                                                        <span class="strategy-execution-description">Enable sub-strategy decomposition for each strategy</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="strategy-execution-slider-nested">
+                                                <div class="input-group-tight">
+                                                    <label for="sub-strategies-slider" class="input-label">Sub-strategies Count: <span id="sub-strategies-value">3</span></label>
+                                                    <input type="range" id="sub-strategies-slider" class="slider" min="1" max="10" step="1" value="3" aria-label="Number of sub-strategies slider">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
                                 <!-- Information Packet Options Container -->
                                 <div class="information-packet-container" style="margin-top: 1rem;">
                                     <div class="information-packet-window" id="information-packet-window">
@@ -196,28 +292,90 @@
                                 <div class="refinement-options-container">
                                     <div class="refinement-options-header">
                                         <span class="material-symbols-outlined">auto_fix_high</span>
-                                        <span>Refinement Options</span>
+                                        <span>Solution Refinement</span>
                                     </div>
-                                    <div class="refinement-toggle-wrapper">
+                                    
+                                    <!-- Master Control -->
+                                    <div class="refinement-master-control">
                                         <label class="toggle-label">
                                             <input type="checkbox" id="refinement-toggle" class="toggle-input">
                                             <span class="toggle-slider"></span>
-                                            <span class="toggle-text">Solution Refinement</span>
                                         </label>
-                                        <span class="refinement-description">Detect Flaws, Unjustified Assumptions and Refine</span>
+                                        <div class="refinement-master-info">
+                                            <div class="refinement-master-title">Enable Refinements</div>
+                                            <div class="refinement-master-description">Generates critique for each solution & attempts to correct it</div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Refinement Methods -->
+                                    <div class="refinement-methods">
+                                        <div class="refinement-methods-label">Select Refinement Strategy</div>
+                                        
+                                        <!-- Method 1: Synthesis -->
+                                        <div class="refinement-method-card" data-method="synthesis">
+                                            <div class="method-card-header">
+                                                <div class="method-card-selector">
+                                                    <input type="checkbox" id="dissected-observations-toggle" class="method-checkbox">
+                                                    <label for="dissected-observations-toggle" class="method-checkbox-label">
+                                                        <div class="method-checkbox-custom"></div>
+                                                    </label>
+                                                </div>
+                                                <div class="method-card-title">
+                                                    <div class="method-name">Critique Synthesis</div>
+                                                    <div class="method-type">Single Pass</div>
+                                                </div>
+                                            </div>
+                                            <div class="method-card-description">
+                                                Synthesizes all solution critiques by resolving conflicts and prioritizing the best arguments. All Correctors receive this when enabled.
+                                            </div>
+                                        </div>
+
+                                        <!-- Method 2: Iterative -->
+                                        <div class="refinement-method-card" data-method="iterative">
+                                            <div class="method-card-header">
+                                                <div class="method-card-selector">
+                                                    <input type="checkbox" id="iterative-corrections-toggle" class="method-checkbox">
+                                                    <label for="iterative-corrections-toggle" class="method-checkbox-label">
+                                                        <div class="method-checkbox-custom"></div>
+                                                    </label>
+                                                </div>
+                                                <div class="method-card-title">
+                                                    <div class="method-name">Iterative Corrections</div>
+                                                    <div class="method-type">3 Refinement Loops</div>
+                                                </div>
+                                            </div>
+                                            <div class="method-card-description">
+                                                Iterative loop of Corrector & Critique going back and forth. Maintains the conversation history.
+                                            </div>
+                                        </div>
+
+                                        <!-- Method 3: Full Context -->
+                                        <div class="refinement-method-card" data-method="fullcontext">
+                                            <div class="method-card-header">
+                                                <div class="method-card-selector">
+                                                    <input type="checkbox" id="provide-all-solutions-toggle" class="method-checkbox">
+                                                    <label for="provide-all-solutions-toggle" class="method-checkbox-label">
+                                                        <div class="method-checkbox-custom"></div>
+                                                    </label>
+                                                </div>
+                                                <div class="method-card-title">
+                                                    <div class="method-name">Full Solution Context</div>
+                                                    <div class="method-type">Static Solution Pool</div>
+                                                </div>
+                                            </div>
+                                            <div class="method-card-description">
+                                                Provides correctors with all the attempted solutions from all the strategies (& sub-strategies if the loop is disabled)
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                 
-                            <div id="temperature-selection-container" class="input-group-tight">
-                                <label class="input-label" id="pipeline-select-heading">Variants (Temperature):</label>
-                                <div id="pipeline-selectors-container" class="pipeline-selectors-container" role="group" aria-labelledby="pipeline-select-heading">
-                                </div>
-                            </div>
+                            
                         </div>
                     </details>
 
-                    <details class="sidebar-section">
+                    <details class="sidebar-section" open>
                         <summary class="sidebar-section-header">Configuration</summary>
                         <div class="sidebar-section-content">
                             <div class="config-buttons-container" style="display: flex; gap: 1rem;">
@@ -230,26 +388,30 @@
                         </div>
                     </details>
                     
-                    <div id="custom-prompts-section" class="sidebar-section">
-                        <div id="customize-prompts-trigger" role="button" tabindex="0" class="sidebar-section-header">
-                            Customize Prompts
-                        </div>
-                    </div>
 
                 </div>
 
                 <footer class="sidebar-footer">
-                    <button id="generate-button" class="button primary-action" type="button"><span class="button-text">Generate</span></button>
+                    <div class="api-call-indicator">
+                        <div class="api-call-info">
+                            <span class="api-call-count" id="api-call-count">~0</span>
+                            <span class="api-call-label">API Calls</span>
+                        </div>
+                        <span class="api-call-warning material-symbols-outlined" id="api-call-warning" style="display: none;" title="Red Team enabled - may reduce calls">info</span>
+                    </div>
+                    <button id="generate-button" class="button primary-action" type="button"><span class="button-text">Deepthink</span></button>
                 </footer>
             </aside>
     
             <main id="main-content" class="flow-canvas-wrapper" aria-labelledby="main-content-heading">
                 <h2 id="main-content-heading" class="sr-only">Generation Pipelines Output</h2>
-                <div id="tabs-nav-container" class="tabs-container" role="tablist" aria-label="Generation Variants">
+                <div class="main-header-content">
                     <button id="sidebar-expand-button" class="sidebar-expand-button" aria-label="Expand Sidebar" title="Expand Sidebar" style="display: none;">
                         <span class="material-symbols-outlined">dock_to_left</span>
                     </button>
-                    <!-- Tabs will be dynamically inserted here -->
+                    <div id="tabs-nav-container" class="tabs-container" role="tablist" aria-label="Results">
+                        <!-- Tabs will be dynamically inserted here -->
+                    </div>
                 </div>
                 <div id="pipelines-content-container" class="results-content-area custom-scrollbar">
                     <!-- Pipeline content will be dynamically inserted here -->
@@ -273,9 +435,17 @@
                         <!-- Website Prompts -->
                         <div id="website-prompts-container" class="prompts-mode-container">
                             <div class="prompt-content-pane" data-prompt-key="initial-gen">
-                                <h4 class="prompt-pane-title">Initial HTML Generation</h4>
+                                <h4 class="prompt-pane-title">Initial Generation</h4>
                                 <div class="prompt-card">
-                                    <div class="prompt-card-header"><span class="prompt-card-title">System Instruction</span></div>
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="initialGen">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <div class="prompt-card-body"><textarea id="sys-initial-gen" class="prompt-textarea" rows="8"></textarea></div>
                                 </div>
                                 <div class="prompt-card">
@@ -287,9 +457,17 @@
                                 </div>
                             </div>
                              <div class="prompt-content-pane" data-prompt-key="initial-bugfix">
-                                <h4 class="prompt-pane-title">Initial HTML Bug Fix & Polish</h4>
+                                <h4 class="prompt-pane-title">Initial Bug Fix & Polish</h4>
                                 <div class="prompt-card">
-                                    <div class="prompt-card-header"><span class="prompt-card-title">System Instruction</span></div>
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="initialBugFix">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <div class="prompt-card-body"><textarea id="sys-initial-bugfix" class="prompt-textarea" rows="8"></textarea></div>
                                 </div>
                                 <div class="prompt-card">
@@ -301,9 +479,17 @@
                                 </div>
                             </div>
                             <div class="prompt-content-pane" data-prompt-key="initial-features">
-                                <h4 class="prompt-pane-title">Initial Feature Suggestion (HTML)</h4>
+                                <h4 class="prompt-pane-title">Initial Feature Suggestion</h4>
                                 <div class="prompt-card">
-                                    <div class="prompt-card-header"><span class="prompt-card-title">System Instruction</span></div>
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="initialFeatureSuggest">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <div class="prompt-card-body"><textarea id="sys-initial-features" class="prompt-textarea" rows="8"></textarea></div>
                                 </div>
                                 <div class="prompt-card">
@@ -317,7 +503,15 @@
                             <div class="prompt-content-pane" data-prompt-key="refine-implement">
                                 <h4 class="prompt-pane-title">Refinement - Stabilize & Implement</h4>
                                 <div class="prompt-card">
-                                    <div class="prompt-card-header"><span class="prompt-card-title">System Instruction</span></div>
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="refineStabilizeImplement">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <div class="prompt-card-body"><textarea id="sys-refine-implement" class="prompt-textarea" rows="8"></textarea></div>
                                 </div>
                                 <div class="prompt-card">
@@ -331,7 +525,15 @@
                             <div class="prompt-content-pane" data-prompt-key="refine-bugfix">
                                 <h4 class="prompt-pane-title">Refinement - Bug Fix & Completion</h4>
                                 <div class="prompt-card">
-                                    <div class="prompt-card-header"><span class="prompt-card-title">System Instruction</span></div>
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="refineBugFix">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <div class="prompt-card-body"><textarea id="sys-refine-bugfix" class="prompt-textarea" rows="8"></textarea></div>
                                 </div>
                                 <div class="prompt-card">
@@ -345,7 +547,15 @@
                             <div class="prompt-content-pane" data-prompt-key="refine-features">
                                 <h4 class="prompt-pane-title">Refinement - Feature Suggestion</h4>
                                 <div class="prompt-card">
-                                    <div class="prompt-card-header"><span class="prompt-card-title">System Instruction</span></div>
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="refineFeatureSuggest">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <div class="prompt-card-body"><textarea id="sys-refine-features" class="prompt-textarea" rows="8"></textarea></div>
                                 </div>
                                 <div class="prompt-card">
@@ -357,9 +567,17 @@
                                 </div>
                             </div>
                             <div class="prompt-content-pane" data-prompt-key="final-polish">
-                                <h4 class="prompt-pane-title">Final Polish (HTML)</h4>
+                                <h4 class="prompt-pane-title">Final Polish</h4>
                                 <div class="prompt-card">
-                                    <div class="prompt-card-header"><span class="prompt-card-title">System Instruction</span></div>
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="finalPolish">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <div class="prompt-card-body"><textarea id="sys-final-polish" class="prompt-textarea" rows="8"></textarea></div>
                                 </div>
                                 <div class="prompt-card">
@@ -375,7 +593,15 @@
                             <div class="prompt-content-pane" data-prompt-key="deepthink-initial-strategy">
                                 <h4 class="prompt-pane-title">Initial Strategy Generation</h4>
                                 <div class="prompt-card">
-                                    <div class="prompt-card-header"><span class="prompt-card-title">System Instruction</span></div>
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="initialStrategy">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <div class="prompt-card-body"><textarea id="sys-deepthink-initial-strategy" class="prompt-textarea" rows="8"></textarea></div>
                                 </div>
                                 <div class="prompt-card">
@@ -389,7 +615,15 @@
                             <div class="prompt-content-pane" data-prompt-key="deepthink-sub-strategy">
                                 <h4 class="prompt-pane-title">Sub-Strategy Generation</h4>
                                 <div class="prompt-card">
-                                    <div class="prompt-card-header"><span class="prompt-card-title">System Instruction</span></div>
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="subStrategy">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <div class="prompt-card-body"><textarea id="sys-deepthink-sub-strategy" class="prompt-textarea" rows="8"></textarea></div>
                                 </div>
                                 <div class="prompt-card">
@@ -403,7 +637,15 @@
                             <div class="prompt-content-pane" data-prompt-key="deepthink-solution-attempt">
                                 <h4 class="prompt-pane-title">Solution Attempt</h4>
                                 <div class="prompt-card">
-                                    <div class="prompt-card-header"><span class="prompt-card-title">System Instruction</span></div>
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="solutionAttempt">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <div class="prompt-card-body"><textarea id="sys-deepthink-solution-attempt" class="prompt-textarea" rows="8"></textarea></div>
                                 </div>
                                 <div class="prompt-card">
@@ -414,10 +656,62 @@
                                     <div class="prompt-card-body"><textarea id="user-deepthink-solution-attempt" class="prompt-textarea" rows="4"></textarea></div>
                                 </div>
                             </div>
+                            <div class="prompt-content-pane" data-prompt-key="deepthink-solution-critique">
+                                <h4 class="prompt-pane-title">Solution Critique</h4>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="solutionCritique">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="prompt-card-body"><textarea id="sys-deepthink-solution-critique" class="prompt-textarea" rows="8"></textarea></div>
+                                </div>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">User Prompt Template</span>
+                                        <span class="prompt-placeholders">Variables: <code>{{originalProblemText}}</code>, <code>{{currentMainStrategy}}</code>, <code>{{allSubStrategiesAndSolutions}}</code></span>
+                                    </div>
+                                    <div class="prompt-card-body"><textarea id="user-deepthink-solution-critique" class="prompt-textarea" rows="4"></textarea></div>
+                                </div>
+                            </div>
+                            <div class="prompt-content-pane" data-prompt-key="deepthink-dissected-synthesis">
+                                <h4 class="prompt-pane-title">Dissected Observations Synthesis</h4>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="dissectedSynthesis">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="prompt-card-body"><textarea id="sys-deepthink-dissected-synthesis" class="prompt-textarea" rows="8"></textarea></div>
+                                </div>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">User Prompt Template</span>
+                                        <span class="prompt-placeholders">Variables: <code>{{originalProblemText}}</code>, <code>{{knowledgePacket}}</code>, <code>{{dissectedObservations}}</code></span>
+                                    </div>
+                                    <div class="prompt-card-body"><textarea id="user-deepthink-dissected-synthesis" class="prompt-textarea" rows="4"></textarea></div>
+                                </div>
+                            </div>
                             <div class="prompt-content-pane" data-prompt-key="deepthink-self-improvement">
                                 <h4 class="prompt-pane-title">Self-Improvement</h4>
                                 <div class="prompt-card">
-                                    <div class="prompt-card-header"><span class="prompt-card-title">System Instruction</span></div>
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="selfImprovement">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <div class="prompt-card-body"><textarea id="sys-deepthink-self-improvement" class="prompt-textarea" rows="8"></textarea></div>
                                 </div>
                                 <div class="prompt-card">
@@ -431,7 +725,15 @@
                             <div class="prompt-content-pane" data-prompt-key="deepthink-hypothesis-generation">
                                 <h4 class="prompt-pane-title">Hypothesis Generation</h4>
                                 <div class="prompt-card">
-                                    <div class="prompt-card-header"><span class="prompt-card-title">System Instruction</span></div>
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="hypothesisGeneration">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <div class="prompt-card-body"><textarea id="sys-deepthink-hypothesis-generation" class="prompt-textarea" rows="8"></textarea></div>
                                 </div>
                                 <div class="prompt-card">
@@ -445,7 +747,15 @@
                             <div class="prompt-content-pane" data-prompt-key="deepthink-hypothesis-tester">
                                 <h4 class="prompt-pane-title">Hypothesis Testing</h4>
                                 <div class="prompt-card">
-                                    <div class="prompt-card-header"><span class="prompt-card-title">System Instruction</span></div>
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="hypothesisTester">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <div class="prompt-card-body"><textarea id="sys-deepthink-hypothesis-tester" class="prompt-textarea" rows="8"></textarea></div>
                                 </div>
                                 <div class="prompt-card">
@@ -459,7 +769,15 @@
                             <div class="prompt-content-pane" data-prompt-key="deepthink-red-team">
                                 <h4 class="prompt-pane-title">Red Team Evaluation</h4>
                                 <div class="prompt-card">
-                                    <div class="prompt-card-header"><span class="prompt-card-title">System Instruction</span></div>
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="redTeam">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <div class="prompt-card-body"><textarea id="sys-deepthink-red-team" class="prompt-textarea" rows="8"></textarea></div>
                                 </div>
                                 <div class="prompt-card">
@@ -473,14 +791,30 @@
                             <div class="prompt-content-pane" data-prompt-key="deepthink-judge">
                                 <h4 class="prompt-pane-title">Judge (Intra-Strategy)</h4>
                                 <div class="prompt-card">
-                                    <div class="prompt-card-header"><span class="prompt-card-title">System Instruction</span></div>
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="judge">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <div class="prompt-card-body"><textarea id="sys-deepthink-judge" class="prompt-textarea" rows="8"></textarea></div>
                                 </div>
                             </div>
                             <div class="prompt-content-pane" data-prompt-key="deepthink-final-judge">
                                 <h4 class="prompt-pane-title">Final Judge (Cross-Strategy)</h4>
                                 <div class="prompt-card">
-                                    <div class="prompt-card-header"><span class="prompt-card-title">System Instruction</span></div>
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="finalJudge">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <div class="prompt-card-body"><textarea id="sys-deepthink-final-judge" class="prompt-textarea" rows="8"></textarea></div>
                                 </div>
                             </div>
@@ -489,7 +823,15 @@
                            <div class="prompt-content-pane" data-prompt-key="react-orchestrator">
                                 <h4 class="prompt-pane-title">React: Orchestrator Agent Config</h4>
                                 <div class="prompt-card">
-                                    <div class="prompt-card-header"><span class="prompt-card-title">System Instruction (for Orchestrator)</span></div>
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction (for Orchestrator)</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="orchestrator">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     <div class="prompt-card-body"><textarea id="sys-react-orchestrator" class="prompt-textarea" rows="10"></textarea></div>
                                 </div>
                                 <div class="prompt-card">
@@ -497,6 +839,269 @@
                                         <span class="prompt-card-title">User Prompt Template (for Orchestrator)</span>
                                     </div>
                                     <div class="prompt-card-body"><textarea id="user-react-orchestrator" class="prompt-textarea" rows="4"></textarea></div>
+                                </div>
+                            </div>
+                            <!-- React Embedded Agentic Prompts (embedded inside react-prompts-container) -->
+                            <div class="prompt-content-pane" data-prompt-key="react-agentic-embedded">
+                                <h4 class="prompt-pane-title">React: Embedded Agentic Refinement</h4>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">Agentic System Prompt (Embedded)</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="agentic-embedded">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="prompt-card-body"><textarea id="sys-react-agentic-embedded" class="prompt-textarea" rows="10" placeholder="System prompt used by Agentic refinement inside React mode"></textarea></div>
+                                </div>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">Verifier System Prompt (Embedded)</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="agentic-verifier-embedded">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="prompt-card-body"><textarea id="sys-react-agentic-verifier-embedded" class="prompt-textarea" rows="10" placeholder="System prompt for the embedded Verifier agent"></textarea></div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Agentic Prompts -->
+                        <div id="agentic-prompts-container" class="prompts-mode-container">
+                            <div class="prompt-content-pane" data-prompt-key="agentic-system">
+                                <h4 class="prompt-pane-title">Main Agent Configuration</h4>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Prompt</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="agentic">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="prompt-card-body">
+                                        <textarea id="sys-agentic" class="prompt-textarea" rows="12" placeholder="Enter the system prompt for Agentic mode..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="prompt-content-pane" data-prompt-key="agentic-verifier">
+                                <h4 class="prompt-pane-title">Verifier Agent Configuration</h4>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">Verifier System Prompt</span>
+                                        <div class="prompt-model-selector">
+         
+                                            <select class="prompt-model-select" data-agent="agentic-verifier">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="prompt-card-body">
+                                        <textarea id="sys-agentic-verifier" class="prompt-textarea" rows="12" placeholder="Enter the system prompt for the Verifier agent..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Adaptive Deepthink Prompts -->
+                        <div id="adaptiveDeepthink-prompts-container" class="prompts-mode-container">
+                            <div class="prompt-content-pane" data-prompt-key="adaptive-main">
+                                <h4 class="prompt-pane-title">Main Orchestrator</h4>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+                                            <select class="prompt-model-select" data-agent="adaptive-main">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="prompt-card-body">
+                                        <textarea id="sys-adaptive-main" class="prompt-textarea" rows="12" placeholder="Main Adaptive Deepthink orchestrator system prompt..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="prompt-content-pane" data-prompt-key="adaptive-strategy-gen">
+                                <h4 class="prompt-pane-title">Strategy Generation</h4>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+                                            <select class="prompt-model-select" data-agent="adaptive-strategy-gen">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="prompt-card-body">
+                                        <textarea id="sys-adaptive-strategy-gen" class="prompt-textarea" rows="10" placeholder="Strategy generation agent system prompt..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="prompt-content-pane" data-prompt-key="adaptive-hypothesis-gen">
+                                <h4 class="prompt-pane-title">Hypothesis Generation</h4>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+                                            <select class="prompt-model-select" data-agent="adaptive-hypothesis-gen">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="prompt-card-body">
+                                        <textarea id="sys-adaptive-hypothesis-gen" class="prompt-textarea" rows="10" placeholder="Hypothesis generation agent system prompt..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="prompt-content-pane" data-prompt-key="adaptive-hypothesis-test">
+                                <h4 class="prompt-pane-title">Hypothesis Testing</h4>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+                                            <select class="prompt-model-select" data-agent="adaptive-hypothesis-test">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="prompt-card-body">
+                                        <textarea id="sys-adaptive-hypothesis-test" class="prompt-textarea" rows="10" placeholder="Hypothesis testing agent system prompt..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="prompt-content-pane" data-prompt-key="adaptive-execution">
+                                <h4 class="prompt-pane-title">Execution Agent</h4>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+                                            <select class="prompt-model-select" data-agent="adaptive-execution">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="prompt-card-body">
+                                        <textarea id="sys-adaptive-execution" class="prompt-textarea" rows="10" placeholder="Execution agent system prompt..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="prompt-content-pane" data-prompt-key="adaptive-critique">
+                                <h4 class="prompt-pane-title">Solution Critique</h4>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+                                            <select class="prompt-model-select" data-agent="adaptive-critique">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="prompt-card-body">
+                                        <textarea id="sys-adaptive-critique" class="prompt-textarea" rows="10" placeholder="Solution critique agent system prompt..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="prompt-content-pane" data-prompt-key="adaptive-corrector">
+                                <h4 class="prompt-pane-title">Corrector Agent</h4>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+                                            <select class="prompt-model-select" data-agent="adaptive-corrector">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="prompt-card-body">
+                                        <textarea id="sys-adaptive-corrector" class="prompt-textarea" rows="10" placeholder="Corrector agent system prompt..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="prompt-content-pane" data-prompt-key="adaptive-judge">
+                                <h4 class="prompt-pane-title">Final Judge</h4>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+                                            <select class="prompt-model-select" data-agent="adaptive-judge">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="prompt-card-body">
+                                        <textarea id="sys-adaptive-judge" class="prompt-textarea" rows="10" placeholder="Final judge agent system prompt..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Contextual Prompts -->
+                        <div id="contextual-prompts-container" class="prompts-mode-container">
+                            <div class="prompt-content-pane" data-prompt-key="contextual-main-generator">
+                                <h4 class="prompt-pane-title">Main Generation Agent</h4>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+                                            <select class="prompt-model-select" data-agent="contextual-main-generator">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="prompt-card-body">
+                                        <textarea id="sys-contextual-main-generator" class="prompt-textarea" rows="12" placeholder="Main generation agent (self-corrector) system prompt..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="prompt-content-pane" data-prompt-key="contextual-iterative-agent">
+                                <h4 class="prompt-pane-title">Iterative Agent</h4>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+                                            <select class="prompt-model-select" data-agent="contextual-iterative-agent">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="prompt-card-body">
+                                        <textarea id="sys-contextual-iterative-agent" class="prompt-textarea" rows="12" placeholder="Iterative agent (solution critique) system prompt..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="prompt-content-pane" data-prompt-key="contextual-solution-pool">
+                                <h4 class="prompt-pane-title">Solution Pool Agent</h4>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+                                            <select class="prompt-model-select" data-agent="contextual-solution-pool">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="prompt-card-body">
+                                        <textarea id="sys-contextual-solution-pool" class="prompt-textarea" rows="12" placeholder="Solution pool / strategy pool agent system prompt..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="prompt-content-pane" data-prompt-key="contextual-memory">
+                                <h4 class="prompt-pane-title">Memory Agent</h4>
+                                <div class="prompt-card">
+                                    <div class="prompt-card-header">
+                                        <span class="prompt-card-title">System Instruction</span>
+                                        <div class="prompt-model-selector">
+                                            <select class="prompt-model-select" data-agent="contextual-memory">
+                                                <option value="">Use Global Model</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="prompt-card-body">
+                                        <textarea id="sys-contextual-memory" class="prompt-textarea" rows="12" placeholder="Memory agent system prompt..."></textarea>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -508,189 +1113,7 @@
 
     <script type="module" src="index.tsx"></script>
 
-    <!-- Diff Viewer Modal -->
-    <div id="diff-modal-overlay" class="modal-overlay">
-        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="diff-modal-title">
-            <header class="modal-header">
-                <div class="modal-header-left">
-                    <h2 id="diff-modal-title" class="modal-title">Compare Outputs</h2>
-                    <div id="header-diff-stats" class="header-diff-stats">
-                        <div class="diff-stat-item diff-stat-additions">
-                            <span class="material-symbols-outlined">add</span>
-                            <span id="header-additions-count">+0 lines</span>
-                        </div>
-                        <div class="diff-stat-item diff-stat-deletions">
-                            <span class="material-symbols-outlined">remove</span>
-                            <span id="header-deletions-count">-0 lines</span>
-                        </div>
-                        <div class="diff-stat-item diff-stat-total">
-                            <span class="material-symbols-outlined">difference</span>
-                            <span id="header-total-count">0 changes</span>
-                        </div>
-                        <div id="diff-view-toggle" class="diff-view-toggle">
-                            <button id="diff-view-toggle-button" class="diff-view-toggle-button">
-                                <span class="material-symbols-outlined">view_column</span>
-                                <span class="button-text">Split View</span>
-                                <span class="material-symbols-outlined">expand_more</span>
-                            </button>
-                            <div id="diff-view-dropdown" class="diff-view-dropdown">
-                                <div class="diff-view-option active" data-view="split">
-                                    <span class="material-symbols-outlined">view_column</span>
-                                    <span>Split View</span>
-                                </div>
-                                <div class="diff-view-option" data-view="unified">
-                                    <span class="material-symbols-outlined">view_agenda</span>
-                                    <span>Unified View</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-header-right">
-                    <div class="diff-modal-controls">
-                        <button id="instant-fixes-button" class="button diff-mode-button active" data-mode="instant-fixes">
-                            <span class="material-symbols-outlined">auto_fix_high</span>
-                            <span class="button-text">Instant Fixes</span>
-                        </button>
-                        <button id="diff-analysis-view-button" class="view-mode-button" data-view="diff-analysis">
-                            <span class="material-symbols-outlined">difference</span>
-                            <span class="button-text">Diff Analysis</span>
-                        </button>
-                        <button id="preview-button" class="view-mode-button" data-view="preview">
-                            <span class="material-symbols-outlined">preview</span>
-                            <span class="button-text">Preview</span>
-                        </button>
-                        <button id="global-compare-button" class="button diff-mode-button" data-mode="global-compare">
-                            <span class="material-symbols-outlined">compare</span>
-                            <span class="button-text">Global Compare</span>
-                        </button>
-                    </div>
-                    <button id="diff-modal-close-button" class="modal-close-button" aria-label="Close Diff Viewer"><span class="material-symbols-outlined">close</span></button>
-                </div>
-            </header>
-            <div id="diff-modal-body">
-                <!-- Instant Fixes Mode (Default) -->
-                <div id="instant-fixes-panel" class="diff-mode-panel active">
-                    <div class="instant-fixes-content">
-                        <div id="side-by-side-view" class="instant-fixes-view active">
-                            <div class="side-by-side-comparison">
-                                <div class="comparison-side">
-                                    <h4 class="comparison-title">
-                                        <span class="material-symbols-outlined">psychology</span>
-                                        <span id="diff-source-title">Main Generation</span>
-                                    </h4>
-                                    <div id="diff-source-content" class="comparison-content custom-scrollbar"></div>
-                                </div>
-                                <div class="comparison-side">
-                                    <h4 class="comparison-title" style="display: flex; align-items: center; gap: 0.5rem;">
-                                        <span class="material-symbols-outlined">auto_fix_high</span>
-                                        <span id="diff-target-title">Bug Fixed/Polished</span>
-                                        <button id="view-provided-patches-button" class="button" type="button" title="View Provided Diff Format Patches" style="margin-left: auto;">
-                                            <span class="material-symbols-outlined">difference</span>
-                                            <span class="button-text">View Provided Diff Format Patches</span>
-                                        </button>
-                                    </h4>
-                                    <div id="diff-target-content" class="comparison-content custom-scrollbar"></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div id="diff-analysis-view" class="instant-fixes-view">
-                            <div id="instant-fixes-diff-viewer" class="diff-viewer-container custom-scrollbar">
-                                <div class="empty-state-message">
-                                    <p>Click "Diff Analysis" to see detailed line-by-line changes</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div id="preview-view" class="instant-fixes-view">
-                            <div class="preview-comparison">
-                                <div class="preview-side">
-                                    <div class="preview-header">
-                                        <h4 class="comparison-title">
-                                            <span class="material-symbols-outlined">psychology</span>
-                                            <span id="preview-source-title">Main Generation</span>
-                                        </h4>
-                                        <div class="preview-controls">
-                                            <div class="code-actions">
-                                                <button id="copy-source-button" class="button" type="button" title="Copy HTML">
-                                                    <span class="material-symbols-outlined">content_copy</span>
-                                                    <span class="button-text">Copy</span>
-                                                </button>
-                                                <button id="download-source-button" class="button" type="button" title="Download HTML">
-                                                    <span class="material-symbols-outlined">download</span>
-                                                    <span class="button-text">Download</span>
-                                                </button>
-                                                <button id="fullscreen-source-button" class="button" type="button" title="View Fullscreen">
-                                                    <span class="material-symbols-outlined">preview</span>
-                                                    <span class="button-text">Preview</span>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <iframe id="preview-source-frame" class="preview-frame" sandbox="allow-scripts allow-same-origin"></iframe>
-                                </div>
-                                <div class="preview-side">
-                                    <div class="preview-header">
-                                        <h4 class="comparison-title">
-                                            <span class="material-symbols-outlined">auto_fix_high</span>
-                                            <span id="preview-target-title">Bug Fixed/Polished</span>
-                                        </h4>
-                                        <div class="code-actions">
-                                            <button id="copy-target-button" class="button" type="button" title="Copy HTML">
-                                                <span class="material-symbols-outlined">content_copy</span>
-                                                <span class="button-text">Copy</span>
-                                            </button>
-                                            <button id="download-target-button" class="button" type="button" title="Download HTML">
-                                                <span class="material-symbols-outlined">download</span>
-                                                <span class="button-text">Download</span>
-                                            </button>
-                                            <button id="fullscreen-target-button" class="button" type="button" title="View Fullscreen">
-                                                <span class="material-symbols-outlined">preview</span>
-                                                <span class="button-text">Preview</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <iframe id="preview-target-frame" class="preview-frame" sandbox="allow-scripts allow-same-origin"></iframe>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Global Compare Mode -->
-                <div id="global-compare-panel" class="diff-mode-panel">
-                    <aside id="diff-selector-panel" class="inspector-panel custom-scrollbar">
-                        <div class="sidebar-section-content">
-                            <div id="diff-source-display" class="input-group">
-                                <h4 class="model-section-title">Source (A)</h4>
-                                <p id="diff-source-label">None selected</p>
-                            </div>
-                            <div class="input-group">
-                                <h4 class="model-section-title">Select Target (B)</h4>
-                                <div id="diff-target-tree" class="custom-scrollbar" style="max-height: 40vh; overflow-y: auto; padding-right: 0.5rem;"></div>
-                            </div>
-                        </div>
-                    </aside>
-                    <div id="diff-viewer-panel" class="custom-scrollbar">
-                        <div class="diff-no-selection empty-state-message">
-                            <p>Select a target from the list to view differences.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <!-- Provided Patches Modal -->
-            <div id="patches-modal-overlay" class="modal-overlay" style="display: none;">
-                <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="patches-modal-title">
-                    <header class="modal-header">
-                        <h2 id="patches-modal-title" class="modal-title">Provided Diff Format Patches</h2>
-                        <button id="patches-modal-close-button" class="modal-close-button" aria-label="Close Patches Viewer"><span class="material-symbols-outlined">close</span></button>
-                    </header>
-                    <div class="modal-body">
-                        <pre class="custom-scrollbar" style="max-height: 60vh; white-space: pre-wrap;"><code id="patches-modal-content" class="language-json"></code></pre>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    <!-- Diff Modal is now created dynamically by DiffModal.tsx -->
 <script type="module" src="/index.tsx"></script>
     </body>
 </html>

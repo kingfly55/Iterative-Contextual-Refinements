@@ -1,0 +1,302 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+.monaco-file-editor-container {
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    margin: 16px 0;
+}
+
+.monaco-file-tabs {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--header-bg);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0;
+    min-height: 42px;
+}
+
+.monaco-file-tabs-list {
+    display: flex;
+    gap: 2px;
+    padding: 0 8px;
+    overflow-x: auto;
+    flex: 1;
+    align-items: center;
+}
+
+.monaco-file-tabs-list::-webkit-scrollbar {
+    height: 4px;
+}
+
+.monaco-file-tabs-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.monaco-file-tabs-list::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 8px;
+}
+
+.monaco-file-tab {
+    padding: 8px 16px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 13px;
+    font-family: var(--font-family);
+    white-space: nowrap;
+    transition: all 0.2s ease;
+    border-radius: 16px 16px 0 0;
+    position: relative;
+    min-width: 100px;
+    max-width: 200px;
+}
+
+.monaco-file-tab:hover {
+    background: var(--hover-bg);
+    color: var(--text-color);
+}
+
+.monaco-file-tab.active {
+    background: var(--surface-color);
+    color: var(--primary-color);
+    font-weight: 500;
+}
+
+.monaco-file-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--primary-color);
+}
+
+.monaco-file-tab-name {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.monaco-file-tabs-actions {
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 8px;
+}
+
+.monaco-download-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 16px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.monaco-download-btn:hover {
+    background: var(--primary-color-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.monaco-download-btn .material-symbols-outlined {
+    font-size: 18px;
+}
+
+.monaco-file-path {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--background-secondary);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.monaco-file-path .material-symbols-outlined {
+    font-size: 18px;
+    color: var(--primary-color);
+}
+
+.monaco-file-path .path-text {
+    flex: 1;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.monaco-file-path .read-only-badge {
+    background: var(--warning-bg);
+    color: var(--warning-color);
+    padding: 2px 8px;
+    border-radius: 24px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.monaco-editor-wrapper {
+    position: relative;
+    background: var(--surface-color);
+}
+
+.monaco-file-editor-empty {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 300px;
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+/* Dark mode specific styles */
+.dark .monaco-file-editor-container {
+    background: #1e1e1e;
+    border-color: #2d2d30;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.dark .monaco-file-tabs {
+    background: #252526;
+    border-bottom-color: #2d2d30;
+}
+
+.dark .monaco-file-tab {
+    color: #969696;
+}
+
+.dark .monaco-file-tab:hover {
+    background: #2a2d2e;
+    color: #cccccc;
+}
+
+.dark .monaco-file-tab.active {
+    background: #1e1e1e;
+    color: #4ec9b0;
+}
+
+.dark .monaco-file-tab.active::after {
+    background: #4ec9b0;
+}
+
+.dark .monaco-file-path {
+    background: #252526;
+    border-bottom-color: #2d2d30;
+    color: #969696;
+}
+
+.dark .monaco-file-editor-empty {
+    background: #1e1e1e;
+}
+
+.dark .monaco-download-btn {
+    background: #007acc;
+}
+
+.dark .monaco-download-btn:hover {
+    background: #1a8ce2;
+}
+
+.dark .monaco-file-path .read-only-badge {
+    background: rgba(255, 193, 7, 0.15);
+    color: #ffc107;
+}
+
+/* Light mode specific styles - Anthropic-inspired minimal */
+body.light-mode .monaco-file-editor-container {
+    background: #ffffff;
+    border-color: rgba(0, 0, 0, 0.06);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+body.light-mode .monaco-file-tabs {
+    background: #fafaf8;
+    border-bottom-color: rgba(0, 0, 0, 0.06);
+}
+
+body.light-mode .monaco-file-tab {
+    color: #666666;
+}
+
+body.light-mode .monaco-file-tab:hover {
+    background: rgba(0, 0, 0, 0.02);
+    color: #1a1a1a;
+}
+
+body.light-mode .monaco-file-tab.active {
+    background: #ffffff;
+    color: #9d8db8;
+}
+
+body.light-mode .monaco-file-tab.active::after {
+    background: #9d8db8;
+}
+
+body.light-mode .monaco-file-path {
+    background: #fafaf8;
+    border-bottom-color: rgba(0, 0, 0, 0.06);
+    color: #666666;
+}
+
+body.light-mode .monaco-file-editor-empty {
+    background: #ffffff;
+    color: #999999;
+}
+
+body.light-mode .monaco-download-btn {
+    background: #6b9bd1;
+}
+
+body.light-mode .monaco-download-btn:hover {
+    background: #8ab0db;
+}
+
+body.light-mode .monaco-file-path .read-only-badge {
+    background: rgba(212, 163, 115, 0.1);
+    color: #d4a373;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .monaco-file-tabs {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .monaco-file-tabs-list {
+        width: 100%;
+    }
+    
+    .monaco-file-tabs-actions {
+        justify-content: flex-end;
+        padding: 8px;
+        border-top: 1px solid var(--border-color);
+    }
+    
+    .monaco-file-tab {
+        min-width: 80px;
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+    
+    .monaco-download-btn {
+        font-size: 12px;
+        padding: 4px 10px;
+    }
+}

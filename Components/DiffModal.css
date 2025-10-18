@@ -1,0 +1,1963 @@
+/* Diff Target Tree Styles */
+.diff-target-pipeline-group {
+    margin-bottom: 1.5rem;
+    padding: 0;
+}
+
+#diff-modal-overlay .modal-title {
+    margin: 0;
+    padding: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-color);
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+/* Global Compare Source Display */
+#diff-source-display {
+    margin-bottom: 2rem;
+    padding: 1rem;
+    background: rgba(var(--accent-purple-rgb), 0.08);
+    border: 1px solid rgba(var(--accent-purple-rgb), 0.2);
+    border-radius: var(--border-radius-md);
+}
+
+#diff-source-display .model-section-title {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--accent-purple);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+#diff-source-label {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--text-primary-color);
+    font-weight: 500;
+}
+
+
+/* Unified diff container parity */
+.diff-view-unified .diff-pane {
+    background: var(--card-bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    backdrop-filter: var(--card-blur-effect);
+    -webkit-backdrop-filter: var(--card-blur-effect);
+}
+
+.diff-line-unified {
+    line-height: 2.2;
+    font-size: 1.1rem;
+    padding: 0 0.5rem;
+    margin: 0;
+    border: none;
+    display: block;
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+
+.diff-line-unified.diff-added {
+    margin: 0;
+    border: 0;
+}
+
+.diff-line-unified.diff-removed {
+    margin: 0;
+    border: 0;
+}
+
+.diff-line-unified.diff-neutral {
+    background: transparent;
+}
+
+
+.diff-target-pipeline-header {
+    font-weight: 600;
+    color: var(--text-primary-color);
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 0.75rem;
+    font-size: 0.9rem;
+}
+
+.diff-target-iterations {
+    padding-left: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.diff-target-iteration-item {
+    padding: 0.75rem 1rem;
+    margin: 0;
+    border: 1px solid transparent;
+    cursor: pointer;
+    color: var(--text-secondary-color);
+    transition: all var(--transition-speed-fast) var(--easing-curve);
+    font-size: 0.85rem;
+    background: rgba(var(--card-bg-base-rgb), 0.3);
+    border: 1px solid var(--border-color);
+}
+
+.diff-target-iteration-item:hover {
+    background: rgba(var(--accent-blue-rgb), 0.1);
+    color: var(--text-primary-color);
+    border-color: rgba(var(--accent-blue-rgb), 0.3);
+    transform: translateX(2px);
+}
+
+.diff-target-iteration-item.active {
+    background: rgba(var(--accent-blue-rgb), 0.15);
+    color: var(--accent-blue);
+    font-weight: 500;
+    border-color: var(--accent-blue);
+    transform: translateX(4px);
+}
+
+/* Diff Viewer Modal inherits global Deepthink modal styles from index.css */
+/* Intentionally removing legacy #diff-modal-overlay overrides to ensure
+   consistent fullscreen appearance and behavior across the app. */
+
+/* Diff Modal Body */
+#diff-modal-body {
+    display: flex;
+    overflow: hidden;
+    height: calc(100vh - 180px);
+    padding: 0;
+    margin: 0;
+}
+
+/* Modal Header */
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem 2rem;
+    background: var(--card-bg-color);
+    border-bottom: 1px solid var(--border-color);
+    backdrop-filter: var(--card-blur-effect);
+    -webkit-backdrop-filter: var(--card-blur-effect);
+    margin: 0;
+    position: relative;
+}
+
+/* Modal header left section */
+.modal-header-left {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    margin: 0;
+    padding: 0;
+    position: relative;
+    flex: 1;
+}
+
+/* Modal header right section */
+.modal-header-right {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+/* Diff stats section */
+.diff-stats-section {
+    padding: 1rem 2rem;
+    background: var(--card-bg-color);
+    border-bottom: 1px solid var(--border-color);
+    backdrop-filter: var(--card-blur-effect);
+    -webkit-backdrop-filter: var(--card-blur-effect);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Header diff stats */
+.header-diff-stats {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif !important;
+    font-size: 0.85rem;
+    font-weight: 500;
+    opacity: 0;
+    transition: opacity var(--transition-speed) var(--easing-curve);
+}
+
+.header-diff-stats.visible {
+    opacity: 1;
+}
+
+/* Diff stat item */
+.diff-stat-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.diff-stat-item .material-symbols-outlined {
+    font-size: 1rem;
+}
+
+.diff-stat-sign {
+    font-weight: 700;
+    font-size: 0.9rem;
+    width: 12px;
+    text-align: center;
+}
+
+.diff-stat-additions {
+    color: var(--accent-green);
+}
+
+.diff-stat-deletions {
+    color: var(--accent-pink);
+}
+
+.diff-stat-total {
+    color: var(--text-secondary-color);
+}
+
+/* Iteration navigation */
+.iteration-navigation {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.iteration-nav-button {
+    background: var(--surface-secondary);
+    color: var(--text-secondary-color);
+    border: 1px solid var(--border-color);
+    padding: 0.5rem;
+    border-radius: 18px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+}
+
+.iteration-nav-button:hover {
+    background: var(--surface-tertiary);
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(var(--accent-blue-rgb), 0.2);
+}
+
+.iteration-nav-button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: var(--surface-secondary);
+    border-color: var(--border-color);
+    color: var(--text-tertiary-color);
+    transform: none;
+    box-shadow: none;
+}
+
+.iteration-nav-button .material-symbols-outlined {
+    font-size: 1.1rem;
+}
+
+/* Diff modal controls */
+.diff-modal-controls {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+/* Diff mode button */
+.diff-mode-button,
+.view-mode-button {
+    background: var(--surface-secondary);
+    color: var(--accent-purple);
+    border: 1px solid var(--border-color);
+    padding: 0.75rem 1rem;
+    border-radius: 18px;
+    font-weight: 500;
+    font-size: 0.85rem;
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    cursor: pointer;
+    gap: 0.4rem;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    position: relative;
+    z-index: 999;
+    /* High z-index for the container */
+}
+
+.diff-mode-button:hover,
+.view-mode-button:hover {
+    background: var(--surface-tertiary);
+    border-color: var(--accent-blue);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(var(--accent-blue-rgb), 0.2);
+}
+
+.diff-mode-button.active {
+    background: var(--surface-tertiary);
+    border-color: var(--accent-purple);
+    color: var(--accent-purple);
+    box-shadow: 0 4px 12px rgba(var(--accent-purple-rgb), 0.2);
+}
+
+.diff-mode-button.active:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(var(--accent-purple-rgb), 0.3);
+}
+
+.view-mode-button.active {
+    background: var(--surface-tertiary);
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+    box-shadow: 0 4px 12px rgba(var(--accent-blue-rgb), 0.2);
+}
+
+.view-mode-button.active:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(var(--accent-blue-rgb), 0.3);
+}
+
+/* Diff mode panel */
+.diff-mode-panel {
+    display: none;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+}
+
+.diff-mode-panel.active {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+/* Side by side comparison */
+.side-by-side-comparison {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    gap: 1rem;
+    padding: 0.9rem 1rem 1.1rem;
+    background: transparent;
+    box-sizing: border-box;
+    align-items: stretch;
+}
+
+.comparison-side {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    background: rgba(var(--card-bg-base-rgb), 0.32);
+    border: 1px solid rgba(var(--border-color-rgb), 0.2);
+    border-radius: 34px;
+    padding: 1rem 1.15rem 1.25rem;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.26);
+}
+
+.comparison-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--text-color);
+    font-size: 1.15rem;
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+.comparison-title .material-symbols-outlined {
+    color: var(--accent-purple);
+    font-size: 1.25rem;
+    filter: drop-shadow(0 0 6px rgba(var(--accent-purple-rgb), 0.35));
+}
+
+.comparison-side .preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0 0 0.8rem 0;
+    margin: 0;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(var(--border-color-rgb), 0.14);
+}
+
+.comparison-side .code-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-left: auto;
+}
+
+.comparison-side .code-actions .copy-solution-btn,
+.comparison-side .code-actions .download-solution-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    border-radius: 12px;
+    padding: 0.5rem 1.05rem;
+    background: rgba(var(--card-bg-base-rgb), 0.42);
+    border: 1px solid rgba(var(--border-color-rgb), 0.22);
+    color: var(--text-secondary-color);
+    font-size: 0.84rem;
+    transition: all 0.22s ease;
+}
+
+.comparison-side .code-actions .copy-solution-btn:hover,
+.comparison-side .code-actions .download-solution-btn:hover {
+    color: var(--text-color);
+    border-color: rgba(var(--accent-purple-rgb), 0.45);
+    background: rgba(var(--accent-purple-rgb), 0.18);
+    box-shadow: 0 10px 22px rgba(var(--accent-purple-rgb), 0.22);
+}
+
+.comparison-content {
+    flex: 1;
+    margin: 0;
+    padding: 0.2rem 0.25rem 0 0;
+    overflow-y: auto;
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--text-color);
+    background: none;
+    border: none;
+    border-radius: 0;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+
+
+/* Typography + inline override controls */
+.comparison-content .rich-content-display,
+.comparison-content .markdown-content,
+.comparison-content .markdown-content > div {
+    font-size: 1.3rem !important;
+    line-height: 1.9 !important;
+    color: var(--text-color) !important;
+}
+
+.comparison-content .markdown-content :is(h1, h2, h3, h4, h5, h6) {
+    color: var(--accent-green) !important;
+    font-weight: 600 !important;
+    line-height: 1.3 !important;
+    margin: 1.8rem 0 1rem 0 !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+}
+
+.comparison-content .markdown-content h1 { font-size: 2.2rem !important; }
+.comparison-content .markdown-content h2 { font-size: 1.9rem !important; }
+.comparison-content .markdown-content h3 { font-size: 1.6rem !important; }
+.comparison-content .markdown-content h4 { font-size: 1.4rem !important; }
+.comparison-content .markdown-content h5 { font-size: 1.2rem !important; }
+.comparison-content .markdown-content h6 { font-size: 1.1rem !important; }
+
+.comparison-content .markdown-content p {
+    margin: 1.35rem 0 !important;
+    font-weight: 400 !important;
+}
+
+.comparison-content .markdown-content :is(strong, b) {
+    color: var(--accent-green) !important;
+    font-weight: 700 !important;
+}
+
+.comparison-content .markdown-content :is(em, i) {
+    color: var(--accent-orange) !important;
+    font-style: italic !important;
+}
+
+.comparison-content .markdown-content :is(ul, ol) {
+    margin: 1.5rem 0 !important;
+    padding-left: 2rem !important;
+}
+
+.comparison-content .markdown-content li {
+    margin: 0.8rem 0 !important;
+}
+
+.comparison-content .markdown-content blockquote {
+    background: rgba(var(--accent-purple-rgb), 0.06);
+    border-left: 3px solid rgba(var(--accent-purple-rgb), 0.4);
+    padding: 1.4rem 2rem;
+    margin: 2rem 0;
+    border-radius: 12px;
+    font-style: italic;
+    color: var(--text-secondary-color);
+    box-shadow: 0 8px 24px rgba(var(--accent-purple-rgb), 0.12);
+}
+
+.comparison-content .markdown-content pre {
+    background: rgba(var(--card-bg-base-rgb), 0.38) !important;
+    border: 1px solid rgba(var(--border-color-rgb), 0.26);
+    border-radius: 26px;
+    padding: 1.8rem;
+    margin: 2rem 0;
+    overflow-x: auto;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.16);
+}
+
+.comparison-content .markdown-content pre code {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    color: var(--text-color) !important;
+    font-size: 0.95rem !important;
+}
+
+/* Premium Scrollbar for Comparison Content */
+.comparison-content::-webkit-scrollbar {
+    width: 10px;
+}
+
+.comparison-content::-webkit-scrollbar-track {
+    background: rgba(var(--bg-color-rgb), 0.2);
+    border-radius: 18px;
+    margin: 4px;
+}
+
+.comparison-content::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, 
+        rgba(var(--accent-purple-rgb), 0.4),
+        rgba(var(--accent-purple-rgb), 0.6));
+    border-radius: 18px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+    transition: all 0.3s ease;
+}
+
+.comparison-content::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, 
+        rgba(var(--accent-purple-rgb), 0.6),
+        rgba(var(--accent-purple-rgb), 0.8));
+    box-shadow: 0 0 8px rgba(var(--accent-purple-rgb), 0.3);
+}
+
+
+
+/* Instant fixes content */
+.instant-fixes-content {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+}
+
+.instant-fixes-view {
+    display: none;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+}
+
+.instant-fixes-view.active {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+/* Diff viewer container */
+.diff-viewer-container {
+    flex: 1;
+    overflow-y: auto;
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 1.1rem;
+    line-height: 2.2;
+    background-color: rgba(var(--bg-color-rgb), 0.7);
+    border-radius: 0;
+    margin: 0;
+    padding: 0;
+}
+
+
+
+
+/* Modal content and header z-index */
+#diff-modal-body {
+    position: relative;
+    z-index: 1;
+}
+
+.modal-header {
+    position: relative;
+    z-index: 2;
+}
+
+/* Preview comparison */
+.preview-comparison {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    gap: 1px;
+    background-color: var(--border-color);
+}
+
+.preview-side {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--bg-color);
+    overflow: hidden;
+}
+
+.preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1.5rem;
+    background: linear-gradient(135deg, rgba(var(--accent-purple-rgb), 0.08), rgba(var(--accent-purple-rgb), 0.04));
+    border-bottom: 1px solid var(--border-color);
+}
+
+.preview-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.preview-control-button {
+    background: var(--surface-secondary);
+    color: var(--text-secondary-color);
+    border: 1px solid var(--border-color);
+    padding: 0.5rem;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+}
+
+.preview-control-button:hover {
+    background: var(--surface-tertiary);
+    border-color: var(--accent-purple);
+    color: var(--accent-purple);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(var(--accent-purple-rgb), 0.2);
+}
+
+.preview-control-button .material-symbols-outlined {
+    font-size: 1rem;
+}
+
+.preview-frame {
+    flex: 1;
+    border: none;
+    background: var(--card-bg-color);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    width: 100%;
+    height: 100%;
+    border-radius: var(--border-radius-md);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+/* Global compare panel */
+#global-compare-panel {
+    gap: 1.5rem;
+    padding: 0;
+    height: 100%;
+}
+
+#global-compare-panel.active {
+    display: flex;
+}
+
+#diff-selector-panel {
+    flex-basis: 320px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    background: var(--card-bg-color);
+    border: 1px solid var(--border-color);
+    padding: 1.5rem;
+    backdrop-filter: var(--card-blur-effect);
+    -webkit-backdrop-filter: var(--card-blur-effect);
+}
+
+#diff-viewer-panel {
+    flex-grow: 1;
+    overflow: auto;
+    font-family: 'SF Pro Display', var(--font-family);
+    font-size: 0.9rem;
+    background-color: var(--card-bg-color);
+    border: 1px solid var(--border-color);
+    backdrop-filter: var(--card-blur-effect);
+    -webkit-backdrop-filter: var(--card-blur-effect);
+    padding: 1.5rem;
+}
+
+#instant-fixes-diff-viewer {
+    flex-grow: 1;
+    overflow: auto;
+    font-family: 'SF Pro Display', var(--font-family);
+    font-size: 0.9rem;
+    background-color: var(--card-bg-color);
+    border: 1px solid var(--border-color);
+    backdrop-filter: var(--card-blur-effect);
+    -webkit-backdrop-filter: var(--card-blur-effect);
+    padding: 1.5rem;
+    height: 100%;
+}
+
+.diff-mode-button:disabled,
+.view-mode-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: rgba(var(--text-tertiary-color-rgb), 0.1);
+    border-color: rgba(var(--text-tertiary-color-rgb), 0.2);
+    color: var(--text-tertiary-color);
+}
+
+.diff-mode-button:disabled:hover,
+.view-mode-button:disabled:hover {
+    transform: none;
+    background: rgba(var(--text-tertiary-color-rgb), 0.1);
+    border-color: rgba(var(--text-tertiary-color-rgb), 0.2);
+    box-shadow: none;
+}
+
+
+
+.empty-state-message {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-tertiary-color);
+    font-style: italic;
+    text-align: center;
+    padding: 2rem;
+}
+
+#diff-target-tree .tree-item {
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--border-radius-md);
+    cursor: pointer;
+    transition: background-color var(--transition-speed-fast);
+    font-size: 0.9rem;
+}
+
+#diff-target-tree .tree-item.selected {
+    background-color: rgba(var(--accent-purple-rgb), 0.15);
+    color: var(--accent-purple);
+}
+
+#diff-target-tree .tree-item:hover:not(.selected) {
+    background-color: rgba(var(--card-bg-base-rgb), 0.4);
+}
+
+#diff-target-tree .tree-item.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.diff-view span {
+    display: block;
+    padding-left: 2em;
+    position: relative;
+}
+
+.diff-added::before {
+    content: '+';
+    position: absolute;
+    left: 0.5em;
+    color: var(--accent-green);
+}
+
+.diff-removed::before {
+    content: '-';
+    position: absolute;
+    left: 0.5em;
+    color: var(--accent-pink);
+}
+
+/* Remove duplicate +/- signs in unified diff view */
+.diff-line-unified.diff-added::before,
+.diff-line-unified.diff-removed::before {
+    display: none;
+}
+
+
+/* Override any highlight.js or other library styles with maximum specificity */
+#diff-modal-overlay .diff-view-unified .diff-pane .diff-line-unified.diff-added,
+#diff-modal-overlay .diff-line-unified.diff-added,
+#diff-modal-overlay .diff-added,
+.hljs .diff-added,
+.hljs-addition,
+.hljs-diff .hljs-addition {
+    background: rgba(var(--accent-green-rgb1), 0.2) !important;
+}
+
+#diff-modal-overlay .diff-view-unified .diff-pane .diff-line-unified.diff-removed,
+#diff-modal-overlay .diff-line-unified.diff-removed,
+#diff-modal-overlay .diff-removed,
+.hljs .diff-removed,
+.hljs-deletion,
+.hljs-diff .hljs-deletion {
+    background: rgba(var(--accent-pink-rgb), 0.2) !important;
+}
+
+/* Override highlight.js atom-one-dark theme diff colors specifically */
+.hljs.diff .hljs-addition,
+.hljs.diff .hljs-deletion,
+.diff-view-unified .hljs-addition,
+.diff-view-unified .hljs-deletion {
+    background-color: transparent !important;
+}
+
+
+/* Tree item styling */
+.tree-item {
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--border-radius-md);
+    cursor: pointer;
+    transition: background-color var(--transition-speed-fast);
+    font-size: 0.9rem;
+}
+
+.tree-item.selected {
+    background-color: rgba(var(--accent-purple-rgb), 0.15);
+    color: var(--accent-purple);
+}
+
+.tree-item:hover:not(.selected) {
+    background-color: rgba(var(--card-bg-base-rgb), 0.4);
+}
+
+.tree-item.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Diff view unified */
+.diff-view-unified {
+    display: flex;
+    width: 100%;
+    height: 100%;
+}
+
+.diff-view-unified .diff-pane {
+    flex: 1;
+    overflow: auto;
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 1.1rem;
+    line-height: 2.2;
+    background-color: var(--bg-color);
+    scroll-behavior: auto;
+    will-change: scroll-position;
+    -webkit-overflow-scrolling: touch;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+}
+
+.diff-view-unified .diff-pane pre {
+    margin: 0;
+    padding: 0;
+}
+
+/* No selection message */
+.diff-no-selection {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-tertiary-color);
+    font-style: italic;
+    text-align: center;
+    padding: 2rem;
+}
+
+.no-padding-left {
+    padding-left: 0 !important;
+}
+
+/* diff2html Custom Theme Overrides - Maximum Specificity */
+#diff-viewer-panel .d2h-wrapper,
+#instant-fixes-diff-viewer .d2h-wrapper {
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif !important;
+}
+
+/* Override diff2html file wrapper */
+#diff-viewer-panel .d2h-file-wrapper,
+#instant-fixes-diff-viewer .d2h-file-wrapper {
+    border: none !important;
+    border-radius: 0 !important;
+}
+
+/* Table styling */
+#diff-viewer-panel .d2h-diff-table,
+#instant-fixes-diff-viewer .d2h-diff-table {
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif !important;
+    font-size: 0.95rem !important;
+    line-height: 1.7 !important;
+}
+
+/* Line numbers */
+#diff-viewer-panel .d2h-code-side-linenumber,
+#diff-viewer-panel .d2h-code-linenumber,
+#instant-fixes-diff-viewer .d2h-code-side-linenumber,
+#instant-fixes-diff-viewer .d2h-code-linenumber {
+    background: rgba(var(--card-bg-base-rgb), 0.5) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-tertiary-color) !important;
+    font-size: 0.8rem !important;
+    min-width: 50px !important;
+}
+
+/* Code lines - context */
+#diff-viewer-panel .d2h-code-side-line,
+#diff-viewer-panel .d2h-code-line,
+#instant-fixes-diff-viewer .d2h-code-side-line,
+#instant-fixes-diff-viewer .d2h-code-line {
+    background: rgba(var(--bg-color-rgb), 0.7) !important;
+    color: var(--text-primary-color) !important;
+}
+
+/* INSERTIONS - All possible selectors */
+#diff-viewer-panel .d2h-ins,
+#diff-viewer-panel .d2h-code-line-ins,
+#diff-viewer-panel .d2h-code-side-line-ins,
+#diff-viewer-panel tr.d2h-ins,
+#diff-viewer-panel td.d2h-ins,
+#instant-fixes-diff-viewer .d2h-ins,
+#instant-fixes-diff-viewer .d2h-code-line-ins,
+#instant-fixes-diff-viewer .d2h-code-side-line-ins,
+#instant-fixes-diff-viewer tr.d2h-ins,
+#instant-fixes-diff-viewer td.d2h-ins {
+    background-color: rgba(var(--accent-green-rgb1), 0.35) !important;
+    border-color: rgba(var(--accent-green-rgb1), 0.5) !important;
+}
+
+/* Insertion content */
+#diff-viewer-panel .d2h-code-line-ins .d2h-code-line-ctn,
+#diff-viewer-panel .d2h-code-side-line-ins .d2h-code-side-line-ctn,
+#instant-fixes-diff-viewer .d2h-code-line-ins .d2h-code-line-ctn,
+#instant-fixes-diff-viewer .d2h-code-side-line-ins .d2h-code-side-line-ctn {
+    background-color: rgba(var(--accent-green-rgb1), 0.35) !important;
+}
+
+/* Insertion highlight within line - more transparent */
+#diff-viewer-panel .d2h-code-line ins,
+#diff-viewer-panel .d2h-code-side-line ins,
+#instant-fixes-diff-viewer .d2h-code-line ins,
+#instant-fixes-diff-viewer .d2h-code-side-line ins {
+    background-color: rgba(var(--accent-green-rgb1), 0.2) !important;
+    text-decoration: none !important;
+}
+
+/* DELETIONS - All possible selectors */
+#diff-viewer-panel .d2h-del,
+#diff-viewer-panel .d2h-code-line-del,
+#diff-viewer-panel .d2h-code-side-line-del,
+#diff-viewer-panel tr.d2h-del,
+#diff-viewer-panel td.d2h-del,
+#instant-fixes-diff-viewer .d2h-del,
+#instant-fixes-diff-viewer .d2h-code-line-del,
+#instant-fixes-diff-viewer .d2h-code-side-line-del,
+#instant-fixes-diff-viewer tr.d2h-del,
+#instant-fixes-diff-viewer td.d2h-del {
+    background-color: rgba(var(--accent-pink-rgb), 0.35) !important;
+    border-color: rgba(var(--accent-pink-rgb), 0.5) !important;
+}
+
+/* Deletion content */
+#diff-viewer-panel .d2h-code-line-del .d2h-code-line-ctn,
+#diff-viewer-panel .d2h-code-side-line-del .d2h-code-side-line-ctn,
+#instant-fixes-diff-viewer .d2h-code-line-del .d2h-code-line-ctn,
+#instant-fixes-diff-viewer .d2h-code-side-line-del .d2h-code-side-line-ctn {
+    background-color: rgba(var(--accent-pink-rgb), 0.35) !important;
+}
+
+/* Deletion highlight within line - more transparent */
+#diff-viewer-panel .d2h-code-line del,
+#diff-viewer-panel .d2h-code-side-line del,
+#instant-fixes-diff-viewer .d2h-code-line del,
+#instant-fixes-diff-viewer .d2h-code-side-line del {
+    background-color: rgba(var(--accent-pink-rgb), 0.2) !important;
+    text-decoration: none !important;
+}
+
+/* Info sections */
+#diff-viewer-panel .d2h-info,
+#instant-fixes-diff-viewer .d2h-info {
+    background-color: rgba(var(--accent-blue-rgb), 0.08) !important;
+    color: var(--text-secondary-color) !important;
+    border-color: var(--border-color) !important;
+}
+
+/* Empty placeholder cells */
+#diff-viewer-panel .d2h-code-side-emptyplaceholder,
+#diff-viewer-panel .d2h-emptyplaceholder,
+#instant-fixes-diff-viewer .d2h-code-side-emptyplaceholder,
+#instant-fixes-diff-viewer .d2h-emptyplaceholder {
+    background-color: rgba(var(--bg-color-rgb), 0.3) !important;
+    border-color: var(--border-color) !important;
+}
+
+/* File headers */
+#diff-viewer-panel .d2h-file-header,
+#instant-fixes-diff-viewer .d2h-file-header {
+    background: rgba(var(--card-bg-base-rgb), 0.9) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-secondary-color) !important;
+    display: none !important; /* Hide file header since we have our own */
+}
+
+/* Context lines */
+#diff-viewer-panel .d2h-code-line-ctx,
+#diff-viewer-panel td.d2h-code-line-ctx,
+#instant-fixes-diff-viewer .d2h-code-line-ctx,
+#instant-fixes-diff-viewer td.d2h-code-line-ctx {
+    background-color: transparent !important;
+    color: var(--text-primary-color) !important;
+}
+
+/* Border colors */
+#diff-viewer-panel tbody tr,
+#instant-fixes-diff-viewer tbody tr {
+    border-color: var(--border-color) !important;
+}
+
+#diff-viewer-panel .d2h-diff-tbody,
+#instant-fixes-diff-viewer .d2h-diff-tbody {
+    border-color: var(--border-color) !important;
+}
+
+/* Scrollbar */
+#diff-viewer-panel *::-webkit-scrollbar,
+#instant-fixes-diff-viewer *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+#diff-viewer-panel *::-webkit-scrollbar-track,
+#instant-fixes-diff-viewer *::-webkit-scrollbar-track {
+    background: rgba(var(--bg-color-rgb), 0.2);
+    border-radius: 18px;
+}
+
+#diff-viewer-panel *::-webkit-scrollbar-thumb,
+#instant-fixes-diff-viewer *::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, 
+        rgba(var(--accent-purple-rgb), 0.4),
+        rgba(var(--accent-purple-rgb), 0.6));
+    border-radius: 18px;
+    transition: all 0.3s ease;
+}
+
+#diff-viewer-panel *::-webkit-scrollbar-thumb:hover,
+#instant-fixes-diff-viewer *::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, 
+        rgba(var(--accent-purple-rgb), 0.6),
+        rgba(var(--accent-purple-rgb), 0.8));
+}
+
+/* Dropdown selector styling */
+.diff-view-selector-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--surface-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 18px;
+    padding: 0.5rem 0.75rem;
+    transition: all 0.2s ease;
+}
+
+.diff-view-selector-container:hover {
+    background: var(--surface-tertiary);
+    border-color: var(--accent-purple);
+    box-shadow: 0 2px 8px rgba(var(--accent-purple-rgb), 0.15);
+}
+
+.diff-view-label {
+    display: flex;
+    align-items: center;
+    margin: 0;
+    cursor: pointer;
+}
+
+.diff-view-label .material-symbols-outlined {
+    font-size: 1.1rem;
+    color: var(--accent-purple);
+}
+
+.diff-view-selector {
+    background: transparent;
+    border: none;
+    color: var(--text-primary-color);
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    outline: none;
+    padding: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23a0a0a0' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.2rem center;
+    padding-right: 1.2rem;
+}
+
+.diff-view-selector:hover {
+    color: var(--accent-purple);
+}
+
+.diff-view-selector option {
+    background: var(--card-bg-color);
+    color: var(--text-primary-color);
+    padding: 0.5rem;
+}
+
+/* View Evolution Header Button */
+.view-evolution-header-button {
+    background: linear-gradient(135deg, rgba(var(--accent-purple-rgb), 0.12), rgba(var(--accent-blue-rgb), 0.12));
+    color: var(--accent-purple);
+    border: 1px solid rgba(var(--accent-purple-rgb), 0.3);
+    padding: 0.75rem 1rem;
+    border-radius: 18px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    cursor: pointer;
+    gap: 0.4rem;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    position: relative;
+    z-index: 999;
+    margin-left: auto;
+}
+
+.view-evolution-header-button:hover {
+    background: linear-gradient(135deg, rgba(var(--accent-purple-rgb), 0.2), rgba(var(--accent-blue-rgb), 0.2));
+    border-color: var(--accent-purple);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(var(--accent-purple-rgb), 0.25);
+}
+
+.view-evolution-header-button .material-symbols-outlined {
+    font-size: 1.1rem;
+    color: var(--accent-purple);
+}
+
+/* Evolution Viewer Overlay */
+.evolution-viewer-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: var(--bg-color);
+    z-index: 10000;
+    display: flex;
+    opacity: 0;
+    transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.evolution-viewer-overlay.visible {
+    opacity: 1;
+}
+
+/* Evolution Viewer Container */
+.evolution-viewer-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Evolution Viewer Header */
+.evolution-viewer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2.5rem 4rem;
+    background: rgba(var(--card-bg-base-rgb), 0.4);
+    border-bottom: 1px solid rgba(var(--border-color-rgb), 0.15);
+    box-shadow: 0 1px 0 0 rgba(var(--accent-purple-rgb), 0.08), 
+                0 8px 32px -8px rgba(0, 0, 0, 0.12);
+    flex-shrink: 0;
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    position: relative;
+    z-index: 10;
+}
+
+.evolution-header-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    flex: 1;
+}
+
+.evolution-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-left: auto;
+    margin-right: 1rem;
+}
+
+.evolution-icon {
+    display: none;
+}
+
+.evolution-title {
+    margin: 0;
+    font-size: 2.25rem;
+    font-weight: 700;
+    color: var(--text-color);
+    letter-spacing: -0.04em;
+    line-height: 1.15;
+    background: linear-gradient(135deg, var(--text-color) 0%, rgba(var(--accent-purple-rgb), 0.9) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.evolution-subtitle {
+    font-size: 1rem;
+    color: var(--text-secondary-color);
+    margin-left: 0;
+    font-weight: 500;
+    opacity: 0.7;
+    letter-spacing: 0;
+}
+
+/* Close Button */
+.evolution-close-button {
+    background: transparent;
+    border: 1px solid rgba(var(--border-color-rgb), 0.2);
+    color: var(--text-secondary-color);
+    padding: 0.75rem;
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    position: relative;
+    overflow: hidden;
+}
+
+.evolution-close-button::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(var(--accent-pink-rgb), 0.1);
+    opacity: 0;
+    transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.evolution-close-button:hover {
+    border-color: rgba(var(--accent-pink-rgb), 0.3);
+    color: var(--accent-pink);
+    transform: translateY(-1px);
+}
+
+.evolution-close-button:hover::before {
+    opacity: 1;
+}
+
+.evolution-close-button:active {
+    transform: translateY(0);
+}
+
+.evolution-close-button .material-symbols-outlined {
+    font-size: 1.4rem;
+    position: relative;
+    z-index: 1;
+}
+
+/* Horizontal Scroll Container */
+.evolution-scroll-container {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    height: calc(100vh - 112px);
+    padding: 2rem 0;
+    gap: 0;
+    scroll-behavior: smooth;
+    background: var(--bg-color);
+    position: relative;
+}
+
+/* Subtle evolution flow indicator */
+.evolution-scroll-container::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(var(--accent-purple-rgb), 0.1) 10%,
+        rgba(var(--accent-purple-rgb), 0.15) 50%,
+        rgba(var(--accent-purple-rgb), 0.1) 90%,
+        transparent 100%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.evolution-scroll-container::-webkit-scrollbar {
+    height: 10px;
+}
+
+.evolution-scroll-container::-webkit-scrollbar-track {
+    background: rgba(var(--bg-color-rgb), 0.12);
+    border-radius: 20px;
+}
+
+.evolution-scroll-container::-webkit-scrollbar-thumb {
+    background: linear-gradient(90deg, rgba(var(--border-color-rgb), 0.7), var(--border-hover-color));
+    border-radius: 20px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+.evolution-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(90deg, var(--glow-color), var(--border-hover-color));
+}
+
+/* Evolution Column */
+.evolution-column {
+    flex: 0 0 45%;
+    min-width: 45%;
+    max-width: 45%;
+    display: flex;
+    flex-direction: column;
+    background: rgba(var(--card-bg-base-rgb), 0.3);
+    border-radius: 20px;
+    margin: 0 1rem;
+    position: relative;
+    transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08),
+                inset 0 1px 0 rgba(var(--border-color-rgb), 0.1);
+    border: 1px solid rgba(var(--border-color-rgb), 0.12);
+    overflow: hidden;
+    animation: evolutionColumnEntrance 0.6s cubic-bezier(0.23, 1, 0.32, 1) backwards;
+}
+
+.evolution-column:nth-child(1) { animation-delay: 0.05s; }
+.evolution-column:nth-child(2) { animation-delay: 0.1s; }
+.evolution-column:nth-child(3) { animation-delay: 0.15s; }
+.evolution-column:nth-child(4) { animation-delay: 0.2s; }
+.evolution-column:nth-child(5) { animation-delay: 0.25s; }
+.evolution-column:nth-child(n+6) { animation-delay: 0.3s; }
+
+@keyframes evolutionColumnEntrance {
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.evolution-column::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, 
+        rgba(var(--accent-purple-rgb), 0.4) 0%,
+        rgba(var(--accent-blue-rgb), 0.4) 50%,
+        rgba(var(--accent-purple-rgb), 0.4) 100%);
+    opacity: 0;
+    transition: opacity 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.evolution-column:hover {
+    background: rgba(var(--card-bg-base-rgb), 0.4);
+    border-color: rgba(var(--accent-purple-rgb), 0.25);
+    box-shadow: 0 12px 48px rgba(var(--accent-purple-rgb), 0.15),
+                0 4px 16px rgba(0, 0, 0, 0.1),
+                inset 0 1px 0 rgba(var(--border-color-rgb), 0.15);
+}
+
+.evolution-column:hover::before {
+    opacity: 1;
+}
+
+/* Column Header */
+.evolution-column-header {
+    padding: 1.5rem 2.5rem;
+    background: rgba(var(--card-bg-base-rgb), 0.5);
+    border-bottom: 1px solid rgba(var(--border-color-rgb), 0.1);
+    flex-shrink: 0;
+    position: relative;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.evolution-column:hover .evolution-column-header {
+    background: rgba(var(--card-bg-base-rgb), 0.6);
+    border-bottom-color: rgba(var(--accent-purple-rgb), 0.15);
+}
+
+.evolution-column-header-content {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0;
+}
+
+/* Diff Stats - Inline with Title */
+.evolution-diff-stats {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: 1rem;
+}
+
+.evolution-stat-added,
+.evolution-stat-removed {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.55rem;
+    border-radius: 8px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    letter-spacing: 0.02em;
+    transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.evolution-stat-added {
+    background: rgba(var(--accent-green-rgb1), 0.12);
+    color: rgba(var(--accent-green-rgb1), 1);
+    border: 1px solid rgba(var(--accent-green-rgb1), 0.3);
+    box-shadow: 0 2px 6px rgba(var(--accent-green-rgb1), 0.1);
+}
+
+.evolution-stat-removed {
+    background: rgba(var(--accent-pink-rgb), 0.12);
+    color: var(--accent-pink);
+    border: 1px solid rgba(var(--accent-pink-rgb), 0.3);
+    box-shadow: 0 2px 6px rgba(var(--accent-pink-rgb), 0.1);
+}
+
+.evolution-column:hover .evolution-stat-added {
+    background: rgba(var(--accent-green-rgb1), 0.18);
+    border-color: rgba(var(--accent-green-rgb1), 0.45);
+    box-shadow: 0 3px 10px rgba(var(--accent-green-rgb1), 0.2);
+}
+
+.evolution-column:hover .evolution-stat-removed {
+    background: rgba(var(--accent-pink-rgb), 0.18);
+    border-color: rgba(var(--accent-pink-rgb), 0.45);
+    box-shadow: 0 3px 10px rgba(var(--accent-pink-rgb), 0.2);
+}
+
+.evolution-column-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-color);
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: -0.03em;
+    line-height: 1.25;
+    transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+    flex: 1;
+}
+
+.evolution-column:hover .evolution-column-title {
+    color: var(--accent-purple);
+    transform: translateX(2px);
+}
+
+/* Column Content */
+.evolution-column-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: rgba(var(--bg-color-rgb), 0.6);
+    padding: 0;
+}
+
+/* Diff Wrapper for Split View - Complete styling from original diff modal */
+.evolution-diff-wrapper {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    position: relative;
+}
+
+.evolution-diff-wrapper .d2h-wrapper {
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif !important;
+    background: transparent !important;
+    position: relative !important;
+}
+
+/* Override diff2html file wrapper */
+.evolution-diff-wrapper .d2h-file-wrapper {
+    border: none !important;
+    border-radius: 0 !important;
+}
+
+/* Table styling */
+.evolution-diff-wrapper .d2h-diff-table {
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif !important;
+    font-size: 0.85rem !important;
+    line-height: 1.6 !important;
+    position: relative !important;
+}
+
+/* Line numbers - ensure they scroll with content */
+.evolution-diff-wrapper .d2h-code-side-linenumber,
+.evolution-diff-wrapper .d2h-code-linenumber {
+    background: rgba(var(--card-bg-base-rgb), 0.5) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-tertiary-color) !important;
+    padding: 0 0.5rem !important;
+    user-select: none !important;
+    position: static !important;
+}
+
+/* Code lines - context */
+.evolution-diff-wrapper .d2h-code-side-line,
+.evolution-diff-wrapper .d2h-code-line {
+    background: rgba(var(--bg-color-rgb), 0.7) !important;
+    color: var(--text-primary-color) !important;
+}
+
+/* INSERTIONS - All possible selectors */
+.evolution-diff-wrapper .d2h-ins,
+.evolution-diff-wrapper .d2h-code-line-ins,
+.evolution-diff-wrapper .d2h-code-side-line-ins,
+.evolution-diff-wrapper tr.d2h-ins,
+.evolution-diff-wrapper td.d2h-ins {
+    background-color: rgba(var(--accent-green-rgb1), 0.35) !important;
+    border-color: rgba(var(--accent-green-rgb1), 0.5) !important;
+}
+
+/* Insertion content */
+.evolution-diff-wrapper .d2h-code-line-ins .d2h-code-line-ctn,
+.evolution-diff-wrapper .d2h-code-side-line-ins .d2h-code-side-line-ctn {
+    background-color: rgba(var(--accent-green-rgb1), 0.35) !important;
+}
+
+/* Insertion highlight within line - more transparent */
+.evolution-diff-wrapper .d2h-code-line ins,
+.evolution-diff-wrapper .d2h-code-side-line ins {
+    background-color: rgba(var(--accent-green-rgb1), 0.2) !important;
+    text-decoration: none !important;
+}
+
+/* DELETIONS - All possible selectors */
+.evolution-diff-wrapper .d2h-del,
+.evolution-diff-wrapper .d2h-code-line-del,
+.evolution-diff-wrapper .d2h-code-side-line-del,
+.evolution-diff-wrapper tr.d2h-del,
+.evolution-diff-wrapper td.d2h-del {
+    background-color: rgba(var(--accent-pink-rgb), 0.35) !important;
+    border-color: rgba(var(--accent-pink-rgb), 0.5) !important;
+}
+
+/* Deletion content */
+.evolution-diff-wrapper .d2h-code-line-del .d2h-code-line-ctn,
+.evolution-diff-wrapper .d2h-code-side-line-del .d2h-code-side-line-ctn {
+    background-color: rgba(var(--accent-pink-rgb), 0.35) !important;
+}
+
+/* Deletion highlight within line - more transparent */
+.evolution-diff-wrapper .d2h-code-line del,
+.evolution-diff-wrapper .d2h-code-side-line del {
+    background-color: rgba(var(--accent-pink-rgb), 0.2) !important;
+    text-decoration: none !important;
+}
+
+/* Info sections */
+.evolution-diff-wrapper .d2h-info {
+    background-color: rgba(var(--accent-blue-rgb), 0.08) !important;
+    color: var(--text-secondary-color) !important;
+    border-color: var(--border-color) !important;
+}
+
+/* Empty placeholder cells */
+.evolution-diff-wrapper .d2h-code-side-emptyplaceholder,
+.evolution-diff-wrapper .d2h-emptyplaceholder {
+    background-color: rgba(var(--bg-color-rgb), 0.3) !important;
+    border-color: var(--border-color) !important;
+}
+
+/* File headers */
+.evolution-diff-wrapper .d2h-file-header {
+    background: rgba(var(--card-bg-base-rgb), 0.9) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-secondary-color) !important;
+    display: none !important;
+}
+
+/* Context lines */
+.evolution-diff-wrapper .d2h-code-line-ctx,
+.evolution-diff-wrapper td.d2h-code-line-ctx {
+    background-color: transparent !important;
+    color: var(--text-primary-color) !important;
+}
+
+.evolution-diff-wrapper .d2h-diff-tbody {
+    border-color: var(--border-color) !important;
+}
+
+/* Rendered Content (when Hide Diff is active) */
+.evolution-rendered-content {
+    padding: 2rem 2.5rem;
+    color: var(--text-color);
+    line-height: 1.8;
+}
+
+.evolution-rendered-content h1,
+.evolution-rendered-content h2,
+.evolution-rendered-content h3 {
+    color: var(--text-color);
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.evolution-rendered-content p {
+    margin-bottom: 1rem;
+}
+
+.evolution-rendered-content ul,
+.evolution-rendered-content ol {
+    margin-bottom: 1rem;
+    padding-left: 2rem;
+}
+
+.evolution-rendered-content code {
+    background: rgba(var(--accent-purple-rgb), 0.1);
+    padding: 0.2rem 0.4rem;
+    border-radius: 6px;
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+
+.evolution-rendered-content pre {
+    background: rgba(var(--card-bg-base-rgb), 0.5);
+    padding: 1rem;
+    border-radius: 10px;
+    overflow-x: auto;
+    margin-bottom: 1rem;
+}
+
+.evolution-rendered-content pre code {
+    background: transparent;
+    padding: 0;
+}
+
+.evolution-column-content pre {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border: none;
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 0.95rem;
+    line-height: 1.8;
+}
+
+.evolution-column-content code {
+    display: block;
+    background: transparent;
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 0.95rem;
+    line-height: 1.8;
+}
+
+/* Evolution Lines */
+.evolution-line {
+    display: block;
+    min-height: 1.8em;
+    padding: 0.4rem 2.5rem;
+    margin: 0;
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 0.95rem;
+    line-height: 1.8;
+    transition: all 0.25s cubic-bezier(0.23, 1, 0.32, 1);
+    position: relative;
+}
+
+.evolution-line-content {
+    display: block;
+    white-space: pre;
+    color: rgba(var(--text-color), 1);
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 0.95rem;
+    line-height: 1.8;
+    letter-spacing: 0;
+}
+
+/* Added Lines */
+.evolution-line-added {
+    background: rgba(var(--accent-green-rgb1), 0.06);
+    position: relative;
+}
+
+.evolution-line-added::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: rgba(var(--accent-green-rgb1), 0.6);
+    box-shadow: 0 0 12px rgba(var(--accent-green-rgb1), 0.3);
+    transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.evolution-line-added:hover {
+    background: rgba(var(--accent-green-rgb1), 0.1);
+}
+
+.evolution-line-added:hover::before {
+    width: 5px;
+    background: rgba(var(--accent-green-rgb1), 0.8);
+    box-shadow: 0 0 16px rgba(var(--accent-green-rgb1), 0.5);
+}
+
+/* Removed Lines */
+.evolution-line-removed {
+    background: rgba(var(--accent-pink-rgb), 0.06);
+    opacity: 0.75;
+    position: relative;
+}
+
+.evolution-line-removed::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: rgba(var(--accent-pink-rgb), 0.6);
+    box-shadow: 0 0 12px rgba(var(--accent-pink-rgb), 0.3);
+    transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.evolution-line-removed:hover {
+    background: rgba(var(--accent-pink-rgb), 0.1);
+    opacity: 0.85;
+}
+
+.evolution-line-removed:hover::before {
+    width: 5px;
+    background: rgba(var(--accent-pink-rgb), 0.8);
+    box-shadow: 0 0 16px rgba(var(--accent-pink-rgb), 0.5);
+}
+
+/* Scrollbar for content */
+.evolution-column-content::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.evolution-column-content::-webkit-scrollbar-track {
+    background: rgba(var(--bg-color-rgb), 0.2);
+    border-radius: 12px;
+}
+
+.evolution-column-content::-webkit-scrollbar-thumb {
+    background: rgba(var(--border-color-rgb), 0.5);
+    border-radius: 12px;
+}
+
+.evolution-column-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(var(--border-color-rgb), 0.7);
+}
+
+.evolution-column-content {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--border-color-rgb), 0.5) rgba(var(--bg-color-rgb), 0.2);
+}
+
+/* Empty and Error States */
+.evolution-empty-message,
+.evolution-empty-content,
+.evolution-error-message {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5rem 2rem;
+    color: var(--text-tertiary-color);
+    font-style: italic;
+    text-align: center;
+    font-size: 1.05rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+}
+
+.evolution-error-message {
+    color: var(--accent-pink);
+    background: rgba(var(--accent-pink-rgb), 0.08);
+    border-radius: 16px;
+    margin: 2rem;
+    border: 1px solid rgba(var(--accent-pink-rgb), 0.2);
+}
+
+/* Hide Diff Button */
+.hide-diff-button {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 1.75rem;
+    background: rgba(var(--accent-blue-rgb), 0.08);
+    border: 1px solid rgba(var(--accent-blue-rgb), 0.2);
+    border-radius: 18px;
+    color: var(--accent-blue);
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+    letter-spacing: -0.02em;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(var(--accent-blue-rgb), 0.1),
+                inset 0 1px 0 rgba(var(--accent-blue-rgb), 0.1);
+}
+
+.hide-diff-button::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(var(--accent-blue-rgb), 0.12);
+    opacity: 0;
+    transition: opacity 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.hide-diff-button:hover {
+    background: rgba(var(--accent-blue-rgb), 0.12);
+    border-color: rgba(var(--accent-blue-rgb), 0.35);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(var(--accent-blue-rgb), 0.25),
+                inset 0 1px 0 rgba(var(--accent-blue-rgb), 0.15);
+}
+
+.hide-diff-button:hover::before {
+    opacity: 1;
+}
+
+.hide-diff-button.active {
+    background: rgba(var(--accent-blue-rgb), 0.15);
+    border-color: rgba(var(--accent-blue-rgb), 0.4);
+}
+
+.hide-diff-button:active {
+    transform: translateY(-1px);
+}
+
+.hide-diff-button .material-symbols-outlined {
+    font-size: 1.35rem;
+    position: relative;
+    z-index: 1;
+}
+
+.hide-diff-button .button-text {
+    position: relative;
+    z-index: 1;
+}
+
+/* Sequential View Button */
+.sequential-view-button {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 1.75rem;
+    background: rgba(var(--accent-purple-rgb), 0.08);
+    border: 1px solid rgba(var(--accent-purple-rgb), 0.2);
+    border-radius: 18px;
+    color: var(--accent-purple);
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+    letter-spacing: -0.02em;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(var(--accent-purple-rgb), 0.1),
+                inset 0 1px 0 rgba(var(--accent-purple-rgb), 0.1);
+}
+
+.sequential-view-button::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(var(--accent-purple-rgb), 0.12);
+    opacity: 0;
+    transition: opacity 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.sequential-view-button:hover {
+    background: rgba(var(--accent-purple-rgb), 0.12);
+    border-color: rgba(var(--accent-purple-rgb), 0.35);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(var(--accent-purple-rgb), 0.25),
+                inset 0 1px 0 rgba(var(--accent-purple-rgb), 0.15);
+}
+
+.sequential-view-button:hover::before {
+    opacity: 1;
+}
+
+.sequential-view-button:active {
+    transform: translateY(-1px);
+}
+
+.sequential-view-button .material-symbols-outlined {
+    font-size: 1.35rem;
+    position: relative;
+    z-index: 1;
+}
+
+.sequential-view-button .button-text {
+    position: relative;
+    z-index: 1;
+}
+
+

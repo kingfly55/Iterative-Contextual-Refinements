@@ -1,74 +1,333 @@
-# Iterative Contextual Refinements
+# Iterative Studio
 
-This application is a multi-agent platform for iterative software development and complex problem-solving. It leverages a sophisticated system of specialized AI agents to generate, refine, and perfect various outputs, from complete websites and React applications to in-depth analytical solutions.
+The system integrates with major AI providers (Google AI, OpenAI, Anthropic) and employs multi-agent-based architectures. There is no python or web search tools provided to any agent in any mode. The main agentic refinements agent has access to a searchacademia tool that search for papers on arxiv.
 
-## Features
+## Operational Modes
 
-- **Multi-Agent Architecture:** Utilizes a team of specialized AI agents for different tasks, ensuring high-quality results.
-- **Iterative Refinement:** Employs a cyclical process of generation, critique, and refinement to progressively improve outputs.
-- **Multiple Modes:** Offers several distinct modes for various tasks:
-  - **HTML Mode:** For iteratively building production-grade, standalone HTML websites.
-  - **Deepthink Mode:** For tackling complex problems through a rigorous process of strategy, tactics, and verification.
-  - **React Mode:** For developing complete React applications using a multi-agent, component-based approach.
+The system operates in seven distinct modes, each optimized for specific use cases.
 
-## Architecture
+### 1. Refine Mode
 
-This application is built on a foundation of distinct, powerful modes, each with its own unique architecture.
+**Purpose**: Traditional iterative refinements with automated feature suggestion and bug fixing. Does not manage it's own conversation history.
 
-### HTML Mode (Iterative Website Generation)
+**Architecture**:
+- Pipeline-based execution with parallel temperature variations
+- Three-stage refinement process per iteration:
+  1. Initial content generation
+  2. Feature suggestion agent (novelty-seeking or quality-focused)
+  3. Bug fix agent (syntax/runtime error correction)
 
-The HTML mode is designed for the iterative creation of production-quality, single-file HTML websites. It simulates a team of AI web developers with specialized roles, ensuring a high degree of quality, accessibility, and responsiveness.
+**Key Components**:
+- `PipelineState`: Manages multiple concurrent refinement pipelines
+- `IterationData`: Tracks individual iteration states and content evolution
+- Evolution mode support (Novelty/Quality) for feature generation
 
-- **Initial Generation:** The process begins with a `CodeCrafter Apex` agent that generates a complete, standalone HTML file based on an initial user idea.
-- **Iterative Refinement with JSON Patching:** Subsequent improvements are made through a series of JSON patch operations (`replace`, `insert_after`, `insert_before`, `delete`). This allows for precise, targeted modifications to the HTML document.
-- **Specialized AI Personas:** Each stage of the refinement process is handled by a different AI persona with a specific focus:
-  - **`CodeSentinel Omega`:** A bug-fixing agent that identifies and rectifies errors in the code.
-  - **`FeatureOracle Max` & `FeatureStrategist Ultra`:** Feature-suggestion agents that propose new functionalities and improvements.
-  - **`CodeIntegrator Elite`:** An implementation agent that seamlessly integrates new features into the existing codebase.
-  - **`CodeAuditor Maximus`:** A refinement agent that further improves the quality of the code.
-  - **`CodeValidator OmegaPrime`:** A final polishing agent that ensures the website is production-ready.
-- **Quality-Centric Approach:** The entire process is geared towards producing high-quality, accessible, responsive, and semantically correct HTML, adhering to the latest web standards.
+**Workflow**:
+1. User provides initial prompt
+2. System generates base content across multiple temperature settings (This is currently disabled)
+3. Feature suggestion agent proposes enhancements
+4. Bug fix agent validates and corrects errors
+5. Process repeats for configured number of iterations
 
-### Deepthink Mode (Complex Problem Solving)
+### 2. React Mode
 
-The Deepthink mode employs a multi-agent system for tackling complex, analytical problems. It breaks down a challenge into manageable parts, explores multiple solution paths in parallel, and rigorously verifies the results.
+**Purpose**: React application development with orchestrator-coordination and parallel workers architecture. This is a fully experimantal mode. Do not expect any results from this at all. I wanted to test if we can deploy multi-agentic architecture for "Parallel & Fast High Quality" codebase generation. Claude Code has a subagents feature and it cannot produce the working application using this architecture either. I need to think and experiment more on this mode. Currently, the orchestrator's plan and workeragents prompts are created as files and we provide the full access to these files to the React Agentic Refinements agent. It has access to diff tools to edit. So first it iteratively refines the current plan and workers prompts and then it starts the worker agents. It then reads the currentcodebase (full codebase) and look for syntax errors, import errors, build errors etc. It runs the build.
 
-- **Strategy and Tactics:** The process starts with a `Master Strategy Agent` that formulates several high-level strategies. Each strategy is then broken down into more detailed `sub-strategies` (tactics) by a `Master Tactical Agent`.
-- **Parallel Execution:** Each sub-strategy is assigned to an `Execution Agent` that attempts to solve the problem according to the given plan. This parallel approach allows for the exploration of multiple solution paths simultaneously.
-- **Knowledge Sharing:** A central `Knowledge Packet` is used to share verified information, such as the results of hypothesis testing, among the agents. This ensures that all agents are working with the most up-to-date and accurate information.
-- **Rigorous Verification:** The system includes several layers of verification to ensure the quality and accuracy of the final solution:
-  - **`Deepthink Verifier`:** An agent that identifies and fixes flaws in a generated solution.
-  - **`Strategic Evaluator Prime` (Red Team):** An agent that filters out weak or flawed strategies.
-  - **`Analyticus Veritas` (Judge):** An agent that selects the best solution from the different sub-strategies.
-  - **`Analyticus Ultima` (Final Judge):** An agent that selects the single best overall solution.
-- **Logical and Unbiased:** The Deepthink mode is designed to be highly logical and to avoid common LLM biases and pitfalls, such as making unjustified assumptions.
 
-### React Mode (Multi-Agent App Development)
+**Key Components**:
+- `ReactAgenticIntegration.tsx`: Orchestrates React-specific workflow
+- `ReactBuildManager.tsx`: Handles live build and preview generation (Has some mounting errors)
+- `EmbeddedAgenticPrompts.ts`: Specialized prompts for React development
 
-The React mode automates the development of complete, production-quality React applications using a team of specialized AI agents.
+**Workflow**:
+1. Orchestrator analyzes user request and creates plan
+2. The co-ordination agent starts the worker agents
+3. Workers execute in parallel, generating files
+4. Build manager compiles and validates output
+5. Live preview generated with error reporting (Currently not fully supported)
 
-- **Orchestrator and Worker Agents:** The process is managed by a `React Maestro Orchestrator` agent that creates a detailed development plan. This plan is then executed by a team of five `worker agents`, each with a specific role.
-- **The `plan.txt`:** The orchestrator generates a comprehensive `plan.txt` file that serves as the single source of truth for the entire project. This plan outlines the application's architecture, component structure, state management, and the division of labor among the worker agents.
-- **Component-Based Architecture:** The architecture emphasizes a modern, component-based approach using React with TypeScript, Vite for bundling, and a state management library like Zustand or Redux Toolkit.
-- **Parallel Development:** The plan defines clear interface contracts between the different parts of the application, allowing the worker agents to develop their assigned components and modules in parallel.
-- **Production-Ready Code:** The goal of the React mode is to produce clean, maintainable, and production-ready code that adheres to the latest best practices.
-- **File-Based Output:** Each worker agent generates the code for its assigned files, which are then assembled to create the final application. The output of each agent is clearly marked with a file path comment (`// --- FILE: path/to/file.tsx ---`) to ensure proper assembly.
+**Tool Support**:
+- `StartWorkerAgents`: Parallel worker execution
+- `ApplyMultiFileDiff`: Multi-file editing
+- `BuildReactApp`: Live build and validation
 
-## Getting Started
+### 3. Deepthink Mode
 
-**Prerequisites:** Node.js
+**Purpose**: Complex problem-solving through strategic decomposition and hypothesis exploration.
 
-1. **Install dependencies:**
-   ```bash
-   npm install
-   ```
-2. **Run the app:**
-   ```bash
-   npm run dev
-   ```
-3. **Enter your Gemini API Key:**
-   Open the application in your browser and enter your Gemini API Key in the input field at the top left of the page.
+**Architecture**:
+- Multi-strategy parallel exploration system
+- Three operational strategies:
+  1. **Strategic Solver**: Decomposes problems into main strategies and sub-strategies
+  2. **Hypothesis Explorer**: Generates and tests multiple hypotheses
+  3. **Dissected Observations**: Analyzes problem from multiple perspectives
+4. **Red Team Filter**: Filters weak strategies and sub-strategies
 
-## Usage
+**Agent Pipeline**:
+- **Strategy Generation Agent**: Creates high-level approaches
+- **Sub-Strategy Agent**: Breaks down strategies into actionable steps
+- **Solution Agent**: Implements sub-strategy solutions
+- **Critique Agent**: Evaluates solution quality
+- **Refinement Agent**: Applies self-improvement corrections
+- **Iterative Corrections**: Refines solutions iteratively with Critique + Correction Loop.
+- **Red Team Agent**: Validates and filters weak solutions
+- **Final Judge Agent**: Selects optimal solution
 
-Once the application is running, you can select one of the available modes (HTML, Deepthink, or React) and provide an initial prompt or idea. The AI agents will then begin the iterative process of generating, refining, and perfecting the output based on your input. You can guide the process by providing feedback and selecting from the suggestions provided by the agents.
+**Key Features**:
+- Iterative correction loops for solution refinement
+- Red team evaluation for quality control
+- Configurable depth (strategies, sub-strategies, hypotheses)
+- Parallel execution of multiple solution paths
+
+**Workflow**:
+1. Problem decomposed into main strategies
+2. Each strategy expanded into sub-strategies
+3. Solutions generated for each sub-strategy
+4. Solutions critiqued and refined
+5. Red team filters weak solutions
+6. Final judge selects best approach
+
+### 4. Adaptive Deepthink Mode
+
+**Purpose**: Provide full access of deepthink mode to an agent.
+
+**Architecture**:
+- Hybrid system merging Agentic mode UI with Deepthink agent tools
+- Conversation manager maintains context across tool invocations
+- Real-time UI updates as agents execute
+
+**Tool System**:
+- `GenerateStrategies`: Creates main problem-solving strategies
+- `GenerateHypotheses`: Produces testable hypotheses
+- `TestHypotheses`: Validates hypothesis viability
+- `ExecuteStrategies`: Implements strategic solutions
+- `SolutionCritique`: Provides critical evaluation
+- `CorrectedSolutions`: Applies refinements
+- `SelectBestSolution`: Determines optimal solution
+
+**Key Components**:
+- `AdaptiveDeepthinkCore.ts`: Manages tool execution and state
+- `AdaptiveDeepthinkConversationManager`: Handles context and history
+- Integration with Deepthink rendering pipeline for visualization
+
+**Workflow**:
+1. User engages in natural conversation
+2. AI determines when to invoke deep reasoning tools
+3. Tools execute with full Deepthink pipeline visualization
+4. Results integrated back into conversation context
+5. Process continues iteratively until solution reached
+
+### 5. Agentic Mode
+
+**Purpose**: General-purpose iterative refinement with tool-based content manipulation.
+
+**Architecture**:
+- Conversation-based interaction model
+- LangChain integration for advanced capabilities
+- Diff-based editing system for precise modifications
+
+**Core Components**:
+- `AgenticCoreLangchain.ts`: Manages conversation state and tool execution
+- `AgenticConversationManager`: Handles context window management
+- `AgenticUI.tsx`: Real-time activity visualization
+
+**Tool System**:
+- `ApplyDiff`: Apply targeted code modifications
+- `ReadFile`: Access external file content
+- `SearchWeb`: External information retrieval (optional)
+- `ArxivSearch`: Academic paper search (optional)
+
+**Key Features**:
+- Streaming response handling
+- Segment-based parsing (text, thinking, diff commands, tool calls)
+- Automatic context management with message summarization
+- System blocks for progress tracking
+
+**Workflow**:
+1. User submits request in conversational format
+2. AI analyzes and determines necessary tools
+3. Tools execute with real-time feedback
+4. Content iteratively refined through diff operations
+5. Process continues until user satisfaction
+
+### 6. Contextual Mode
+
+**Purpose**: Iterative refinement through specialized agent collaboration.
+
+This can work stable upto 2 Hours without human intervention for difficult problems and actually yield high quality insights and results.
+
+**Architecture**:
+- Three-agent system with distinct responsibilities:
+  1. **Main Generator**: Produces content based on user requirements
+  2. **Iterative Agent**: Suggests improvements and corrections
+  3. **Memory Agent**: Works like a long term memory.
+
+**Key Components**:
+- `ContextualCore.ts`: State management and history tracking
+- Separate history managers for each agent type
+- Automated context window management
+
+**Agent Interaction**:
+```
+User Request → Main Generator → Generated Content
+                      ↓
+              Iterative Agent → Suggestions
+                      ↓
+              Main Generator → Refined Content
+                      ↓
+              [Repeat until complete]
+                      ↓
+              Memory Agent → History Compression
+```
+
+**Key Features**:
+- Automatic history condensation when context limits approached
+- Iterative refinement through suggestion-response cycles
+- Clean separation of concerns between agents
+- Real-time visualization of agent interactions
+
+**Workflow**:
+1. Main generator creates initial content
+2. Iterative agent analyzes and suggests improvements
+3. Main generator applies suggestions
+4. Memory agent compresses history when needed
+5. Cycle continues until completion criteria met
+
+### 7. Generative UI Mode
+
+**Purpose**: Interactive UI development with user interaction capture and refinement.
+
+**Architecture**:
+- Structured UI representation system
+- Reward function for quality assessment
+- Interaction tracking and feedback loop
+
+**Core Components**:
+- `GenerativeUICore.ts`: State and evaluation management
+- `GenerativeUIPrompts.ts`: Specialized prompts for UI generation
+- Interaction tracking script injected into generated HTML
+
+**Workflow Stages**:
+1. **Structure Generation**: Create UI component structure
+2. **Implementation**: Generate HTML/CSS/JS implementation
+3. **Evaluation**: Assess quality against reward function
+4. **Interaction Phase** (optional): Capture user interactions
+5. **Refinement**: Improve based on evaluation and interactions
+
+**Interaction System**:
+- Event tracking (clicks, inputs, hovers)
+- DOM snapshot capture
+- Interaction queuing with debouncing
+- Parent-iframe communication via postMessage
+
+**Key Features**:
+- Automatic syntax validation
+- Performance metrics tracking
+- Accessibility considerations
+- Iterative improvement based on quality scores
+
+## Configuration
+
+### Model Selection
+
+Supports configuration of:
+- AI provider (Google, OpenAI, Anthropic)
+- Model selection per provider
+- Temperature and Top-P sampling parameters
+- Mode-specific parameters (iteration depth, agent counts)
+
+### Mode-Specific Settings
+
+**Website/React**:
+- Refinement stages count
+- Evolution mode (Novelty/Quality)
+
+**Deepthink/Adaptive**:
+- Strategy count
+- Sub-strategy count
+- Hypothesis count
+- Red team aggressiveness
+- Iterative corrections toggle
+
+**Generative UI**:
+- Max iterations
+- Quality threshold
+- Interaction capture toggle
+
+## Data Flow
+
+### Request Flow
+```
+User Input → Routing Layer → AI Provider → Response Parser → Mode Handler → UI Update
+```
+
+### State Management
+```
+Global State (index.tsx) → Mode-Specific State → Component State → UI Rendering
+```
+
+### Agent Communication (Contextual/Agentic)
+```
+User → Main Agent → [Tools/Sub-Agents] → Response Integration → History Management
+```
+
+## Retry and Error Handling
+
+All modes implement exponential backoff retry logic:
+- Maximum 3 retry attempts
+- Initial delay: 20 seconds
+- Backoff factor: 4x
+- Graceful degradation on failure
+
+Error states tracked per pipeline/iteration with detailed error messages and recovery options.
+
+## Import/Export
+
+Supported operations:
+- State export (JSON format)
+- State import with validation
+- Cross-session persistence
+- Mode-specific state serialization
+
+## Build System
+
+- **Build Tool**: Vite
+- **Language**: TypeScript
+- **UI Framework**: React 19
+- **Code Editor**: Monaco Editor
+- **Styling**: Custom CSS with modern design patterns
+
+## Development
+
+### Project Structure
+```
+/Agentic          - Agentic mode implementation
+/AdaptiveDeepthink - Adaptive Deepthink mode
+/Components       - Shared UI components
+/Contextual       - Contextual mode implementation
+/Deepthink        - Deepthink mode implementation
+/GenerativeUI     - Generative UI mode
+/React            - React mode implementation
+/Routing          - AI provider routing
+/Parsing          - Response parsing utilities
+index.tsx         - Main application entry
+prompts.ts        - Prompt templates
+```
+
+### Key Dependencies
+```json
+{
+  "@anthropic-ai/sdk": "AI provider",
+  "@google/genai": "AI provider",
+  "openai": "AI provider",
+  "@langchain/core": "Agent framework",
+  "@monaco-editor/react": "Code editor",
+  "diff2html": "Diff visualization",
+  "katex": "Math rendering",
+  "react-flow": "Graph visualization"
+}
+```
+
+## License
+
+Apache-2.0

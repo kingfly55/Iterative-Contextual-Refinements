@@ -9,31 +9,43 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.62.0",
     "@google/genai": "^1.4.0",
+    "@langchain/community": "^0.3.57",
+    "@langchain/core": "^0.3.78",
+    "@monaco-editor/react": "^4.7.0",
+    "@types/highlight.js": "^10.1.0",
     "@types/jszip": "^3.4.0",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
     "diff": "^8.0.2",
+    "diff-match-patch": "^1.0.5",
+    "diff2html": "^3.4.52",
     "dompurify": "3.1.6",
+    "esbuild-wasm": "^0.25.10",
     "fast-json-patch": "^3.1.1",
-    "highlight.js": "11.9.0",
+    "fast-levenshtein": "^3.0.0",
+    "fuzzball": "^2.2.3",
+    "highlight.js": "^11.9.0",
     "jszip": "^3.10.1",
     "katex": "^0.16.22",
+    "langchain": "^0.3.35",
     "marked": "4.3.0",
+    "openai": "^5.20.1",
+    "pdfjs-dist": "^5.4.149",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-flow": "^1.0.3",
     "react-icons": "^5.5.0",
-    "reactflow": "^11.11.4"
+    "reactflow": "^11.11.4",
+    "string-similarity": "^4.0.4"
   },
   "devDependencies": {
     "@types/dompurify": "^3.0.5",
     "@types/marked": "^5.0.2",
     "@types/node": "^22.14.0",
+    "@types/pdfjs-dist": "^2.10.378",
     "typescript": "~5.7.2",
     "vite": "^6.3.5"
-  },
-  "overrides": {
-    "rollup": "4.9.6"
   }
 }
