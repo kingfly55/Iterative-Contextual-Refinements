@@ -87,6 +87,11 @@ The system operates in seven distinct modes, each optimized for specific use cas
 5. Red team filters weak solutions
 6. Final judge selects best approach
 
+
+![Deepthink Architecture](Deepthink/IterativeCorrections.png)
+
+
+
 ### 4. Adaptive Deepthink Mode
 
 **Purpose**: Provide full access of deepthink mode to an agent.
