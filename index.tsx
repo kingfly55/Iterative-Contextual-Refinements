@@ -1492,7 +1492,7 @@ async function runPipeline(pipelineId: number, initialRequest: string) {
                         if (!featuresModel) {
                             throw new Error("No model specified for initial feature suggestions. Please select a model for this agent or set a global model.");
                         }
-                        const featuresContent = await callGemini(userPromptInitialFeatures, pipeline.temperature, featuresModel, featureSuggestSystemPrompt, true, getSelectedTopP()).then((response: any) => response.text);
+                        const featuresContent = await callGemini(userPromptInitialFeatures, pipeline.temperature, featuresModel, featureSuggestSystemPrompt, false, getSelectedTopP()).then((response: any) => response.text);
                         iteration.suggestedFeaturesContent = featuresContent;
                         currentSuggestions = featuresContent || ''; // Store as markdown string instead of array
                     } else {
@@ -1509,7 +1509,7 @@ async function runPipeline(pipelineId: number, initialRequest: string) {
                             refineImplementSystemPrompt = `${QUALITY_MODE_SYSTEM_PROMPT}\n\n${refineImplementSystemPrompt}`;
                         }
 
-                        const userPromptRefineImplement = renderPrompt(customPromptsWebsiteState.user_refineStabilizeImplement, { currentContent: currentContent || placeholderContent, suggestedFeatures: currentSuggestions });
+                        const userPromptRefineImplement = renderPrompt(customPromptsWebsiteState.user_refineStabilizeImplement, { currentContent: currentContent || placeholderContent, featuresToImplementStr: currentSuggestions });
                         iteration.requestPromptContent_FeatureImplement = userPromptRefineImplement;
                         {
                             const refineImplementResponse = await makeApiCall(userPromptRefineImplement, refineImplementSystemPrompt, false, `Stabilization & Feature Impl (Iter ${i}) - Full Content`, "refineStabilizeImplement");
@@ -1528,7 +1528,7 @@ async function runPipeline(pipelineId: number, initialRequest: string) {
                         refineBugFixSystemPrompt = `${QUALITY_MODE_SYSTEM_PROMPT}\n\n${refineBugFixSystemPrompt}`;
                     }
 
-                    const userPromptRefineBugFix = renderPrompt(customPromptsWebsiteState.user_refineBugFix, { currentContent: currentContent || placeholderContent });
+                    const userPromptRefineBugFix = renderPrompt(customPromptsWebsiteState.user_refineBugFix, { initialIdea: initialRequest, currentContent: currentContent || placeholderContent });
                     iteration.requestPromptContent_BugFix = userPromptRefineBugFix;
                     {
                         const bugfixResponse = await makeApiCall(userPromptRefineBugFix, refineBugFixSystemPrompt, false, `Bug Fix & Completion (Iter ${i}) - Full Content`, "refineBugFix");
@@ -1552,7 +1552,7 @@ async function runPipeline(pipelineId: number, initialRequest: string) {
                         if (!refineFeatureModel) {
                             throw new Error("No model specified for refine feature suggestions. Please select a model for this agent or set a global model.");
                         }
-                        const featuresContent = await callGemini(userPromptRefineFeatures, pipeline.temperature, refineFeatureModel, refineFeatureSuggestSystemPrompt, true, getSelectedTopP()).then((response: any) => response.text);
+                        const featuresContent = await callGemini(userPromptRefineFeatures, pipeline.temperature, refineFeatureModel, refineFeatureSuggestSystemPrompt, false, getSelectedTopP()).then((response: any) => response.text);
                         iteration.suggestedFeaturesContent = featuresContent;
                         currentSuggestions = featuresContent || ''; // Store as markdown string instead of array
                     } else {
@@ -1567,7 +1567,7 @@ async function runPipeline(pipelineId: number, initialRequest: string) {
                         finalPolishSystemPrompt = `${QUALITY_MODE_SYSTEM_PROMPT}\n\n${finalPolishSystemPrompt}`;
                     }
 
-                    const userPromptFinalPolish = renderPrompt(customPromptsWebsiteState.user_finalPolish, { currentContent: currentContent || placeholderContent });
+                    const userPromptFinalPolish = renderPrompt(customPromptsWebsiteState.user_finalPolish, { initialIdea: initialRequest, currentContent: currentContent || placeholderContent });
                     iteration.requestPromptContent_BugFix = userPromptFinalPolish; // Re-using bugfix field for UI display of final polish prompt
                     {
                         const finalPolishResponse = await makeApiCall(userPromptFinalPolish, finalPolishSystemPrompt, false, "Final Polish - Full Content", "finalPolish");

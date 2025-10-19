@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// Removed LangChain dependencies - now using custom HistoryMessage interface for thought signature preservation
+// Removed LangChain dependencies - using custom HistoryMessage interface (thought signatures disabled)
 
 export interface ContentHistoryEntry {
     content: string;
@@ -12,13 +12,11 @@ export interface ContentHistoryEntry {
 }
 
 /**
- * Represents a message in conversation history that can contain either:
- * - Plain text (for non-Gemini providers or user messages)
- * - Complete Gemini Content object with thought signatures (for Gemini assistant messages)
+ * Represents a message in conversation history (plain text only, thought signatures disabled)
  */
 export interface HistoryMessage {
     role: 'system' | 'assistant' | 'user';
-    content: string | any;  // string for text, or Gemini Content object with parts/thoughtSignature
+    content: string;  // Plain text only (thought signatures disabled for Gemini)
 }
 
 export interface ContextualState {
@@ -72,7 +70,7 @@ export interface MemorySnapshot {
 /**
  * Manages conversation history for Main Generator Agent
  * Implements smart context condensation after 10 iterations
- * Preserves Gemini thought signatures for continuous reasoning
+ * Thought signatures disabled for Gemini models
  */
 export class MainGeneratorHistoryManager {
     private conversationHistory: HistoryMessage[];
@@ -108,17 +106,15 @@ export class MainGeneratorHistoryManager {
     }
 
     /**
-     * Adds a generation to history, preserving Gemini Content object if provided
+     * Adds a generation to history as plain text (thought signatures disabled)
      * @param generation - Text content of the generation
      * @param iterationNumber - Current iteration number
-     * @param geminiContent - Optional: Complete Gemini Content object with thought signatures
      */
-    async addGeneration(generation: string, iterationNumber: number, geminiContent?: any): Promise<void> {
-        // Store complete Gemini content if available (preserves thought signatures)
-        // Otherwise store as plain text
+    async addGeneration(generation: string, iterationNumber: number): Promise<void> {
+        // Store as plain text (thought signatures disabled for Gemini)
         this.conversationHistory.push({
             role: 'assistant',
-            content: geminiContent || generation
+            content: generation
         });
         this.turnsSinceLastCondense++;
         
@@ -132,15 +128,14 @@ export class MainGeneratorHistoryManager {
     }
 
     /**
-     * Adds iterative agent's critique to history, preserving Gemini Content if provided
+     * Adds iterative agent's critique to history as plain text (thought signatures disabled)
      * @param response - Text content of the critique
      * @param iterationNumber - Current iteration number
-     * @param geminiContent - Optional: Complete Gemini Content object with thought signatures
      */
-    async addIterativeResponse(response: string, iterationNumber: number, geminiContent?: any): Promise<void> {
+    async addIterativeResponse(response: string, iterationNumber: number): Promise<void> {
         this.conversationHistory.push({
             role: 'user',
-            content: geminiContent || response
+            content: response
         });
         
         // Track this iteration's critique
@@ -176,12 +171,12 @@ export class MainGeneratorHistoryManager {
             }
         }
 
-        // Build from current history - preserves Gemini Content objects with thought signatures
+        // Build from current history (plain text only, thought signatures disabled)
         const result: HistoryMessage[] = [
             { role: 'user', content: this.initialUserRequest }
         ];
 
-        // Add all conversation history (preserves thought signatures)
+        // Add all conversation history (plain text only)
         result.push(...this.conversationHistory);
 
         return result;
@@ -227,7 +222,7 @@ export class MainGeneratorHistoryManager {
             turnsSinceLastCondense: this.turnsSinceLastCondense,
             messages: this.conversationHistory.map(m => ({
                 role: m.role,
-                content: typeof m.content === 'string' ? m.content : '[Gemini Content with Thought Signatures]'
+                content: m.content
             }))
         };
     }
@@ -236,7 +231,7 @@ export class MainGeneratorHistoryManager {
 /**
  * Manages conversation history for Iterative Agent (Suggestion & Alignment Agent)
  * Implements smart context condensation after 10 iterations
- * Preserves Gemini thought signatures for continuous reasoning
+ * Thought signatures disabled for Gemini models
  */
 export class IterativeAgentHistoryManager {
     private conversationHistory: HistoryMessage[];
@@ -268,15 +263,14 @@ export class IterativeAgentHistoryManager {
     }
 
     /**
-     * Adds a suggestion/critique to history, preserving Gemini Content if provided
+     * Adds a suggestion/critique to history as plain text (thought signatures disabled)
      * @param suggestion - Text content of the suggestion
      * @param iterationNumber - Current iteration number
-     * @param geminiContent - Optional: Complete Gemini Content object with thought signatures
      */
-    async addSuggestion(suggestion: string, iterationNumber: number, geminiContent?: any): Promise<void> {
+    async addSuggestion(suggestion: string, iterationNumber: number): Promise<void> {
         this.conversationHistory.push({
             role: 'assistant',
-            content: geminiContent || suggestion
+            content: suggestion
         });
         this.turnsSinceLastCondense++;
         
@@ -289,15 +283,14 @@ export class IterativeAgentHistoryManager {
     }
 
     /**
-     * Adds main generator's response to history, preserving Gemini Content if provided
+     * Adds main generator's response to history as plain text (thought signatures disabled)
      * @param generation - Text content of the generation
      * @param iterationNumber - Current iteration number
-     * @param geminiContent - Optional: Complete Gemini Content object with thought signatures
      */
-    async addFixedGeneration(generation: string, iterationNumber: number, geminiContent?: any): Promise<void> {
+    async addFixedGeneration(generation: string, iterationNumber: number): Promise<void> {
         this.conversationHistory.push({
             role: 'user',
-            content: geminiContent || generation
+            content: generation
         });
         
         // Update the generation for the last iteration
@@ -334,12 +327,12 @@ export class IterativeAgentHistoryManager {
             }
         }
 
-        // Build from current history - preserves Gemini Content objects with thought signatures
+        // Build from current history (plain text only, thought signatures disabled)
         const result: HistoryMessage[] = [
             { role: 'user', content: this.initialUserRequest }
         ];
 
-        // Add all conversation history (preserves thought signatures)
+        // Add all conversation history (plain text only)
         result.push(...this.conversationHistory);
 
         // Add the current generation for analysis
@@ -386,7 +379,7 @@ export class IterativeAgentHistoryManager {
             turnsSinceLastCondense: this.turnsSinceLastCondense,
             messages: this.conversationHistory.map((m: HistoryMessage) => ({
                 role: m.role,
-                content: typeof m.content === 'string' ? m.content : '[Gemini Content with Thought Signatures]'
+                content: m.content
             }))
         };
     }
@@ -485,7 +478,7 @@ export class MemoryAgentHistoryManager {
 /**
  * Manages conversation history for Strategic Pool Agent
  * Generates novel cross-domain strategies by observing main generation and critique
- * Preserves Gemini thought signatures for continuous reasoning
+ * Thought signatures disabled for Gemini models
  */
 export class StrategicPoolAgentHistoryManager {
     private conversationHistory: HistoryMessage[];
@@ -559,14 +552,13 @@ export class StrategicPoolAgentHistoryManager {
     }
 
     /**
-     * Adds strategic pool to history, preserving Gemini Content if provided
+     * Adds strategic pool to history as plain text (thought signatures disabled)
      * @param strategicPool - Text content of the strategic pool
-     * @param geminiContent - Optional: Complete Gemini Content object with thought signatures
      */
-    async addStrategicPool(strategicPool: string, geminiContent?: any): Promise<void> {
+    async addStrategicPool(strategicPool: string): Promise<void> {
         this.conversationHistory.push({
             role: 'assistant',
-            content: geminiContent || strategicPool
+            content: strategicPool
         });
         this.allStrategicPools.push(strategicPool);
     }
@@ -582,7 +574,7 @@ export class StrategicPoolAgentHistoryManager {
             allStrategicPools: [...this.allStrategicPools],
             messages: this.conversationHistory.map((m: HistoryMessage) => ({
                 role: m.role,
-                content: typeof m.content === 'string' ? m.content : '[Gemini Content with Thought Signatures]'
+                content: m.content
             }))
         };
     }
