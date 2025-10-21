@@ -105,7 +105,7 @@ class PipelineStopRequestedError extends Error {
 type ApplicationMode = 'website' | 'deepthink' | 'react' | 'agentic' | 'generativeui' | 'contextual' | 'adaptive-deepthink';
 
 // Global variables
-let currentMode: 'website' | 'react' | 'deepthink' | 'agentic' | 'generativeui' | 'contextual' | 'adaptive-deepthink' = 'website';
+let currentMode: 'website' | 'react' | 'deepthink' | 'agentic' | 'generativeui' | 'contextual' | 'adaptive-deepthink' = 'deepthink';
 let currentEvolutionMode: 'off' | 'novelty' | 'quality' = 'novelty'; // Default to Novelty mode
 
 interface IterationData {
