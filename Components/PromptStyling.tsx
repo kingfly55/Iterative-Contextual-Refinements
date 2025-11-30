@@ -3,426 +3,514 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// Declare hljs as global (loaded via CDN in index.html)
+// Declare hljs as global (loaded via CDN)
 declare const hljs: any;
 
+// --- 1. CONFIGURATION & GRAMMAR ---
 
+const GRAMMAR = {
+  // Structural splits
+  // Improved Code Block Regex: Allows content without requiring strict trailing newline
+  CODE_BLOCK: /(```(?:[\w-]*)\n[\s\S]*?```)/g,
+  HEADING: /^(#{1,6})(\s.*)$/,
+  LIST_ITEM: /^(\s*-\s)(.*)/,
 
-const escapeHtml = (unsafe: string): string =>
-  unsafe
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+  // Combined optimized regex for inline tokens
+  TOKENS: new RegExp(
+    [
+      /(\{\{[^}]+\}\})/,                 // Variables {{x}}
+      /(<\/?[\w\s="-]+>)/,               // Tags <tag>
+      /(\[[^\]]+\])/,                    // Instructions [text]
+      /(\*\*.*?\*\*)/,                   // Critical **text**
+      /(`[^`]+`)/,                       // Inline Code `code`
+      /(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/, // Strings "str"
+      // Keywords (Positive)
+      /\b(You must|Must|Always|Ensure|IMPORTANT|CRITICAL|Mandatory|Required|Require|Be sure to|Make sure to|Ensure that|Strictly|At all times)\b/,
+      // Keywords (Negative)
+      /\b(Never|Do not|Don't|Avoid|Must not|Mustn't|Should not|Shouldn't|No|Not allowed|Prohibited|Forbidden|Disallowed|Cannot|Can't)\b/
+    ].map(r => r.source).join('|'),
+    'gi'
+  ),
 
-// Removed: createTokenSpan (no longer used)
-
-// Token type for incremental updates
-export type Token = {
-  type: 'text' | 'keyword-positive' | 'keyword-negative' | 'string' | 'code' | 'variable' | 'tag' | 'instruction' | 'critical' | 'heading' | 'list-marker';
-  content: string;
-  className?: string;
+  TYPES: {
+    VAR: /^\{\{/,
+    TAG: /^</,
+    INST: /^\[/,
+    CRIT: /^\*\*/,
+    CODE: /^`/,
+    STR: /^["']/,
+    POS: /^(?:You must|Must|Always|Ensure|IMPORTANT|CRITICAL|Mandatory|Required|Require|Be sure to|Make sure to|Ensure that|Strictly|At all times)$/i,
+    NEG: /^(?:Never|Do not|Don't|Avoid|Must not|Mustn't|Should not|Shouldn't|No|Not allowed|Prohibited|Forbidden|Disallowed|Cannot|Can't)$/i
+  }
 };
 
-// Serialize the editor DOM back to a plain text format with code fences preserved
-function getPlainTextFromEditor(editor: HTMLElement): string {
-  const serialize = (node: Node): string => {
+const ESCAPE_MAP: Record<string, string> = {
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+};
+
+// --- 2. TEXT NORMALIZATION & UTILITIES ---
+
+const Utils = {
+  escapeHtml: (unsafe: string): string => unsafe.replace(/[&<>"']/g, c => ESCAPE_MAP[c]),
+
+  /**
+   * SINGLE SOURCE OF TRUTH for Text.
+   * Extracts text exactly as the Tokenizer and CaretManager expect it.
+   * Handles the complex way browsers wrap contenteditable lines (DIVs, BRs, etc).
+   */
+  getPlainText: (node: Node): string => {
+    // Text Node: Strip Zero Width Spaces (cursor artifacts)
     if (node.nodeType === Node.TEXT_NODE) {
-      return (node.textContent || '').replace(/\u200B/g, ''); // strip ZWSP used for caret
+      return (node.textContent || '').replace(/\u200B/g, '');
     }
+
+    // Explicit Line Break
     if (node.nodeName === 'BR') {
       return '\n';
     }
-    if (node.nodeName === 'PRE') {
-      const codeEl = (node as HTMLElement).querySelector('code');
-      if (codeEl) {
-        const cls = codeEl.className || '';
-        const m = cls.match(/language-([a-z0-9]+)/i);
-        const lang = m ? m[1] : '';
-        const code = (codeEl.textContent || '').replace(/\u200B/g, '');
-        return '```' + lang + '\n' + code + '\n```';
-      }
-    }
-    // Skip visual fence markers; PRE handles serialization of fences
-    if ((node as HTMLElement).nodeType === Node.ELEMENT_NODE && (node as HTMLElement).classList?.contains('token-code-marker')) {
-      return '';
-    }
-    let out = '';
-    node.childNodes.forEach(child => { out += serialize(child); });
-    return out;
-  };
-  return serialize(editor);
-}
 
-// Parse text into tokens with code block support
-export function parseIntoTokens(text: string): Token[] {
-  // First check for code blocks
-  const codeBlockRegex = /(```(?:[a-zA-Z]*)?\n[\s\S]*?\n```)/g;
-  const parts = text.split(codeBlockRegex).filter(Boolean);
-  
-  const tokens: Token[] = [];
-  
-  parts.forEach(part => {
-    if (part.startsWith('```') && part.includes('\n')) {
-      // This is a code block
-      const lines = part.trimEnd().split('\n');
-      const firstLine = lines[0];
-      const lastLine = lines.length > 1 ? lines[lines.length - 1] : '';
-      
-      if ((firstLine === '```' || /^```[a-zA-Z]+$/.test(firstLine)) && lastLine.trim() === '```') {
-        const langMatch = firstLine.match(/```(\w*)/);
-        const lang = langMatch && langMatch[1] ? langMatch[1] : 'plaintext';
-        
-        // Return as a single code block token
-        tokens.push({
-          type: 'code',
-          content: part,
-          className: `hljs language-${lang}`
-        });
-        return;
+    // Block Elements (DIV, P, PRE) - Chrome adds these when pressing Enter
+    // We treat the *start* of a non-first block as a newline to match visual structure
+    if (Utils.isBlockElement(node)) {
+      let content = '';
+      // Recursively get content
+      node.childNodes.forEach(child => {
+        content += Utils.getPlainText(child);
+      });
+
+      // If this element is not the first child, it implies a newline (e.g. <div>Line 1</div><div>Line 2</div>)
+      // But we must be careful not to double count if CSS handles formatting
+      // FIX: Don't add newline if previous sibling was already a BR (which adds its own newline)
+      if (node.previousSibling && node.previousSibling.nodeName !== 'BR' && content.length > 0) {
+        return '\n' + content;
       }
+      return content;
     }
-    
-    // Process regular content line by line
-    const lines = part.split('\n');
-    lines.forEach((line, lineIndex) => {
-      if (lineIndex > 0) {
-        tokens.push({ type: 'text', content: '\n' });
-      }
-      
-      // Check for headings
-      const headingMatch = line.match(/^(#{1,6})(\s.*)$/);
-      if (headingMatch) {
-        const level = headingMatch[1].length;
-        tokens.push({ 
-          type: 'heading', 
-          content: line, 
-          className: `token-heading token-heading${level}` 
-        });
-        return;
-      }
-      
-      // Check for list items
-      const listMatch = line.match(/^(\s*-\s)(.*)/);
-      if (listMatch) {
-        tokens.push({ 
-          type: 'list-marker', 
-          content: listMatch[1], 
-          className: 'token-list-marker' 
-        });
-        line = listMatch[2];
-      }
-      
-      // Process the line for inline tokens
-      const tokenRegex = /(\{\{[^}]+\}\}|<\/?[^>]+>|\[[^\]]+\]|\*\*.*?\*\*|`[^`]+`|(?<!\w)"(?:[^\\"\n]|\\.)*"(?!\w)|(?<!\w)'(?:[^\\'\n]|\\.)*'(?!\w)|(?<!\w)["](?:[^"\n]|\\.)*["](?!\w)|(?<!\w)['](?:[^'\n]|\\.)*['](?!\w)|\b(You must|Must|Always|Ensure|IMPORTANT|CRITICAL|Mandatory|Required|Require|Be sure to|Make sure to|Ensure that|Strictly|At all times|Never|Do not|Don't|Don't|Avoid|Must not|Mustn't|Mustn't|Should not|Shouldn't|Shouldn't|No|Not allowed|Prohibited|Forbidden|Disallowed|Cannot|Can't|Can't)\b)/giu;
-      const positiveKeywords = /\b(You must|Must|Always|Ensure|IMPORTANT|CRITICAL|Mandatory|Required|Require|Be sure to|Make sure to|Ensure that|Strictly|At all times)\b/iu;
-      const negativeKeywords = /\b(Never|Do not|Don't|Don't|Avoid|Must not|Mustn't|Mustn't|Should not|Shouldn't|Shouldn't|No|Not allowed|Prohibited|Forbidden|Disallowed|Cannot|Can't|Can't)\b/iu;
-      
-      let lastIndex = 0;
-      let match;
-      
-      while ((match = tokenRegex.exec(line)) !== null) {
-        if (match.index > lastIndex) {
-          tokens.push({ type: 'text', content: line.substring(lastIndex, match.index) });
-        }
-        
-        const tokenValue = match[0];
-        if (tokenValue.startsWith('{{')) {
-          tokens.push({ type: 'variable', content: tokenValue, className: 'token-variable' });
-        } else if (tokenValue.startsWith('<')) {
-          tokens.push({ type: 'tag', content: tokenValue, className: 'token-tag' });
-        } else if (tokenValue.startsWith('[')) {
-          tokens.push({ type: 'instruction', content: tokenValue, className: 'token-instruction' });
-        } else if (tokenValue.startsWith('**')) {
-          tokens.push({ type: 'critical', content: tokenValue, className: 'token-critical' });
-        } else if (tokenValue.startsWith('`')) {
-          tokens.push({ type: 'code', content: tokenValue, className: 'token-code' });
-        } else if (/^["'"']/.test(tokenValue)) {
-          tokens.push({ type: 'string', content: tokenValue, className: 'token-string' });
-        } else if (positiveKeywords.test(tokenValue)) {
-          tokens.push({ type: 'keyword-positive', content: tokenValue, className: 'token-keyword-positive' });
-        } else if (negativeKeywords.test(tokenValue)) {
-          tokens.push({ type: 'keyword-negative', content: tokenValue, className: 'token-keyword-negative' });
-        } else {
-          tokens.push({ type: 'text', content: tokenValue });
-        }
-        
-        lastIndex = match.index + tokenValue.length;
-      }
-      
-      if (lastIndex < line.length) {
-        tokens.push({ type: 'text', content: line.substring(lastIndex) });
-      }
+
+    // Recursion for inline elements (SPAN, B, etc)
+    let text = '';
+    node.childNodes.forEach(child => {
+      text += Utils.getPlainText(child);
     });
-  });
-  
-  return tokens;
-}
+    return text;
+  },
 
-// Remove unused variable
-// const lastTokensMap = new WeakMap<HTMLElement, Token[]>();
-
-// Apply highlighting with code block support
-export function applyIncrementalUpdate(element: HTMLElement, newTokens: Token[]): void {
-  // Build HTML
-  const htmlParts: string[] = [];
-  for (const token of newTokens) {
-    if (token.content === '\n') {
-      htmlParts.push('<br>');
-    } else if (token.type === 'code' && token.content.startsWith('```')) {
-      // Handle code blocks specially
-      const lines = token.content.trimEnd().split('\n');
-      const firstLine = lines[0];
-      const langMatch = firstLine.match(/```(\w*)/);
-      const lang = langMatch && langMatch[1] ? langMatch[1] : 'plaintext';
-      const code = lines.slice(1, -1).join('\n');
-      // Show visual fences AND keep proper pre/code for hljs
-      htmlParts.push(
-        `<div class="token-code-marker">\u0060\u0060\u0060${lang}</div>` +
-        `<pre><code class="hljs language-${lang}">${escapeHtml(code)}</code></pre>` +
-        `<div class="token-code-marker">\u0060\u0060\u0060</div>`
-      );
-    } else if (token.className) {
-      htmlParts.push(`<span class="${token.className}">${escapeHtml(token.content)}</span>`);
-    } else {
-      htmlParts.push(escapeHtml(token.content));
-    }
-  }
-  
-  const newHtml = htmlParts.join('');
-  
-  // Only update if different
-  if (element.innerHTML !== newHtml) {
-    element.innerHTML = newHtml;
-    
-    // Apply highlight.js to any code blocks
-    const codeBlocks = element.querySelectorAll('pre code.hljs');
-    codeBlocks.forEach(block => {
-      if (typeof hljs !== 'undefined' && hljs.highlightElement) {
-        hljs.highlightElement(block as HTMLElement);
-      }
-    });
-  }
-}
-
-// Synchronous highlighter for initial mount and programmatic switches
-function applySyntaxHighlightingNow(element: HTMLElement): void {
-  if (!element) return;
-  const text = element.innerText || element.textContent || '';
-  const tokens = parseIntoTokens(text);
-  applyIncrementalUpdate(element, tokens);
-}
-
-// Track IME composition state to avoid fighting the caret
-const composingEditors = new WeakSet<HTMLElement>();
-
-const applySyntaxHighlighting = (element: HTMLElement, immediate: boolean = false): void => {
-  if (!element || !element.isConnected) return;
-
-  // Don't highlight during IME composition
-  if (composingEditors.has(element)) return;
-
-  if (immediate) {
-    applySyntaxHighlightingNow(element);
+  isBlockElement: (node: Node): boolean => {
+    return (node.nodeType === Node.ELEMENT_NODE) &&
+      ['DIV', 'P', 'LI', 'UL', 'OL', 'BLOCKQUOTE', 'PRE'].includes(node.nodeName);
   }
 };
 
-/**
- * Enhance existing textareas with syntax highlighting using contenteditable
- */
-export function enhanceTextarea(textarea: HTMLTextAreaElement): void {
-    // Create a contenteditable div to replace the textarea
+// --- 3. CARET MANAGEMENT (WORLD CLASS LOGIC) ---
+
+class CaretManager {
+  /**
+   * Maps the browser's DOM cursor to a simple integer index (0...N)
+   * strictly following the logic in Utils.getPlainText()
+   */
+  static getCaretPosition(root: HTMLElement): number {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return 0;
+
+    const range = selection.getRangeAt(0);
+    // Range.startContainer might be a TextNode or an Element (if cursor is between nodes)
+    const targetNode = range.startContainer;
+    const targetOffset = range.startOffset;
+
+    let currentIndex = 0;
+    let found = false;
+
+    const walk = (node: Node) => {
+      if (found) return;
+
+      // 1. Handle Hit: If we reached the selection container
+      if (node === targetNode) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          currentIndex += targetOffset;
+        } else {
+          // If cursor is inside an element but pointing between children
+          // We need to count the length of siblings before the offset
+          for (let i = 0; i < targetOffset; i++) {
+            // This is an approximation for Element-type selections
+            // which usually happen at boundaries.
+            const child = node.childNodes[i];
+            currentIndex += Utils.getPlainText(child).length;
+          }
+        }
+        found = true;
+        return;
+      }
+
+      // 2. Count "Hidden" Newlines for Block Elements
+      // Matches `Utils.getPlainText` logic: non-first blocks imply a newline
+      if (Utils.isBlockElement(node) && node.previousSibling && node.hasChildNodes()) {
+        // If we haven't found the target yet, add the implied newline char
+        // BUT only if the target is NOT inside the previous sibling (which we already walked)
+        currentIndex += 1; // '\n'
+      }
+
+      // 3. Increment Index based on Node Type
+      if (node.nodeType === Node.TEXT_NODE) {
+        // Strip ZWSP from count because they won't exist in the cleaned text
+        const text = (node.textContent || '').replace(/\u200B/g, '');
+        currentIndex += text.length;
+      }
+      else if (node.nodeName === 'BR') {
+        currentIndex += 1;
+      }
+      else if (node.nodeName === 'PRE') {
+        // For PRE, we count text content directly as it's atomic in our grammar
+        // Note: If selection is INSIDE PRE, this recursive walk fails.
+        // However, we recurse into children below, so we are fine unless PRE is opaque.
+        // We treat PRE as transparent traversal.
+      }
+
+      // 4. Recurse
+      if (!found && node.childNodes) {
+        for (let i = 0; i < node.childNodes.length; i++) {
+          walk(node.childNodes[i]);
+          if (found) return;
+        }
+      }
+    };
+
+    walk(root);
+    return currentIndex;
+  }
+
+  /**
+   * Inversely maps an integer index back to a DOM Range.
+   */
+  static setCaretPosition(root: HTMLElement, targetIndex: number): void {
+    const selection = window.getSelection();
+    if (!selection) return;
+
+    let currentIndex = 0;
+    let rangeSet = false;
+
+    const range = document.createRange();
+
+    const walk = (node: Node) => {
+      if (rangeSet) return;
+
+      // Handle Implied Newlines (Block Boundaries)
+      if (Utils.isBlockElement(node) && node.previousSibling && node.hasChildNodes()) {
+        if (currentIndex === targetIndex) {
+          // Cursor is exactly at the start of this block (the newline)
+          range.setStart(node, 0);
+          range.collapse(true);
+          rangeSet = true;
+          return;
+        }
+        currentIndex += 1; // Consume '\n'
+      }
+
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = (node.textContent || '').replace(/\u200B/g, '');
+        const len = text.length;
+
+        if (currentIndex + len >= targetIndex) {
+          const offset = targetIndex - currentIndex;
+          range.setStart(node, offset);
+          range.collapse(true);
+          rangeSet = true;
+          return;
+        }
+        currentIndex += len;
+      }
+      else if (node.nodeName === 'BR') {
+        if (currentIndex === targetIndex) {
+          range.setStartBefore(node);
+          range.collapse(true);
+          rangeSet = true;
+          return;
+        }
+        currentIndex += 1;
+      }
+
+      // Recurse
+      if (node.childNodes) {
+        for (let i = 0; i < node.childNodes.length; i++) {
+          walk(node.childNodes[i]);
+          if (rangeSet) return;
+        }
+      }
+    };
+
+    walk(root);
+
+    // Fallback: If index is out of bounds (EOF), set to end
+    if (!rangeSet) {
+      range.selectNodeContents(root);
+      range.collapse(false);
+    }
+
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+}
+
+// --- 4. TOKENIZER & RENDERER ---
+
+class Tokenizer {
+  static parse(text: string) {
+    const tokens: any[] = [];
+    // Use the relaxed Code Block regex to handle typing
+    const parts = text.split(GRAMMAR.CODE_BLOCK);
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (!part) continue;
+
+      // Identify Code Block (Starts and ends with ```)
+      if (part.startsWith('```') && (part.endsWith('```') || i === parts.length - 1)) {
+        // If it's the last part and starts with ``` but matches regex, treat as code
+        // Our regex split keeps delimiters, so 'part' includes the ```
+        const lines = part.split('\n');
+        // Extract language from first line (```lang)
+        const lang = lines[0].slice(3).trim() || 'plaintext';
+        // Everything else is code
+        const code = lines.slice(1, part.endsWith('```') ? -1 : undefined).join('\n');
+
+        tokens.push({ type: 'code-block', content: code, lang });
+        continue;
+      }
+
+      Tokenizer.parseInline(part, tokens);
+    }
+    return tokens;
+  }
+
+  private static parseInline(text: string, tokens: any[]) {
+    const lines = text.split('\n');
+    lines.forEach((line, i) => {
+      if (i > 0) tokens.push({ type: 'newline' });
+      if (!line) return;
+
+      // Structural Token: Heading
+      const hMatch = line.match(GRAMMAR.HEADING);
+      if (hMatch) {
+        tokens.push({ type: 'heading', content: line, level: hMatch[1].length });
+        return;
+      }
+
+      // Structural Token: List Item
+      const lMatch = line.match(GRAMMAR.LIST_ITEM);
+      if (lMatch) {
+        tokens.push({ type: 'list-marker', content: lMatch[1] });
+        Tokenizer.tokenizeString(lMatch[2], tokens);
+        return;
+      }
+
+      Tokenizer.tokenizeString(line, tokens);
+    });
+  }
+
+  private static tokenizeString(text: string, tokens: any[]) {
+    let lastIdx = 0;
+    let match;
+    // Ensure regex starts from 0 for this string chunk
+    GRAMMAR.TOKENS.lastIndex = 0;
+
+    while ((match = GRAMMAR.TOKENS.exec(text)) !== null) {
+      // Text before match
+      if (match.index > lastIdx) {
+        tokens.push({ type: 'text', content: text.substring(lastIdx, match.index) });
+      }
+
+      const raw = match[0];
+      const type = Tokenizer.classify(raw);
+      tokens.push({ type, content: raw });
+      lastIdx = match.index + raw.length;
+    }
+
+    // Text after last match
+    if (lastIdx < text.length) {
+      tokens.push({ type: 'text', content: text.substring(lastIdx) });
+    }
+  }
+
+  private static classify(text: string) {
+    const T = GRAMMAR.TYPES;
+    if (T.VAR.test(text)) return 'variable';
+    if (T.TAG.test(text)) return 'tag';
+    if (T.INST.test(text)) return 'instruction';
+    if (T.CRIT.test(text)) return 'critical';
+    if (T.CODE.test(text)) return 'code-inline';
+    if (T.STR.test(text)) return 'string';
+    if (T.POS.test(text)) return 'keyword-positive';
+    if (T.NEG.test(text)) return 'keyword-negative';
+    return 'text';
+  }
+}
+
+class Renderer {
+  static render(tokens: any[]): string {
+    return tokens.map(t => {
+      switch (t.type) {
+        case 'newline': return '<br>';
+        case 'text': return Utils.escapeHtml(t.content);
+
+        case 'code-block':
+          // Safe Synchronous Highlighting
+          let highlighted = Utils.escapeHtml(t.content);
+          let langClass = 'plaintext';
+
+          if (typeof hljs !== 'undefined' && t.lang) {
+            try {
+              // Check language validity to prevent hljs errors
+              const validLang = hljs.getLanguage(t.lang) ? t.lang : 'plaintext';
+              langClass = validLang;
+              // highlight() returns an object with a 'value' property containing HTML
+              highlighted = hljs.highlight(t.content, { language: validLang }).value;
+            } catch (e) {
+              // Fallback is already set to escaped plaintext
+            }
+          }
+
+          // Note: We use \u0060 (backtick) to render visual fences that are unselectable/ignored by utils
+          return `<div class="token-code-marker">\u0060\u0060\u0060${t.lang}</div>` +
+            `<pre><code class="hljs language-${langClass}">${highlighted}</code></pre>` +
+            `<div class="token-code-marker">\u0060\u0060\u0060</div>`;
+
+        case 'heading':
+          return `<span class="token-heading token-heading${t.level}">${Utils.escapeHtml(t.content)}</span>`;
+
+        case 'list-marker':
+          return `<span class="token-list-marker">${Utils.escapeHtml(t.content)}</span>`;
+
+        default:
+          return `<span class="token-${t.type}">${Utils.escapeHtml(t.content)}</span>`;
+      }
+    }).join('');
+  }
+}
+
+// --- 5. EDITOR CLASS ---
+
+class PromptEditor {
+  private root: HTMLElement;
+  private textarea: HTMLTextAreaElement;
+  private isLocked = false;
+  private rafId: number | null = null;
+
+  constructor(textarea: HTMLTextAreaElement) {
+    this.textarea = textarea;
+    this.root = this.createDom();
+    this.bindEvents();
+
+    if (textarea.value) {
+      // Initial sync
+      this.root.textContent = textarea.value;
+      this.update(true);
+    }
+  }
+
+  private createDom() {
     const container = document.createElement('div');
     container.className = 'prompt-styling-container';
-    
+
     const editor = document.createElement('div');
     editor.className = 'prompt-styling-editor';
     editor.contentEditable = 'true';
     editor.setAttribute('spellcheck', 'false');
-    // Insert container before textarea and move textarea inside
-    textarea.parentNode?.insertBefore(container, textarea);
+
+    this.textarea.parentNode?.insertBefore(container, this.textarea);
     container.appendChild(editor);
-    container.appendChild(textarea);
-    
-    // Hide the original textarea and mark as enhanced
-    textarea.style.display = 'none';
-    textarea.dataset.psEnhanced = 'true';
-    
-    // Store reference to editor on textarea for content updates
-    (textarea as any).promptEditor = editor;
-    
-    // Set initial content and highlight it
-    if (textarea.value) {
-        editor.textContent = textarea.value;
-        const tokens = parseIntoTokens(textarea.value);
-        const html = tokens.map(token => {
-            if (token.content === '\n') {
-                return '<br>';
-            } else if (token.className) {
-                return `<span class="${token.className}">${escapeHtml(token.content)}</span>`;
-            } else {
-                return escapeHtml(token.content);
-            }
-        }).join('');
-        editor.innerHTML = html;
-    }
-    
-    // Clean up when editor is removed
-    const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-            mutation.removedNodes.forEach((node) => {
-                if (node === editor) {
-                    // Clean up when editor is removed
-                    composingEditors.delete(editor);
-                    observer.disconnect();
-                }
-            });
-        });
+    container.appendChild(this.textarea);
+
+    this.textarea.style.display = 'none';
+    this.textarea.dataset.psEnhanced = 'true';
+
+    (this.textarea as any)._promptEditor = this;
+    return editor;
+  }
+
+  private bindEvents() {
+    const el = this.root;
+
+    // INPUT: Handling text changes
+    el.addEventListener('input', () => {
+      if (this.isLocked) return;
+
+      // 1. Sync hidden textarea using the robust getPlainText
+      const text = Utils.getPlainText(el);
+      this.textarea.value = text;
+      this.textarea.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // 2. Schedule Render
+      if (this.rafId) cancelAnimationFrame(this.rafId);
+      this.rafId = requestAnimationFrame(() => this.update(false));
     });
-    observer.observe(document.body, { childList: true, subtree: true });
-    
-    // Highlight after typing stops
-    let highlightTimer: any = null;
-    
-    editor.addEventListener('input', () => {
-        const currentText = getPlainTextFromEditor(editor);
-        
-        // Update the hidden textarea value immediately
-        textarea.value = currentText;
-        // Trigger input event on textarea for PromptsManager
-        const event = new Event('input', { bubbles: true });
-        textarea.dispatchEvent(event);
-        
-        // Clear any pending highlight
-        if (highlightTimer) {
-            clearTimeout(highlightTimer);
-        }
-        
-        // Apply highlighting after a delay
-        highlightTimer = setTimeout(() => {
-            // NEVER update while editor is focused - this completely avoids cursor issues
-            if (document.activeElement === editor) {
-                // Don't reschedule, just skip
-                return;
-            }
-            
-            const tokens = parseIntoTokens(currentText);
-            // Use central updater so code blocks get proper hljs highlighting
-            applyIncrementalUpdate(editor, tokens);
-        }, 500); // Reduced delay as requested
+
+    // PASTE: Sanitize to Plain Text
+    el.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const text = e.clipboardData?.getData('text/plain') || '';
+      document.execCommand('insertText', false, text);
     });
-    
-    // Immediate highlight on blur
-    editor.addEventListener('blur', () => {
-        if (highlightTimer) {
-            clearTimeout(highlightTimer);
-            highlightTimer = null;
-        }
-        // Always highlight on blur using central updater (ensures hljs is applied)
-        const currentText = getPlainTextFromEditor(editor);
-        const tokens = parseIntoTokens(currentText);
-        applyIncrementalUpdate(editor, tokens);
-    });
-    
-    // Handle paste to convert to plain text
-    editor.addEventListener('paste', (e) => {
+
+    // KEYDOWN: normalize Enter key
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
         e.preventDefault();
-        const text = e.clipboardData?.getData('text/plain') || '';
-        document.execCommand('insertText', false, text);
+        e.stopPropagation(); // Prevent bubbling to avoid triggering parent listeners
+        // Forces a plain newline insertion, effectively normalizing block generation
+        document.execCommand('insertText', false, '\n');
+      }
     });
-    
-    // Handle Enter key to ensure reliable new lines
-    editor.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            const selection = window.getSelection();
-            if (selection && selection.rangeCount > 0) {
-                const range = selection.getRangeAt(0);
-                // Remove current selection
-                range.deleteContents();
-                // Insert <br> and a zero-width space to place caret after line break
-                const br = document.createElement('br');
-                const zwsp = document.createTextNode('\u200B');
-                range.insertNode(br);
-                range.setStartAfter(br);
-                range.collapse(true);
-                range.insertNode(zwsp);
-                // Move caret after the zwsp
-                const newRange = document.createRange();
-                newRange.setStartAfter(zwsp);
-                newRange.collapse(true);
-                selection.removeAllRanges();
-                selection.addRange(newRange);
-                // Dispatch input to sync hidden textarea
-                const event = new Event('input', { bubbles: true });
-                editor.dispatchEvent(event);
-            }
-        }
-    });
+  }
 
-    // Respect IME composition to avoid caret jumping/crashes
-    editor.addEventListener('compositionstart', () => {
-        composingEditors.add(editor);
-    });
-    editor.addEventListener('compositionend', () => {
-        composingEditors.delete(editor);
-        // Re-highlight immediately after composition ends
-        applySyntaxHighlighting(editor, true);
-    });
-    
-    // Listen for textarea value changes from outside (agent switching)
-    const valueObserver = new MutationObserver(() => {
-        if (textarea.value !== editor.textContent) {
-            editor.textContent = textarea.value;
-            applySyntaxHighlightingNow(editor);
-        }
-    });
-    valueObserver.observe(textarea, { attributes: true, attributeFilter: ['value'] });
-    
-    // Remove continuous polling loop to avoid performance issues/crashes
-}
+  public update(immediate = false) {
+    // 1. Snapshot Cursor
+    const cursorOffset = CaretManager.getCaretPosition(this.root);
 
-/**
- * Update content in enhanced textareas when switching between agents/prompts
- */
-export function updatePromptContent(): void {
-    const textareas = document.querySelectorAll('.prompt-textarea') as NodeListOf<HTMLTextAreaElement>;
-    
-    textareas.forEach(textarea => {
-        if (textarea.dataset.psEnhanced === 'true' && (textarea as any).promptEditor) {
-            const editor = (textarea as any).promptEditor;
-            if (editor.textContent !== textarea.value) {
-                editor.textContent = textarea.value;
-                applySyntaxHighlightingNow(editor);
-            }
-        }
-    });
-}
+    // 2. Parse & Render (Using getPlainText to ensure consistency)
+    const rawText = Utils.getPlainText(this.root);
+    const tokens = Tokenizer.parse(rawText);
+    const newHtml = Renderer.render(tokens);
 
-/**
- * Initialize all prompt textareas in the PromptsManager modal
- */
-export function initializePromptStyling(): void {
-    // Wait for hljs to be available
-    if (typeof hljs === 'undefined') {
-        console.warn('highlight.js not loaded, retrying...');
-        setTimeout(initializePromptStyling, 100);
-        return;
+    // 3. Diff & Apply
+    if (this.root.innerHTML !== newHtml) {
+      this.isLocked = true;
+      this.root.innerHTML = newHtml;
+      // 4. Restore Cursor
+      CaretManager.setCaretPosition(this.root, cursorOffset);
+      this.isLocked = false;
     }
-    
-    // Find all prompt textareas
-    const textareas = document.querySelectorAll('.prompt-textarea') as NodeListOf<HTMLTextAreaElement>;
-    
-    textareas.forEach(textarea => {
-        // Skip if already enhanced
-        if (textarea.dataset.psEnhanced === 'true' || textarea.parentElement?.classList.contains('prompt-styling-container')) {
-            return;
-        }
-        
-        enhanceTextarea(textarea);
-    });
-    
-    // Update content for any mode switches
-    updatePromptContent();
+  }
+
+  public setContent(text: string) {
+    const current = Utils.getPlainText(this.root);
+    // Only update if visually different (ignoring HTML structure diffs)
+    if (current !== text) {
+      this.root.textContent = text;
+      this.update(true);
+    }
+  }
+}
+
+// --- 6. EXPORTS ---
+
+export function enhanceTextarea(textarea: HTMLTextAreaElement) {
+  if (textarea.dataset.psEnhanced === 'true') return;
+  new PromptEditor(textarea);
+}
+
+export function updatePromptContent() {
+  document.querySelectorAll('.prompt-textarea').forEach((textarea: any) => {
+    if (textarea._promptEditor) {
+      textarea._promptEditor.setContent(textarea.value);
+    }
+  });
+}
+
+export function initializePromptStyling() {
+  if (typeof hljs === 'undefined') {
+    setTimeout(initializePromptStyling, 50);
+    return;
+  }
+  document.querySelectorAll('.prompt-textarea').forEach(el =>
+    enhanceTextarea(el as HTMLTextAreaElement)
+  );
 }

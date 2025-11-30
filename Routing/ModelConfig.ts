@@ -23,6 +23,7 @@ export interface ModelParameters {
     dissectedObservationsEnabled: boolean;
     iterativeCorrectionsEnabled: boolean;
     provideAllSolutionsToCorrectors: boolean;
+    postQualityFilterEnabled: boolean;
 }
 
 export const AVAILABLE_MODELS: ModelOption[] = [
@@ -43,7 +44,8 @@ export const DEFAULT_MODEL_PARAMETERS: ModelParameters = {
     skipSubStrategies: false,
     dissectedObservationsEnabled: false,
     iterativeCorrectionsEnabled: false,
-    provideAllSolutionsToCorrectors: false
+    provideAllSolutionsToCorrectors: false,
+    postQualityFilterEnabled: false
 };
 
 export class ModelConfigManager {
@@ -124,6 +126,10 @@ export class ModelConfigManager {
     public isProvideAllSolutionsToCorrectors(): boolean {
         // Can only be enabled if refinement is enabled
         return this.parameters.refinementEnabled && this.parameters.provideAllSolutionsToCorrectors;
+    }
+
+    public isPostQualityFilterEnabled(): boolean {
+        return this.parameters.postQualityFilterEnabled;
     }
 
     public getModelProvider(modelValue?: string): string {

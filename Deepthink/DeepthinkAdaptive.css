@@ -1,0 +1,308 @@
+/* ========================================
+   ADAPTIVE DEEPTHINK MODE LAYOUT
+   Uses REAL Deepthink UI rendering
+======================================== */
+
+/* Main container with 75/25 split */
+.adaptive-deepthink-ui-container {
+    display: flex;
+    gap: 0;
+    height: 100%;
+    width: 100%;
+    min-height: 0;
+    /* Allow flex children to shrink */
+    overflow: hidden;
+}
+
+#adaptive-deepthink-container {
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden;
+}
+
+/* Left panel - Embedded Real Deepthink UI (75%) */
+.adaptive-deepthink-embedded-panel {
+    flex: 0 0 75%;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    /* CRITICAL: Constrain height */
+    min-height: 0;
+    /* Allow flex shrinking */
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    overflow: hidden;
+    position: relative;
+    padding-right: 1rem;
+}
+
+/* Right panel - Agent Activity (25%) */
+.adaptive-deepthink-agent-panel-wrapper {
+    flex: 0 0 24%;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    /* allow inner flex children to shrink and scroll */
+    height: 100%;
+    /* fill parent so inner scroll areas get a fixed height */
+    padding-left: 1rem;
+    border-left: 1px solid rgba(var(--border-color-rgb), 0.3);
+    position: relative;
+}
+
+/* Subtle gradient overlay for visual depth */
+.adaptive-deepthink-agent-panel-wrapper::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: linear-gradient(to bottom,
+            transparent 0%,
+            rgba(var(--accent-blue-rgb), 0.15) 20%,
+            rgba(var(--accent-blue-rgb), 0.15) 80%,
+            transparent 100%);
+    pointer-events: none;
+}
+
+/* Remove containerization from agent panel in Adaptive Deepthink mode */
+.adaptive-deepthink-agent-panel-wrapper .agentic-agent-panel {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    overflow: visible !important;
+    /* allow header to bleed to separator */
+    min-height: 0;
+    /* critical for nested scroll container */
+}
+
+/* Remove extra padding from agent panel header for proper alignment */
+.adaptive-deepthink-agent-panel-wrapper .agent-panel-header,
+.adaptive-deepthink-agent-panel-wrapper>.agentic-agent-panel>.agent-panel-header {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
+/* Full-bleed header so glass background reaches the left separator */
+#adaptive-deepthink-container .adaptive-deepthink-agent-panel-wrapper .agent-panel-header,
+#adaptive-deepthink-container .adaptive-deepthink-agent-panel-wrapper>.agentic-agent-panel>.agent-panel-header {
+    margin-left: -1rem !important;
+    /* cancel wrapper padding-left */
+    width: calc(100% + 1rem) !important;
+    /* expand to the separator */
+    box-sizing: border-box !important;
+    padding-left: 1rem !important;
+    /* keep inner spacing consistent */
+}
+
+/* Remove extra padding from messages container */
+.adaptive-deepthink-agent-panel-wrapper .agent-messages-container,
+.adaptive-deepthink-agent-panel-wrapper>.agentic-agent-panel>.agent-messages-container {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    overflow-y: auto !important;
+    /* ensure panel scrolls internally */
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+}
+
+/* Glassy header: strong blur background for Agent Activity header in Adaptive Deepthink */
+#adaptive-deepthink-container .adaptive-deepthink-agent-panel-wrapper .agent-panel-header,
+#adaptive-deepthink-container .adaptive-deepthink-agent-panel-wrapper>.agentic-agent-panel>.agent-panel-header {
+    position: relative;
+    background: transparent !important;
+    /* let overlay render */
+    border-bottom: 1px solid rgba(var(--border-color-rgb), 0.22) !important;
+}
+
+/* Glass overlay to ensure blur is applied even when vendor-prefixed property is unsupported */
+#adaptive-deepthink-container .adaptive-deepthink-agent-panel-wrapper .agent-panel-header::before,
+#adaptive-deepthink-container .adaptive-deepthink-agent-panel-wrapper>.agentic-agent-panel>.agent-panel-header::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    /* Manual gradient stack so blur has a visible tint even on flat backgrounds */
+    background:
+        linear-gradient(180deg,
+            rgba(var(--bg-color-rgb), 0.36) 0%,
+            rgba(var(--bg-color-rgb), 0.30) 35%,
+            rgba(var(--bg-color-rgb), 0.24) 100%),
+        linear-gradient(90deg,
+            rgba(var(--accent-blue-rgb), 0.10) 0%,
+            rgba(var(--accent-purple-rgb), 0.08) 30%,
+            rgba(var(--accent-purple-rgb), 0.00) 70%);
+    backdrop-filter: blur(18px) saturate(135%);
+    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+#adaptive-deepthink-container .adaptive-deepthink-agent-panel-wrapper .agent-panel-header>*,
+#adaptive-deepthink-container .adaptive-deepthink-agent-panel-wrapper>.agentic-agent-panel>.agent-panel-header>* {
+    position: relative;
+    z-index: 1;
+}
+
+/* Glassy Stop button */
+#adaptive-deepthink-container .adaptive-deepthink-agent-panel-wrapper .agent-panel-header .stop-button,
+#adaptive-deepthink-container .adaptive-deepthink-agent-panel-wrapper>.agentic-agent-panel>.agent-panel-header .stop-button {
+    background: linear-gradient(180deg, rgba(var(--accent-pink-rgb), 0.22), rgba(var(--accent-pink-rgb), 0.16)) !important;
+    color: var(--accent-pink) !important;
+    border: 1px solid rgba(var(--accent-pink-rgb), 0.45) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+}
+
+#adaptive-deepthink-container .adaptive-deepthink-agent-panel-wrapper .agent-panel-header .stop-button:hover,
+#adaptive-deepthink-container .adaptive-deepthink-agent-panel-wrapper>.agentic-agent-panel>.agent-panel-header .stop-button:hover {
+    background: linear-gradient(180deg, rgba(var(--accent-pink-rgb), 0.28), rgba(var(--accent-pink-rgb), 0.2)) !important;
+}
+
+/* Glassy Completed badge */
+#adaptive-deepthink-container .adaptive-deepthink-agent-panel-wrapper .agent-panel-header .status-badge,
+#adaptive-deepthink-container .adaptive-deepthink-agent-panel-wrapper .agent-panel-header .status-badge.status-completed,
+#adaptive-deepthink-container .adaptive-deepthink-agent-panel-wrapper>.agentic-agent-panel>.agent-panel-header .status-badge,
+#adaptive-deepthink-container .adaptive-deepthink-agent-panel-wrapper>.agentic-agent-panel>.agent-panel-header .status-badge.status-completed {
+    background: linear-gradient(135deg, rgba(var(--accent-green-rgb), 0.22), rgba(var(--accent-green-rgb), 0.12)) !important;
+    color: var(--accent-green) !important;
+    border: 1px solid rgba(var(--accent-green-rgb), 0.45) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+}
+
+/* Simulated cursor animation */
+.simulated-cursor {
+    position: fixed;
+    width: 24px;
+    height: 24px;
+    background: radial-gradient(circle, rgba(var(--accent-blue-rgb), 0.8) 0%, rgba(var(--accent-blue-rgb), 0.3) 70%, transparent 100%);
+    border: 2px solid var(--accent-blue);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 10000;
+    transform: translate(-50%, -50%);
+    animation: cursorPulse 0.6s ease-in-out;
+    box-shadow: 0 0 20px rgba(var(--accent-blue-rgb), 0.6);
+}
+
+@keyframes cursorPulse {
+    0% {
+        transform: translate(-50%, -50%) scale(0.5);
+        opacity: 0;
+    }
+
+    50% {
+        transform: translate(-50%, -50%) scale(1.2);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0.9;
+    }
+}
+
+/* Tabs for embedded Deepthink - SMALLER VERSIONS only for embedded panel */
+.adaptive-deepthink-embedded-panel .tabs-nav-container {
+    background: rgba(var(--bg-color-rgb), 0.5);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0.4rem 0.75rem;
+    flex-shrink: 0;
+    /* Don't shrink tabs */
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* Smaller tabs ONLY inside embedded panel */
+.adaptive-deepthink-embedded-panel .tab-button.deepthink-mode-tab {
+    padding: 0.5rem 0.85rem !important;
+    font-size: 0.85rem !important;
+    gap: 0.45rem !important;
+}
+
+.adaptive-deepthink-embedded-panel .tab-button.deepthink-mode-tab .material-symbols-outlined {
+    font-size: 1.05rem !important;
+}
+
+.adaptive-deepthink-embedded-panel .tab-button.deepthink-mode-tab.simulated-hover {
+    background: rgba(var(--card-bg-base-rgb), 0.9) !important;
+    border-color: var(--accent-blue) !important;
+    color: var(--accent-blue) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 4px 12px rgba(var(--accent-blue-rgb), 0.3) !important;
+}
+
+/* Content wrapper for embedded Deepthink - MUST SCROLL */
+.adaptive-deepthink-embedded-panel .pipelines-content-container {
+    flex: 1;
+    /* Take remaining space */
+    overflow-y: auto !important;
+    overflow-x: hidden;
+    padding: 1rem;
+    min-height: 0;
+    /* CRITICAL for flex scrolling */
+    max-height: 100%;
+    /* Constrain height */
+    position: relative;
+}
+
+/* Simulated hover effects for automated interactions */
+.simulated-hover {
+    background: rgba(var(--accent-blue-rgb), 0.2) !important;
+    border-color: var(--accent-blue) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 4px 12px rgba(var(--accent-blue-rgb), 0.4) !important;
+    transition: all 0.3s ease !important;
+}
+
+.view-solution-button.simulated-hover,
+.sub-tab-button.simulated-hover {
+    background: rgba(var(--accent-green-rgb), 0.25) !important;
+    border-color: var(--accent-green) !important;
+}
+
+.red-team-agent-card.simulated-hover {
+    border-color: var(--accent-purple) !important;
+    box-shadow: 0 4px 16px rgba(var(--accent-purple-rgb), 0.3) !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1400px) {
+    .adaptive-deepthink-embedded-panel {
+        flex: 0 0 70%;
+    }
+
+    .adaptive-deepthink-agent-panel-wrapper {
+        flex: 0 0 29%;
+    }
+}
+
+@media (max-width: 1200px) {
+    .adaptive-deepthink-ui-container {
+        flex-direction: column;
+    }
+
+    .adaptive-deepthink-embedded-panel,
+    .adaptive-deepthink-agent-panel-wrapper {
+        flex: none;
+        height: 50%;
+    }
+}
+
+/* Embedded modal container within left panel */
+.adaptive-deepthink-modal-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
+    pointer-events: none;
+}

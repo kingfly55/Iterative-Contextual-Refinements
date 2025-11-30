@@ -3,9 +3,9 @@
  * Adds support for StartWorkerAgents and CheckBuild tools
  */
 
-import { 
-    AgenticState, 
-    AgenticMessage, 
+import {
+    AgenticState,
+    AgenticMessage,
     ToolCall,
     SystemBlock,
     ResponseSegment,
@@ -13,7 +13,7 @@ import {
     applyDiffCommand
 } from '../Agentic/AgenticCoreLangchain';
 import { buildReactApp, parseFilesFromConcatenatedCode } from './ReactBuildManager';
-import { callGemini } from '../index.tsx';
+import { callAI as callGemini } from '../Routing';
 import { renderPrompt } from '../Components/PromptRenderer';
 
 // Extended state for React mode
@@ -72,7 +72,7 @@ async function executeStartWorkerAgents(state: ReactAgenticState): Promise<{ res
     try {
         // Mark workers as starting
         activeReactPipeline.status = 'processing_workers';
-        
+
         // Execute all worker agents in parallel
         const workerPromises = activeReactPipeline.stages.map(async (stage: any) => {
             if (!stage.systemInstruction || !stage.userPrompt) {
@@ -82,7 +82,7 @@ async function executeStartWorkerAgents(state: ReactAgenticState): Promise<{ res
             }
 
             stage.status = 'processing';
-            
+
             // Render the user prompt with the plan
             stage.renderedUserPrompt = renderPrompt(stage.userPrompt, {
                 plan_txt: activeReactPipeline.orchestratorPlan || '',
@@ -152,7 +152,7 @@ async function executeCheckBuild(state: ReactAgenticState): Promise<{ result: st
     try {
         // Build the current content
         const buildResult = await buildReactApp(state.currentContent);
-        
+
         // Store the build result
         (state as any).lastBuildResult = buildResult;
 
@@ -183,8 +183,8 @@ async function executeCheckBuild(state: ReactAgenticState): Promise<{ result: st
 export async function executeReactToolCall(
     toolCall: ToolCall,
     state: ReactAgenticState
-): Promise<{ 
-    result: string; 
+): Promise<{
+    result: string;
     updatedContent?: string;
     isComplete?: boolean;
 }> {
@@ -192,11 +192,11 @@ export async function executeReactToolCall(
     if (toolCall.name === 'StartWorkerAgents') {
         return await executeStartWorkerAgents(state);
     }
-    
+
     if (toolCall.name === 'CheckBuild') {
         return await executeCheckBuild(state);
     }
-    
+
     // Handle Exit tool
     if (toolCall.name === 'Exit') {
         return {
@@ -204,10 +204,10 @@ export async function executeReactToolCall(
             isComplete: true
         };
     }
-    
+
     // For other tools, use the base implementation
     const baseResult = await baseExecuteToolCall(toolCall, state);
-    
+
     // Check if it's a multi_edit and apply the changes
     if (toolCall.name === 'multi_edit' && baseResult.result.includes('successfully applied')) {
         // Parse and apply the diff commands
@@ -226,7 +226,7 @@ export async function executeReactToolCall(
             };
         }
     }
-    
+
     return baseResult;
 }
 
@@ -242,7 +242,7 @@ export function parseReactToolCall(text: string): ToolCall | null {
             params: {}
         };
     }
-    
+
     // Check for CheckBuild
     const checkBuildMatch = text.match(/\[TOOL_CALL:CheckBuild\(\)\]/);
     if (checkBuildMatch) {
@@ -251,7 +251,7 @@ export function parseReactToolCall(text: string): ToolCall | null {
             params: {}
         };
     }
-    
+
     // Check for Exit
     const exitMatch = text.match(/\[TOOL_CALL:Exit\(\)\]/);
     if (exitMatch) {
@@ -260,7 +260,7 @@ export function parseReactToolCall(text: string): ToolCall | null {
             params: {}
         };
     }
-    
+
     // For other tools, return null and let the base parser handle it
     return null;
 }

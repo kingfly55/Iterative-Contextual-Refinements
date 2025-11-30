@@ -91,6 +91,10 @@ export function getProvideAllSolutionsToCorrectors(): boolean {
     return getRoutingManager().isProvideAllSolutionsToCorrectors();
 }
 
+export function getPostQualityFilterEnabled(): boolean {
+    return getRoutingManager().isPostQualityFilterEnabled();
+}
+
 export function getAIProvider() {
     return getRoutingManager().getAIProvider();
 }
@@ -109,4 +113,11 @@ export function getDeepthinkPrompts() {
 
 export function getReactPrompts() {
     return getRoutingManager().getReactPrompts();
+}
+
+export function updateCustomPromptTextareasFromState() {
+    const promptsManager = getRoutingManager().getPromptsManager();
+    if (promptsManager) {
+        promptsManager.updateTextareasFromState();
+    }
 }

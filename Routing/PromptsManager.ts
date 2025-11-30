@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { CustomizablePromptsWebsite, CustomizablePromptsReact } from '../prompts';
+import { CustomizablePromptsWebsite } from '../Refine/RefinePrompts';
+import { CustomizablePromptsReact } from '../React/ReactPrompts';
 import { CustomizablePromptsDeepthink } from '../Deepthink/DeepthinkPrompts';
 import { AgenticPromptsManager, AgenticPrompts } from '../Agentic/AgenticPromptsManager';
 import { CustomizablePromptsAdaptiveDeepthink } from '../AdaptiveDeepthink/AdaptiveDeepthinkPrompt';
@@ -18,7 +19,7 @@ export class PromptsManager {
     private agenticPromptsRef: { current: AgenticPrompts };
     private adaptiveDeepthinkPromptsRef?: { current: CustomizablePromptsAdaptiveDeepthink };
     private contextualPromptsRef?: { current: CustomizablePromptsContextual };
-    
+
     private agenticPromptsManager: AgenticPromptsManager;
     private adaptiveDeepthinkPromptsManager?: AdaptiveDeepthinkPromptsManager;
     private contextualPromptsManager?: ContextualPromptsManager;
@@ -37,7 +38,7 @@ export class PromptsManager {
         this.agenticPromptsRef = agenticPromptsRef || { current: { systemPrompt: '', verifierPrompt: '' } };
         this.adaptiveDeepthinkPromptsRef = adaptiveDeepthinkPromptsRef;
         this.contextualPromptsRef = contextualPromptsRef;
-        
+
         this.agenticPromptsManager = new AgenticPromptsManager(this.agenticPromptsRef);
         if (this.adaptiveDeepthinkPromptsRef) {
             this.adaptiveDeepthinkPromptsManager = new AdaptiveDeepthinkPromptsManager(this.adaptiveDeepthinkPromptsRef);
@@ -118,7 +119,9 @@ export class PromptsManager {
             'hypothesisGeneration': 'model_hypothesisGeneration',
             'hypothesisTester': 'model_hypothesisTester',
             'redTeam': 'model_redTeam',
-            'finalJudge': 'model_finalJudge'
+            'postQualityFilter': 'model_postQualityFilter',
+            'finalJudge': 'model_finalJudge',
+            'structuredSolutionPool': 'model_structuredSolutionPool'
         };
 
         for (const [agentKey, modelField] of Object.entries(modelSelectorMap)) {
@@ -223,7 +226,11 @@ export class PromptsManager {
             user_deepthink_hypothesisTester: 'user-deepthink-hypothesis-tester',
             sys_deepthink_redTeam: 'sys-deepthink-red-team',
             user_deepthink_redTeam: 'user-deepthink-red-team',
+            sys_deepthink_postQualityFilter: 'sys-deepthink-post-quality-filter',
+            user_deepthink_postQualityFilter: 'user-deepthink-post-quality-filter',
             sys_deepthink_finalJudge: 'sys-deepthink-final-judge',
+            sys_deepthink_structuredSolutionPool: 'sys-deepthink-structured-solution-pool',
+            user_deepthink_structuredSolutionPool: 'user-deepthink-structured-solution-pool',
             model_initialStrategy: '',
             model_subStrategy: '',
             model_solutionAttempt: '',
@@ -233,13 +240,15 @@ export class PromptsManager {
             model_hypothesisGeneration: '',
             model_hypothesisTester: '',
             model_redTeam: '',
-            model_finalJudge: ''
+            model_postQualityFilter: '',
+            model_finalJudge: '',
+            model_structuredSolutionPool: ''
         };
 
         for (const [key, elementId] of Object.entries(textareaMap)) {
             // Skip entries with empty element IDs (e.g., model_* fields)
             if (!elementId) continue;
-            
+
             const textarea = document.getElementById(elementId) as HTMLTextAreaElement;
             if (textarea) {
                 const promptKey = key as keyof CustomizablePromptsDeepthink;
@@ -427,7 +436,14 @@ export class PromptsManager {
             sys_suggestImprovements: 'sys-suggest-improvements',
             user_suggestImprovements: 'user-suggest-improvements',
             sys_codeOptimizer: 'sys-code-optimizer',
-            user_codeOptimizer: 'user-code-optimizer'
+            user_codeOptimizer: 'user-code-optimizer',
+            model_initialGen: '',
+            model_initialBugFix: '',
+            model_initialFeatureSuggest: '',
+            model_refineStabilizeImplement: '',
+            model_refineBugFix: '',
+            model_refineFeatureSuggest: '',
+            model_finalPolish: ''
         };
         return map[key] || '';
     }
@@ -452,7 +468,11 @@ export class PromptsManager {
             user_deepthink_hypothesisTester: 'user-deepthink-hypothesis-tester',
             sys_deepthink_redTeam: 'sys-deepthink-red-team',
             user_deepthink_redTeam: 'user-deepthink-red-team',
+            sys_deepthink_postQualityFilter: 'sys-deepthink-post-quality-filter',
+            user_deepthink_postQualityFilter: 'user-deepthink-post-quality-filter',
             sys_deepthink_finalJudge: 'sys-deepthink-final-judge',
+            sys_deepthink_structuredSolutionPool: 'sys-deepthink-structured-solution-pool',
+            user_deepthink_structuredSolutionPool: 'user-deepthink-structured-solution-pool',
             model_initialStrategy: '',
             model_subStrategy: '',
             model_solutionAttempt: '',
@@ -462,7 +482,9 @@ export class PromptsManager {
             model_hypothesisGeneration: '',
             model_hypothesisTester: '',
             model_redTeam: '',
-            model_finalJudge: ''
+            model_postQualityFilter: '',
+            model_finalJudge: '',
+            model_structuredSolutionPool: ''
         };
         return map[key] || '';
     }

@@ -1,0 +1,254 @@
+/* ========================================================================== */
+/* == CONTENT STYLES (Markdown, KaTeX, Theorems) =========================== */
+/* ========================================================================== */
+
+/* Premium LaTeX math content styling */
+.katex {
+    color: var(--accent-pink) !important;
+    font-size: 1.25em !important;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+}
+
+.katex-display {
+    margin: 1.8em 0 !important;
+    color: var(--accent-pink) !important;
+    padding: 1.2rem;
+    background: rgba(var(--accent-pink-rgb), 0.02);
+    border-radius: 16px;
+    border-left: 3px solid rgba(var(--accent-pink-rgb), 0.3);
+}
+
+.katex .base {
+    color: var(--accent-pink) !important;
+}
+
+/* Premium content formatting for optimal readability */
+.markdown-content {
+    line-height: 1.9;
+    font-size: 18px;
+    letter-spacing: 0.3px;
+    font-weight: 400;
+    color: var(--text-primary-color);
+    animation: fadeIn 0.4s ease;
+}
+
+.markdown-content p {
+    margin-top: 0.2em;
+    margin-bottom: 0.4em;
+    line-height: 1.8;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+    margin-top: 0.2em;
+    margin-bottom: 0.3em;
+    line-height: 1.4;
+    font-weight: 600;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+    margin-bottom: 1.2em;
+    padding-left: 2em;
+}
+
+.markdown-content li {
+    margin-bottom: 0.5em;
+    line-height: 1.7;
+}
+
+/* Strategy content typography: align with final solution styling */
+.strategy-content .markdown-content h1,
+.strategy-content .markdown-content h2,
+.strategy-content .markdown-content h3,
+.strategy-content .markdown-content h4,
+.strategy-content .markdown-content h5,
+.strategy-content .markdown-content h6 {
+    color: var(--accent-green);
+    font-weight: 600;
+}
+
+.strategy-content .markdown-content strong,
+.strategy-content .markdown-content b {
+    color: var(--accent-green);
+    font-weight: 600;
+}
+
+.strategy-content .markdown-content em,
+.strategy-content .markdown-content i {
+    color: var(--accent-orange);
+    font-style: italic;
+}
+
+.markdown-content blockquote {
+    margin: 1.8em 0;
+    padding: 1.2em 1.8em;
+    border-left: 3px solid rgba(var(--accent-pink-rgb), 0.4);
+    background: rgba(var(--accent-pink-rgb), 0.03);
+    font-style: normal;
+    border-radius: 16px;
+    position: relative;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+    box-shadow: 0 2px 12px rgba(var(--accent-pink-rgb), 0.04);
+}
+
+.markdown-content blockquote::before {
+    content: '"';
+    position: absolute;
+    left: 0.5em;
+    top: 0.3em;
+    font-size: 2em;
+    color: rgba(var(--accent-pink-rgb), 0.2);
+    font-weight: 700;
+}
+
+.markdown-content code {
+    background: rgba(var(--accent-pink-rgb), 0.06);
+    padding: 0.25em 0.5em;
+    border-radius: 12px;
+    font-family: 'SF Pro Display', 'SF Mono', monospace;
+    font-size: 0.88em;
+    font-weight: 500;
+    color: var(--accent-pink);
+    border: 1px solid rgba(var(--accent-pink-rgb), 0.12);
+    letter-spacing: 0.3px;
+    transition: all 0.2s ease;
+}
+
+.markdown-content code:hover {
+    background: rgba(var(--accent-pink-rgb), 0.08);
+    border-color: rgba(var(--accent-pink-rgb), 0.18);
+}
+
+.markdown-content pre {
+    background: rgba(var(--accent-pink-rgb), 0.03);
+    padding: 1.5em;
+    border-radius: 18px;
+    overflow-x: auto;
+    margin: 1.5em 0;
+    border: 1px solid rgba(var(--accent-pink-rgb), 0.1);
+    box-shadow: 0 2px 12px rgba(var(--accent-pink-rgb), 0.03),
+        inset 0 1px 0 rgba(255, 255, 255, 0.02);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+}
+
+.markdown-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1.2em 0;
+}
+
+.markdown-content th,
+.markdown-content td {
+    border: 1px solid rgba(255, 105, 180, 0.3);
+    padding: 0.8em;
+    text-align: left;
+}
+
+.markdown-content th {
+    background-color: rgba(255, 105, 180, 0.1);
+    font-weight: 600;
+}
+
+/* Premium Theorem-like environment styling */
+.theorem-theorem,
+.theorem-lemma,
+.theorem-proposition,
+.theorem-corollary,
+.theorem-definition,
+.theorem-proof,
+.theorem-remark,
+.theorem-example,
+.theorem-note {
+    margin: 1.8em 0;
+    padding: 1.5em 2em;
+    border-radius: 12px;
+    border-left: 3px solid rgba(var(--accent-pink-rgb), 0.4);
+    background: rgba(var(--accent-pink-rgb), 0.02);
+    box-shadow: 0 3px 16px rgba(var(--accent-pink-rgb), 0.05),
+        0 1px 2px rgba(0, 0, 0, 0.03);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: all 0.3s cubic-bezier(0.23, 1, 0.320, 1);
+    position: relative;
+}
+
+.theorem-theorem:hover,
+.theorem-lemma:hover,
+.theorem-proposition:hover,
+.theorem-corollary:hover,
+.theorem-definition:hover,
+.theorem-proof:hover,
+.theorem-remark:hover,
+.theorem-example:hover,
+.theorem-note:hover {
+    background: rgba(var(--accent-pink-rgb), 0.04);
+    box-shadow: 0 6px 24px rgba(var(--accent-pink-rgb), 0.08);
+    border-left-width: 4px;
+}
+
+.theorem-theorem strong,
+.theorem-lemma strong,
+.theorem-proposition strong,
+.theorem-corollary strong,
+.theorem-definition strong,
+.theorem-proof strong,
+.theorem-remark strong,
+.theorem-example strong,
+.theorem-note strong {
+    color: var(--accent-pink);
+    font-weight: 800;
+    font-size: 1.05em;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.theorem-theorem strong::before,
+.theorem-lemma strong::before,
+.theorem-proposition strong::before,
+.theorem-corollary strong::before,
+.theorem-definition strong::before,
+.theorem-proof strong::before,
+.theorem-remark strong::before,
+.theorem-example strong::before,
+.theorem-note strong::before {
+    content: '';
+    width: 4px;
+    height: 14px;
+    background: var(--accent-pink);
+    border-radius: 2px;
+    opacity: 0.6;
+}
+
+.theorem-definition {
+    background: rgba(var(--accent-pink-rgb), 0.04);
+    border-left-color: rgba(var(--accent-pink-rgb), 0.5);
+    border-left-width: 4px;
+}
+
+.theorem-proof {
+    background: rgba(var(--accent-pink-rgb), 0.015);
+    border-left-color: rgba(var(--accent-pink-rgb), 0.3);
+    font-style: normal;
+    opacity: 0.95;
+}
+
+.theorem-proof::after {
+    content: '∎';
+    position: absolute;
+    bottom: 1rem;
+    right: 1.5rem;
+    font-size: 1.2rem;
+    color: rgba(var(--accent-pink-rgb), 0.4);
+    font-weight: 700;
+}

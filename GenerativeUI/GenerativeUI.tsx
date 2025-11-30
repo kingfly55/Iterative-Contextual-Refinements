@@ -13,13 +13,14 @@ import { GenerativeUIPrompts } from './GenerativeUIPrompts';
 
 import { callAI, getSelectedModel, getSelectedTemperature, getSelectedTopP } from '../Routing';
 import { parseJsonSafe } from '../Parsing';
-import { updateControlsState } from '../index.tsx';
+import { updateControlsState } from '../UI/Controls';
+import { globalState } from '../Core/State';
 
 // Load CSS styles from external file
 const injectStyles = () => {
     const styleId = 'generativeui-styles';
     if (document.getElementById(styleId)) return;
-    
+
     const link = document.createElement('link');
     link.id = styleId;
     link.rel = 'stylesheet';
@@ -36,7 +37,7 @@ const QUALITY_THRESHOLD = 90;
 // Global state for GenerativeUI mode
 let activeGenerativeUIState: GenerativeUIState | null = null;
 let generativeUIRoot: any = null;
-let isGenerativeUIRunning = false;
+// isGenerativeUIRunning is now in globalState
 let abortController: AbortController | null = null;
 let generativeUIPrompts: GenerativeUIPrompts = new GenerativeUIPrompts();
 
@@ -152,10 +153,10 @@ function extractDesignSystem(html: string): import('./GenerativeUICore').DesignS
     // Simple extraction - can be enhanced
     const colorRegex = /#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|rgb\([^)]+\)|rgba\([^)]+\)/g;
     const colors = [...new Set((html.match(colorRegex) || []))];
-    
+
     const fontRegex = /font-family:\s*([^;]+)/g;
     const fonts = [...new Set(Array.from(html.matchAll(fontRegex)).map(m => m[1].trim()))];
-    
+
     return {
         colorPalette: colors.slice(0, 10),
         typography: {
@@ -171,7 +172,7 @@ function extractDesignSystem(html: string): import('./GenerativeUICore').DesignS
 // Function to create user journey summary
 function createUserJourneySummary(interactions: import('./GenerativeUICore').CapturedInteraction[]): string {
     if (interactions.length === 0) return 'User just started';
-    
+
     return interactions.map((interaction, idx) => {
         const action = interaction.type;
         const element = interaction.element.text || interaction.element.tag;
@@ -197,10 +198,10 @@ function isValidInteraction(interaction: any): boolean {
 // Check if interaction is duplicate (same element within debounce window)
 function isDuplicateInteraction(interaction: import('./GenerativeUICore').CapturedInteraction): boolean {
     if (!activeGenerativeUIState) return false;
-    
+
     const now = Date.now();
     const timeSinceLastInteraction = now - activeGenerativeUIState.lastInteractionTimestamp;
-    
+
     if (timeSinceLastInteraction < DEBOUNCE_MS) {
         const lastInteraction = activeGenerativeUIState.interactionHistory[activeGenerativeUIState.interactionHistory.length - 1];
         if (lastInteraction &&
@@ -210,7 +211,7 @@ function isDuplicateInteraction(interaction: import('./GenerativeUICore').Captur
             return true;
         }
     }
-    
+
     return false;
 }
 
@@ -221,14 +222,14 @@ async function processInteractionQueue(): Promise<void> {
     if (!activeGenerativeUIState || activeGenerativeUIState.interactionQueue.length === 0) {
         return;
     }
-    
+
     // Get next interaction from queue
     const nextInteraction = activeGenerativeUIState.interactionQueue.shift();
     if (!nextInteraction) return;
-    
+
     // Process it
     await handleUserInteraction(nextInteraction);
-    
+
     // Continue processing queue if not empty
     if (activeGenerativeUIState && activeGenerativeUIState.interactionQueue.length > 0) {
         setTimeout(() => processInteractionQueue(), 100);
@@ -240,17 +241,17 @@ function navigateToScreen(index: number): void {
     if (!activeGenerativeUIState || index < 0 || index >= activeGenerativeUIState.screenHistory.length) {
         return;
     }
-    
+
     const screen = activeGenerativeUIState.screenHistory[index];
     activeGenerativeUIState.currentScreenIndex = index;
-    
+
     // Inject tracking into historical screen
     const trackedCode = injectInteractionTracking(screen.screenHtml);
     activeGenerativeUIState.finalCode = trackedCode;
-    
+
     // Disable interactive mode temporarily for historical screens (not the latest)
     activeGenerativeUIState.isInteractiveMode = (index === activeGenerativeUIState.screenHistory.length - 1);
-    
+
     renderGenerativeUIMode();
 }
 
@@ -260,17 +261,17 @@ function handleIframeMessage(event: MessageEvent) {
     if (!event.data || event.data.type !== 'generativeui-interaction') {
         return;
     }
-    
+
     // Don't process if not in interactive mode
     if (!activeGenerativeUIState || !activeGenerativeUIState.isInteractiveMode) {
         return;
     }
-    
+
     // Validate interaction
     if (!isValidInteraction(event.data)) {
         return;
     }
-    
+
     // Create interaction object (screenSnapshot used temporarily, not stored in history)
     const interaction: import('./GenerativeUICore').CapturedInteraction = {
         type: event.data.eventType,
@@ -280,12 +281,12 @@ function handleIframeMessage(event: MessageEvent) {
         extractedState: event.data.extractedState,
         screenSnapshot: event.data.screenSnapshot  // Only used for current generation
     };
-    
+
     // Check for duplicate
     if (isDuplicateInteraction(interaction)) {
         return;
     }
-    
+
     // If already processing, queue it
     if (activeGenerativeUIState.isProcessingInteraction) {
         if (activeGenerativeUIState.interactionQueue.length < INTERACTION_QUEUE_LIMIT) {
@@ -293,7 +294,7 @@ function handleIframeMessage(event: MessageEvent) {
         }
         return;
     }
-    
+
     // Process the interaction
     handleUserInteraction(interaction);
 }
@@ -301,15 +302,15 @@ function handleIframeMessage(event: MessageEvent) {
 // Handle user interaction and trigger regeneration
 async function handleUserInteraction(interaction: import('./GenerativeUICore').CapturedInteraction) {
     if (!activeGenerativeUIState) return;
-    
+
     // Set processing flag
     activeGenerativeUIState.isProcessingInteraction = true;
     activeGenerativeUIState.lastInteractionTimestamp = Date.now();
-    
+
     try {
         // Extract screenSnapshot before storing (avoid duplication in history)
         const currentScreenHtml = interaction.screenSnapshot;
-        
+
         // Store minimal interaction (only what's used in prompts)
         const interactionForHistory = {
             type: interaction.type,
@@ -322,10 +323,10 @@ async function handleUserInteraction(interaction: import('./GenerativeUICore').C
             // Removed: position, extractedState, screenSnapshot (all unused or duplicate)
         };
         activeGenerativeUIState.interactionHistory.push(interactionForHistory);
-        
+
         // Trigger contextual generation with current HTML
         await startContextualGeneration(interaction, currentScreenHtml);
-        
+
     } catch (error) {
         if (activeGenerativeUIState) {
             activeGenerativeUIState.status = 'error';
@@ -335,7 +336,7 @@ async function handleUserInteraction(interaction: import('./GenerativeUICore').C
     } finally {
         if (activeGenerativeUIState) {
             activeGenerativeUIState.isProcessingInteraction = false;
-            
+
             // Process next queued interaction if any
             if (activeGenerativeUIState.interactionQueue.length > 0) {
                 setTimeout(() => processInteractionQueue(), 200);
@@ -350,16 +351,16 @@ async function startContextualGeneration(
     currentScreenHtml?: string
 ) {
     if (!activeGenerativeUIState) return;
-    
+
     // Set status to processing
-    isGenerativeUIRunning = true;
+    globalState.isGenerativeUIRunning = true;
     activeGenerativeUIState.status = 'processing';
     renderGenerativeUIMode();
-    
+
     try {
         // Execute contextual pipeline with current HTML
-        await executeContextualPipeline(interaction, currentScreenHtml || interaction.screenSnapshot);
-        
+        await executeContextualPipeline(interaction, currentScreenHtml || interaction.screenSnapshot || '');
+
         activeGenerativeUIState.status = 'completed';
         activeGenerativeUIState.currentStatus = 'Screen generated!';
     } catch (error) {
@@ -367,7 +368,7 @@ async function startContextualGeneration(
         activeGenerativeUIState.error = error instanceof Error ? error.message : 'Unknown error';
         activeGenerativeUIState.currentStatus = 'Error: ' + activeGenerativeUIState.error;
     } finally {
-        isGenerativeUIRunning = false;
+        globalState.isGenerativeUIRunning = false;
         updateControlsState();
         renderGenerativeUIMode();
     }
@@ -377,7 +378,7 @@ async function startContextualGeneration(
 export function initializeGenerativeUIMode() {
     // Inject styles when initializing
     injectStyles();
-    
+
     // Setup postMessage listener for iframe interactions
     window.addEventListener('message', handleIframeMessage);
 }
@@ -386,12 +387,12 @@ export function initializeGenerativeUIMode() {
 export function renderGenerativeUIMode() {
     const container = document.getElementById('pipelines-content-container');
     const tabsContainer = document.getElementById('tabs-nav-container');
-    
+
     if (!container || !tabsContainer) return;
-    
+
     // Check if GenerativeUI container already exists
     let generativeUIContainer = document.getElementById('generativeui-container');
-    
+
     // Only set up DOM structure if it doesn't exist
     if (!generativeUIContainer) {
         // Clear existing content
@@ -401,17 +402,17 @@ export function renderGenerativeUIMode() {
         // Add GenerativeUI tabs  
         const tabsWrapper = document.createElement('div');
         tabsWrapper.className = 'generativeui-tabs-wrapper';
-        
+
         const previewBtn = document.createElement('button');
         previewBtn.className = 'tab-button generativeui-mode-tab active';
         previewBtn.id = 'generativeui-tab-preview';
         previewBtn.innerHTML = 'Preview';
-        
+
         const backgroundBtn = document.createElement('button');
         backgroundBtn.className = 'tab-button generativeui-mode-tab';
         backgroundBtn.id = 'generativeui-tab-background';
         backgroundBtn.innerHTML = 'Pipeline Details';
-        
+
         tabsWrapper.appendChild(previewBtn);
         tabsWrapper.appendChild(backgroundBtn);
         tabsContainer.appendChild(tabsWrapper);
@@ -421,11 +422,11 @@ export function renderGenerativeUIMode() {
         generativeUIContainer.id = 'generativeui-container';
         generativeUIContainer.className = 'pipeline-content active';
         container.appendChild(generativeUIContainer);
-        
+
         // Set up tab switching
         setupTabSwitching();
     }
-    
+
     // Render or update the GenerativeUI interface
     if (activeGenerativeUIState) {
         // Render the GenerativeUI interface
@@ -434,8 +435,8 @@ export function renderGenerativeUIMode() {
                 generativeUIRoot = ReactDOM.createRoot(generativeUIContainer);
             }
             generativeUIRoot.render(
-                <GenerativeUIApp 
-                    state={activeGenerativeUIState} 
+                <GenerativeUIApp
+                    state={activeGenerativeUIState}
                     onStop={stopGenerativeUIProcess}
                 />
             );
@@ -444,16 +445,16 @@ export function renderGenerativeUIMode() {
             errorDiv.className = 'error-state';
             errorDiv.style.padding = '2rem';
             errorDiv.style.color = 'var(--accent-pink)';
-            
+
             const errorTitle = document.createElement('h3');
             errorTitle.textContent = 'Error rendering interface';
-            
+
             const errorMsg = document.createElement('p');
             errorMsg.textContent = error instanceof Error ? error.message : 'Unknown error';
-            
+
             errorDiv.appendChild(errorTitle);
             errorDiv.appendChild(errorMsg);
-            
+
             generativeUIContainer.innerHTML = '';
             generativeUIContainer.appendChild(errorDiv);
         }
@@ -470,11 +471,11 @@ export function renderGenerativeUIMode() {
 function setupTabSwitching() {
     const previewTab = document.getElementById('generativeui-tab-preview');
     const backgroundTab = document.getElementById('generativeui-tab-background');
-    
+
     previewTab?.addEventListener('click', () => {
         switchToTab('preview');
     });
-    
+
     backgroundTab?.addEventListener('click', () => {
         switchToTab('background');
     });
@@ -483,19 +484,19 @@ function setupTabSwitching() {
 function switchToTab(tab: 'preview' | 'background') {
     const tabs = document.querySelectorAll('.generativeui-mode-tab');
     tabs.forEach(t => t.classList.remove('active'));
-    
+
     if (tab === 'preview') {
         document.getElementById('generativeui-tab-preview')?.classList.add('active');
     } else {
         document.getElementById('generativeui-tab-background')?.classList.add('active');
     }
-    
+
     if (activeGenerativeUIState) {
         activeGenerativeUIState.activeTab = tab;
         if (generativeUIRoot) {
             generativeUIRoot.render(
-                <GenerativeUIApp 
-                    state={activeGenerativeUIState} 
+                <GenerativeUIApp
+                    state={activeGenerativeUIState}
                     onStop={stopGenerativeUIProcess}
                 />
             );
@@ -511,7 +512,7 @@ function renderInputForm(container: HTMLElement) {
     if (!generativeUIRoot) {
         generativeUIRoot = ReactDOM.createRoot(container);
     }
-    
+
     // Render empty state with settings
     generativeUIRoot.render(<GenerativeUIEmptyState />);
 }
@@ -532,8 +533,8 @@ const GenerativeUIEmptyState: React.FC = () => {
                     </div>
                     <div className="preview-controls">
                         <label className="refinements-toggle">
-                            <input 
-                                type="checkbox" 
+                            <input
+                                type="checkbox"
                                 checked={globalEnableIterativeRefinements}
                                 onChange={toggleGlobalRefinements}
                             />
@@ -541,7 +542,7 @@ const GenerativeUIEmptyState: React.FC = () => {
                         </label>
                     </div>
                 </div>
-                
+
                 <div className="generativeui-preview-content">
                     <div className="empty-state">
                         <p>Start a generation to see the UI preview here</p>
@@ -555,7 +556,7 @@ const GenerativeUIEmptyState: React.FC = () => {
 // React Component for GenerativeUI App
 const GenerativeUIApp: React.FC<{ state: GenerativeUIState; onStop: () => void }> = ({ state, onStop }) => {
     const iframeRef = useRef<HTMLIFrameElement>(null);
-    
+
     return (
         <div className="generativeui-app">
             {state.activeTab === 'preview' ? (
@@ -568,8 +569,8 @@ const GenerativeUIApp: React.FC<{ state: GenerativeUIState; onStop: () => void }
 };
 
 // Preview Tab Component
-const GenerativeUIPreview: React.FC<{ 
-    state: GenerativeUIState; 
+const GenerativeUIPreview: React.FC<{
+    state: GenerativeUIState;
     iframeRef: React.RefObject<HTMLIFrameElement | null>;
     onStop: () => void;
 }> = ({ state, iframeRef, onStop }) => {
@@ -580,11 +581,11 @@ const GenerativeUIPreview: React.FC<{
             renderGenerativeUIMode();
         }
     };
-    
+
     useEffect(() => {
         // Effect for iframe loading state
     }, [state.finalCode]);
-    
+
     return (
         <div className="generativeui-preview-container">
             <div className="generativeui-preview-header">
@@ -594,8 +595,8 @@ const GenerativeUIPreview: React.FC<{
                 </div>
                 <div className="preview-controls">
                     <label className="refinements-toggle">
-                        <input 
-                            type="checkbox" 
+                        <input
+                            type="checkbox"
                             checked={state.enableIterativeRefinements}
                             onChange={toggleIterativeRefinements}
                             disabled={state.status === 'processing'}
@@ -609,10 +610,10 @@ const GenerativeUIPreview: React.FC<{
                     )}
                 </div>
             </div>
-            
+
             <div className="generativeui-preview-content">
                 {state.finalCode ? (
-                    <iframe 
+                    <iframe
                         ref={iframeRef}
                         srcDoc={state.finalCode}
                         title="Generated UI"
@@ -631,31 +632,31 @@ const GenerativeUIPreview: React.FC<{
 };
 
 // Background Details Tab Component
-const GenerativeUIBackground: React.FC<{ 
-    state: GenerativeUIState; 
+const GenerativeUIBackground: React.FC<{
+    state: GenerativeUIState;
     onStop: () => void;
 }> = ({ state, onStop }) => {
     const [expandedIteration, setExpandedIteration] = useState<number | null>(null);
     const codeRef = useRef<HTMLElement | null>(null);
-    
+
     // register xml/html highlighter once
     useEffect(() => {
         try {
             hljs.registerLanguage('xml', xml);
-        } catch {}
+        } catch { }
     }, []);
-    
+
     // highlight whenever expanded iteration or content changes
     useEffect(() => {
         if (codeRef.current) {
             hljs.highlightElement(codeRef.current);
         }
     }, [expandedIteration, state.iterations]);
-    
+
     const toggleIteration = (iteration: number) => {
         setExpandedIteration(expandedIteration === iteration ? null : iteration);
     };
-    
+
     return (
         <div className="generativeui-background-container">
             <div className="background-header">
@@ -668,14 +669,14 @@ const GenerativeUIBackground: React.FC<{
                         <button className="stop-btn-small" onClick={onStop}>Stop</button>
                     )}
                 </div>
-                
+
                 {/* Iterations as sub-cards inside header */}
                 {state.iterations.length > 0 && (
                     <>
                         <div className="iterations-subcards">
                             {state.iterations.map((iter) => (
                                 <div key={iter.iteration} className="iteration-subcard">
-                                    <div 
+                                    <div
                                         className="iteration-subcard-header"
                                         onClick={() => toggleIteration(iter.iteration)}
                                     >
@@ -687,14 +688,14 @@ const GenerativeUIBackground: React.FC<{
                                 </div>
                             ))}
                         </div>
-                        
+
                         {/* Expanded iteration details - full width below all iterations */}
                         {expandedIteration !== null && (
                             <div className="iteration-details-container">
                                 {(() => {
                                     const selectedIter = state.iterations.find(iter => iter.iteration === expandedIteration);
                                     if (!selectedIter) return null;
-                                    
+
                                     return (
                                         <div className="iteration-full-details">
                                             <div className="iteration-details-header">
@@ -718,7 +719,7 @@ const GenerativeUIBackground: React.FC<{
                                                         </div>
                                                     </div>
                                                 )}
-                                                
+
                                                 {/* Generated Code */}
                                                 {selectedIter.code && (
                                                     <div className="code-section">
@@ -739,7 +740,7 @@ const GenerativeUIBackground: React.FC<{
                     </>
                 )}
             </div>
-            
+
             {/* Requirement Specification - Full width with fixed height */}
             {state.requirementSpec && (
                 <div className="background-section requirement-spec-card">
@@ -751,7 +752,7 @@ const GenerativeUIBackground: React.FC<{
                     </div>
                 </div>
             )}
-            
+
             {/* FSM and Reward Function side by side */}
             <div className="side-by-side-container">
                 {/* Structured Representation (FSMs) */}
@@ -765,7 +766,7 @@ const GenerativeUIBackground: React.FC<{
                         </div>
                     </div>
                 )}
-                
+
                 {/* Reward Function */}
                 {state.rewardFunction && (
                     <div className="background-section reward-card">
@@ -840,7 +841,7 @@ const StructuredRepView: React.FC<{ data: StructuredRepresentation }> = ({ data 
                     </div>
                 )}
             </div>
-            
+
             <div className="subsection">
                 <h4>Finite State Machines</h4>
                 {data.finiteStateMachines.map((fsm: any, i: any) => (
@@ -896,15 +897,15 @@ async function executeContextualPipeline(
     currentScreenHtml: string
 ) {
     if (!activeGenerativeUIState) return;
-    
+
     const state = activeGenerativeUIState; // Capture for null-safety
     const model = getSelectedModel();
     const temperature = getSelectedTemperature();
     const topP = getSelectedTopP();
-    
+
     // Step 1: Generate contextual requirement spec
     updateStatus('Step 1/2: Analyzing interaction and generating spec...');
-    
+
     const contextualSpec = await retryOperation(async () => {
         const specPrompt = generativeUIPrompts.getContextualRequirementSpecPrompt(
             state.userQuery,
@@ -913,19 +914,19 @@ async function executeContextualPipeline(
             currentScreenHtml,  // Use passed HTML, not from interaction
             state.designSystem || undefined
         );
-        
+
         const specResponse = await callAI(specPrompt, temperature, model, undefined, true, topP);
-        
+
         const spec = parseJsonSafe(specResponse.text || '', 'contextual spec');
         if (!spec || typeof spec !== 'object') {
             throw new Error('Invalid contextual spec format');
         }
         return spec;
     }, 'Contextual Spec Generation');
-    
+
     // Step 2: Generate contextual UI
     updateStatus('Step 2/2: Generating next screen based on spec...');
-    
+
     const contextualCode = await retryOperation(async () => {
         const codePrompt = generativeUIPrompts.getContextualUIGenerationPrompt(
             state.userQuery,
@@ -934,18 +935,18 @@ async function executeContextualPipeline(
             interaction,
             state.designSystem || undefined
         );
-        
+
         const codeResponse = await callAI(codePrompt, temperature, model, undefined, false, topP);
-        
+
         const code = (codeResponse.text || '').replace(/^```html|```$/g, '').trim();
         if (!code || code.length < 50) {
             throw new Error('Generated code is too short or empty');
         }
         return code;
     }, 'Contextual UI Generation');
-    
+
     if (!activeGenerativeUIState) return; // Safety check
-    
+
     // Add to screen history
     const screenHistoryItem: import('./GenerativeUICore').ScreenHistoryItem = {
         screenHtml: contextualCode,
@@ -953,14 +954,14 @@ async function executeContextualPipeline(
         interaction: interaction,
         timestamp: Date.now()
     };
-    
+
     activeGenerativeUIState.screenHistory.push(screenHistoryItem);
     activeGenerativeUIState.currentScreenIndex = activeGenerativeUIState.screenHistory.length - 1;
-    
+
     // Inject tracking into the new screen
     const trackedCode = injectInteractionTracking(contextualCode);
     activeGenerativeUIState.finalCode = trackedCode;
-    
+
     renderGenerativeUIMode();
     updateStatus('Next screen ready!');
 }
@@ -991,13 +992,13 @@ async function retryOperation<T>(operation: () => Promise<T>, stepName: string):
 }
 
 // Start GenerativeUI process
-export async function startGenerativeUIProcess(userQuery: string) {
-    if (!userQuery || isGenerativeUIRunning) return;
-    
+export async function startGenerativeUIProcess(initialIdea: string) {
+    if (!initialIdea || globalState.isGenerativeUIRunning) return;
+
     // Create initial state
     activeGenerativeUIState = {
         id: `genui-${Date.now()}`,
-        userQuery,
+        userQuery: initialIdea,
         status: 'processing',
         currentStatus: 'Initializing...',
         activeTab: 'background', // Start with background tab to show progress
@@ -1020,17 +1021,17 @@ export async function startGenerativeUIProcess(userQuery: string) {
         interactionSummary: undefined,
         maxHistorySize: Infinity // No limits
     };
-    
-    isGenerativeUIRunning = true;
+
+    globalState.isGenerativeUIRunning = true;
     updateControlsState();
     abortController = new AbortController();
-    
+
     // Re-render to show processing state
     renderGenerativeUIMode();
-    
+
     try {
         // Execute the generation pipeline
-        await executePipeline(userQuery);
+        await executePipeline(initialIdea);
     } catch (error) {
         if (abortController?.signal.aborted) {
             activeGenerativeUIState.error = 'Generation stopped by user';
@@ -1046,7 +1047,7 @@ export async function startGenerativeUIProcess(userQuery: string) {
             activeGenerativeUIState.currentStatus = 'Error: Unknown error occurred';
         }
     } finally {
-        isGenerativeUIRunning = false;
+        globalState.isGenerativeUIRunning = false;
         updateControlsState();
         if (activeGenerativeUIState) {
             if (!activeGenerativeUIState.error) {
@@ -1063,13 +1064,13 @@ export async function startGenerativeUIProcess(userQuery: string) {
 // Execute the generation pipeline with retry logic
 async function executePipeline(userQuery: string) {
     if (!activeGenerativeUIState) return;
-    
+
     const model = getSelectedModel();
     const temperature = getSelectedTemperature();
     const topP = getSelectedTopP();
     const MAX_RETRIES = 3;
     const RETRY_DELAY = 2000;
-    
+
     // Helper function for retry logic
     async function retryOperation<T>(operation: () => Promise<T>, stepName: string): Promise<T> {
         let lastError: Error | null = null;
@@ -1092,7 +1093,7 @@ async function executePipeline(userQuery: string) {
         }
         throw lastError;
     }
-    
+
     // Step 1: Generate Requirement Specification
     updateStatus('1. Generating Requirement Specification...');
     const reqSpec = await retryOperation(async () => {
@@ -1111,12 +1112,12 @@ async function executePipeline(userQuery: string) {
         }
         return spec;
     }, '1. Generating Requirement Specification');
-    
+
     activeGenerativeUIState.requirementSpec = JSON.stringify(reqSpec, null, 2);
     renderGenerativeUIMode();
-    
+
     if (abortController?.signal.aborted) throw new Error('Generation stopped by user');
-    
+
     // Step 2: Generate Structured Representation
     updateStatus('2. Generating Structured Representation...');
     const structRep = await retryOperation(async () => {
@@ -1135,12 +1136,12 @@ async function executePipeline(userQuery: string) {
         }
         return rep;
     }, '2. Generating Structured Representation');
-    
+
     activeGenerativeUIState.structuredRep = structRep;
     renderGenerativeUIMode();
-    
+
     if (abortController?.signal.aborted) throw new Error('Generation stopped by user');
-    
+
     // Step 3: Generate Adaptive Reward Function
     updateStatus('3. Generating Adaptive Reward Function...');
     const rewardFn = await retryOperation(async () => {
@@ -1165,26 +1166,26 @@ async function executePipeline(userQuery: string) {
         }
         return fn;
     }, '3. Generating Adaptive Reward Function');
-    
+
     activeGenerativeUIState.rewardFunction = rewardFn;
     renderGenerativeUIMode();
-    
+
     if (abortController?.signal.aborted) throw new Error('Generation stopped by user');
-    
+
     // Step 4: Iterative UI Refinement (or single generation if disabled)
     let currentCode = "";
     let lastEvaluation: EvaluationResult | undefined;
-    
+
     const iterationsToRun = activeGenerativeUIState.enableIterativeRefinements ? MAX_ITERATIONS : 1;
-    
+
     for (let i = 1; i <= iterationsToRun; i++) {
-        const stepLabel = activeGenerativeUIState.enableIterativeRefinements 
+        const stepLabel = activeGenerativeUIState.enableIterativeRefinements
             ? '4. Iterative Refinement (' + i + '/' + iterationsToRun + ')... Generating UI...'
             : '4. Generating UI...';
         updateStatus(stepLabel);
-        
+
         if (abortController?.signal.aborted) throw new Error('Generation stopped by user');
-        
+
         const uiGeneration = await retryOperation(async () => {
             const generationPrompt = generativeUIPrompts.getUIGenerationPrompt(
                 userQuery,
@@ -1193,7 +1194,7 @@ async function executePipeline(userQuery: string) {
                 i > 1 ? currentCode : undefined,
                 lastEvaluation
             );
-            
+
             const uiResponse = await callAI(
                 generationPrompt,
                 temperature,
@@ -1207,19 +1208,19 @@ async function executePipeline(userQuery: string) {
                 throw new Error('Generated code is too short or empty');
             }
             return code;
-        }, activeGenerativeUIState.enableIterativeRefinements 
+        }, activeGenerativeUIState.enableIterativeRefinements
             ? '4. Iterative Refinement (' + i + '/' + iterationsToRun + ') - Generation'
             : '4. UI Generation');
-        
+
         currentCode = uiGeneration;
-        
+
         const evalLabel = activeGenerativeUIState.enableIterativeRefinements
             ? '4. Iterative Refinement (' + i + '/' + iterationsToRun + ')... Evaluating UI...'
             : '4. Evaluating UI...';
         updateStatus(evalLabel);
-        
+
         if (abortController?.signal.aborted) throw new Error('Generation stopped by user');
-        
+
         const evaluation = await retryOperation(async () => {
             const evalPrompt = generativeUIPrompts.getEvaluationPrompt(userQuery, rewardFn, currentCode);
             const evalResponse = await callAI(
@@ -1230,7 +1231,7 @@ async function executePipeline(userQuery: string) {
                 true,
                 topP
             );
-            
+
             const evalResult = parseJsonSafe(evalResponse.text || '', 'evaluation result') as EvaluationResult;
             if (!evalResult || !evalResult.metricScores || typeof evalResult.finalScore !== 'number') {
                 throw new Error('Invalid evaluation result format');
@@ -1239,36 +1240,36 @@ async function executePipeline(userQuery: string) {
         }, activeGenerativeUIState.enableIterativeRefinements
             ? '4. Iterative Refinement (' + i + '/' + iterationsToRun + ') - Evaluation'
             : '4. UI Evaluation');
-        
+
         lastEvaluation = evaluation;
-        
+
         const iterationState: IterationState = {
             iteration: i,
             code: currentCode,
             evaluation: lastEvaluation
         };
-        
+
         activeGenerativeUIState.iterations.push(iterationState);
-        
+
         // Check if quality threshold is met (only for iterative mode)
-        if (activeGenerativeUIState.enableIterativeRefinements && 
-            lastEvaluation.finalScore >= QUALITY_THRESHOLD && 
+        if (activeGenerativeUIState.enableIterativeRefinements &&
+            lastEvaluation.finalScore >= QUALITY_THRESHOLD &&
             i < iterationsToRun) {
             updateStatus('Quality threshold met. Finalizing...');
             break;
         }
     }
-    
+
     // After generation complete, inject tracking and enable interactive mode
     updateStatus('Enabling interactive mode...');
-    
+
     let designSys: import('./GenerativeUICore').DesignSystem | null = null;
-    
+
     try {
         // Extract design system from first generated code
         designSys = extractDesignSystem(currentCode);
         activeGenerativeUIState.designSystem = designSys;
-        
+
         // Inject interaction tracking into the code
         const trackedCode = injectInteractionTracking(currentCode);
         activeGenerativeUIState.finalCode = trackedCode;
@@ -1277,7 +1278,7 @@ async function executePipeline(userQuery: string) {
         activeGenerativeUIState.finalCode = currentCode;
         activeGenerativeUIState.isInteractiveMode = false;
     }
-    
+
     // Add to screen history
     const initialScreenHistoryItem: import('./GenerativeUICore').ScreenHistoryItem = {
         screenHtml: currentCode,
@@ -1287,10 +1288,10 @@ async function executePipeline(userQuery: string) {
     };
     activeGenerativeUIState.screenHistory.push(initialScreenHistoryItem);
     activeGenerativeUIState.currentScreenIndex = 0;
-    
+
     // Enable interactive mode
     activeGenerativeUIState.isInteractiveMode = true;
-    
+
     renderGenerativeUIMode();
     updateStatus('Done! Interactive mode enabled. Click elements to continue the UI evolution.');
 }
@@ -1308,7 +1309,7 @@ export function stopGenerativeUIProcess() {
         abortController.abort();
         abortController = null;
     }
-    isGenerativeUIRunning = false;
+    globalState.isGenerativeUIRunning = false;
     if (activeGenerativeUIState) {
         activeGenerativeUIState.status = 'stopped';
         activeGenerativeUIState.currentStatus = 'Generation stopped by user';
@@ -1318,14 +1319,15 @@ export function stopGenerativeUIProcess() {
 }
 
 // Check if GenerativeUI mode is active
+// Check if GenerativeUI mode is active
 export function isGenerativeUIModeActive(): boolean {
-    return isGenerativeUIRunning;
+    return globalState.isGenerativeUIRunning;
 }
 
 // Clean up GenerativeUI mode
 export function cleanupGenerativeUIMode() {
     // Stop any running process
-    if (isGenerativeUIRunning) {
+    if (globalState.isGenerativeUIRunning) {
         stopGenerativeUIProcess();
     }
     // Unmount React root
@@ -1339,7 +1341,7 @@ export function cleanupGenerativeUIMode() {
     }
     // Clear state
     activeGenerativeUIState = null;
-    isGenerativeUIRunning = false;
+    globalState.isGenerativeUIRunning = false;
     if (abortController) {
         abortController.abort();
         abortController = null;

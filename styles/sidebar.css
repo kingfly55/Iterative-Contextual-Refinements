@@ -1,0 +1,645 @@
+.sidebar-header {
+    padding-bottom: var(--space-5);
+    /* 20px */
+    border-bottom: 1px solid var(--sub-panel-border-color);
+    margin-bottom: var(--space-2);
+    /* 8px */
+}
+
+.sidebar-header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--gap-md);
+    /* 16px */
+}
+
+.sidebar-collapse-button {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--border-radius-md);
+    padding: var(--space-2);
+    /* 8px */
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.sidebar-collapse-button:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+body.light-mode .sidebar-collapse-button:hover {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+.theme-toggle-button {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--border-radius-md);
+    padding: var(--space-2);
+    /* 8px */
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-speed);
+    width: var(--button-height-md);
+    /* 40px */
+    height: var(--button-height-md);
+    /* 40px */
+    flex-shrink: 0;
+    pointer-events: auto;
+    position: relative;
+    z-index: 10;
+}
+
+.theme-toggle-button:hover {
+    transform: rotate(180deg);
+}
+
+.theme-toggle-button:active {
+    transform: scale(0.95);
+    background: rgba(107, 91, 184, 0.2) !important;
+}
+
+.theme-toggle-button .material-symbols-outlined {
+    font-size: 1.125rem;
+    color: var(--text-color);
+}
+
+body.light-mode .theme-toggle-button .material-symbols-outlined {
+    color: #666666;
+}
+
+.sidebar-collapse-button .material-symbols-outlined {
+    font-size: 1.125rem;
+    color: var(--text-color);
+}
+
+body.light-mode .sidebar-collapse-button .material-symbols-outlined {
+    color: #666666;
+}
+
+.sidebar-expand-button {
+    background: var(--button-bg-color);
+    border: 1px solid var(--button-border-color);
+    border-radius: var(--border-radius-md);
+    color: var(--text-color);
+    cursor: pointer;
+    padding: var(--space-2);
+    /* 8px */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    box-shadow: var(--shadow-md);
+    margin-right: var(--space-3);
+    /* 12px */
+    flex-shrink: 0;
+    height: fit-content;
+    /* Position as sibling before tabs container */
+    position: relative;
+    z-index: 10;
+}
+
+.sidebar-expand-button:hover {
+    background: var(--button-hover-bg-color);
+    border-color: var(--button-hover-border-color);
+}
+
+/* Ensure tabs container has proper flex layout when expand button is present */
+.tabs-container {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-xs);
+    /* 8px */
+}
+
+.sidebar-content {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-section-sm);
+    /* 24px */
+    overflow-y: auto;
+    padding-right: var(--space-3);
+    /* 12px */
+    /* for scrollbar */
+}
+
+.sidebar-footer {
+    padding-top: var(--space-5);
+    /* 20px */
+    margin-top: var(--space-2);
+    /* 8px */
+    border-top: 1px solid var(--sub-panel-border-color);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--gap-md);
+    /* 16px */
+}
+
+.sidebar-footer:has(.api-call-indicator:not([style*="display: none"])) {
+    justify-content: space-between;
+}
+
+/* API Call Indicator - Compact Design */
+.api-call-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10.8px;
+    padding: 0 14.4px;
+    height: 43.2px;
+    flex: 1;
+    background: rgba(var(--card-bg-base-rgb), 0.4);
+    border: 1px solid var(--border-color);
+    border-radius: 18px;
+    transition: all 0.3s ease;
+    cursor: default;
+    user-select: none;
+}
+
+.api-call-indicator:hover {
+    background: rgba(var(--card-bg-base-rgb), 0.6);
+    border-color: rgba(139, 92, 246, 0.3);
+}
+
+.api-call-info {
+    display: flex;
+    align-items: baseline;
+    gap: 5.4px;
+    flex: 1;
+    min-width: 0;
+}
+
+.api-call-count {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent-purple);
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.api-call-label {
+    font-size: 10.8px;
+    font-weight: 500;
+    color: var(--text-secondary-color);
+    opacity: 0.8;
+    white-space: nowrap;
+}
+
+.api-call-warning {
+    font-size: 18px;
+    color: #f59e0b;
+    opacity: 0.9;
+    flex-shrink: 0;
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+
+    0%,
+    100% {
+        opacity: 0.8;
+    }
+
+    50% {
+        opacity: 1;
+    }
+}
+
+#generate-button {
+    flex-shrink: 0;
+    min-width: 126px;
+    height: 43.2px;
+}
+
+.flow-canvas-wrapper {
+    flex-grow: 1;
+    background-color: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    /* Prevents flex item from growing beyond parent */
+}
+
+/* ========================================================================== */
+/* == CUSTOM APP STYLES (Radio Buttons, Pipeline Selectors) ================ */
+/* ========================================================================== */
+
+.radio-group {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.radio-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--text-secondary-color);
+}
+
+.radio-label input[type="radio"] {
+    accent-color: var(--accent-blue);
+}
+
+.pipeline-selector {
+    margin-bottom: 1.5rem;
+}
+
+.pipeline-selector label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.pipeline-selector select {
+    width: 100%;
+    padding: 0.5rem;
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-secondary);
+    color: var(--text-color);
+}
+
+/* Sidebar Section Styling */
+details.sidebar-section {
+    background: transparent;
+    border: 1px solid var(--sub-panel-border-color);
+    border-radius: var(--border-radius-md);
+    margin-bottom: 2rem;
+}
+
+.sidebar-section {
+    background: transparent;
+    border: 1px solid var(--sub-panel-border-color);
+    border-radius: var(--border-radius-md);
+    margin-bottom: 2rem;
+}
+
+summary.sidebar-section-header,
+.sidebar-section-header {
+    padding: 1.125rem 1.5rem;
+    font-weight: 600;
+    font-size: 1rem;
+    letter-spacing: -0.01em;
+    list-style: none;
+    transition: background-color var(--transition-speed-fast);
+}
+
+.sidebar-section-header[role="button"] {
+    cursor: pointer;
+}
+
+.sidebar-section-header[role="button"]:hover {
+    background-color: rgba(var(--card-bg-base-rgb), 0.2);
+}
+
+summary.sidebar-section-header::-webkit-details-marker {
+    display: none;
+}
+
+details[open]>summary.sidebar-section-header {
+    border-bottom: 1px solid var(--sub-panel-border-color);
+    background-color: rgba(var(--card-bg-base-rgb), 0.2);
+}
+
+.sidebar-section-content {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.75rem;
+}
+
+.prompt-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+/* Pipeline Content Visibility */
+.pipeline-content {
+    display: none;
+}
+
+.pipeline-content.active {
+    display: flex;
+    flex-direction: column;
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* =========================================
+   PREMIUM SIDEBAR COMPONENTS
+   ========================================= */
+
+/* App Mode Selector - Segmented Control Style */
+.radio-group-modern {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.app-mode-section-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-tertiary-color);
+    font-weight: 600;
+    margin-bottom: var(--space-1);
+    padding-left: var(--space-1);
+}
+
+.radio-group-full-width-row {
+    display: flex;
+    gap: var(--space-2);
+    width: 100%;
+}
+
+.radio-label-modern {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: var(--space-3);
+    border-radius: var(--border-radius-md);
+    background: rgba(var(--card-bg-base-rgb), 0.3);
+    border: 1px solid var(--sub-panel-border-color);
+    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+    user-select: none;
+    text-align: center;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--text-secondary-color);
+    overflow: hidden;
+}
+
+.radio-label-modern input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.radio-label-modern span {
+    position: relative;
+    z-index: 2;
+}
+
+/* Hover State */
+.radio-label-modern:hover {
+    background: rgba(var(--card-bg-base-rgb), 0.5);
+    border-color: var(--border-hover-color);
+    color: var(--text-color);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* Active State */
+.radio-label-modern:has(input:checked) {
+    background: rgba(var(--accent-purple-rgb), 0.1);
+    border-color: var(--accent-purple);
+    color: var(--accent-purple);
+    box-shadow: 0 0 0 1px var(--accent-purple), 0 4px 12px rgba(var(--accent-purple-rgb), 0.15);
+    font-weight: 600;
+}
+
+/* Light Mode Active State */
+body.light-mode .radio-label-modern:has(input:checked) {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+    box-shadow:
+        0 0 0 1px var(--accent-blue),
+        0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
+/* Light Mode Base State */
+body.light-mode .radio-label-modern {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(0, 0, 0, 0.15);
+    color: var(--text-secondary-color);
+    box-shadow: none;
+}
+
+body.light-mode .radio-label-modern:hover {
+    background: rgba(255, 255, 255, 0.6);
+    border-color: rgba(0, 0, 0, 0.08);
+    color: var(--text-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.radio-label-half-width {
+    flex: 1;
+}
+
+.radio-label-full-width {
+    width: 100%;
+}
+
+/* Provider Management Buttons */
+.provider-buttons-container {
+    display: flex;
+    gap: var(--space-2);
+    width: 100%;
+}
+
+.add-providers-button,
+.prompts-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--border-radius-md);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+    height: 32px;
+    white-space: nowrap;
+}
+
+/* Provider Button Styles */
+.add-providers-button {
+    background: rgba(var(--accent-blue-rgb), 0.1);
+    color: var(--accent-blue);
+    border-color: rgba(var(--accent-blue-rgb), 0.2);
+    flex: 1;
+}
+
+.add-providers-button:hover {
+    background: rgba(var(--accent-blue-rgb), 0.2);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(var(--accent-blue-rgb), 0.15);
+}
+
+.add-providers-button.configured {
+    background: rgba(var(--accent-green-rgb), 0.1);
+    color: var(--accent-green);
+    border-color: rgba(var(--accent-green-rgb), 0.2);
+}
+
+/* Prompts Button Styles */
+.prompts-button {
+    background: rgba(var(--card-bg-base-rgb), 0.5);
+    color: var(--text-secondary-color);
+    border: 1px solid var(--border-color);
+}
+
+.prompts-button:hover {
+    background: rgba(var(--card-bg-base-rgb), 0.8);
+    color: var(--text-color);
+    border-color: var(--border-hover-color);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Light Mode Button Overrides */
+body.light-mode .add-providers-button {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(235, 245, 255, 0.8) 100%);
+    border-color: rgba(59, 130, 246, 0.3);
+    box-shadow:
+        0 1px 2px rgba(59, 130, 246, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+body.light-mode .add-providers-button:hover {
+    background: linear-gradient(180deg, #ffffff 0%, rgba(240, 248, 255, 0.9) 100%);
+    border-color: rgba(59, 130, 246, 0.4);
+    box-shadow:
+        0 4px 12px rgba(59, 130, 246, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 1);
+    transform: translateY(-1px);
+}
+
+body.light-mode .prompts-button {
+    background: rgba(255, 255, 255, 0.5);
+    border-color: rgba(0, 0, 0, 0.15);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+body.light-mode .prompts-button:hover {
+    background: rgba(255, 255, 255, 0.8);
+    border-color: rgba(0, 0, 0, 0.25);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    transform: translateY(-1px);
+}
+
+/* ========================================================================== */
+/* == SIDEBAR BUTTON OVERRIDES (Restored from index_old.css) =============== */
+/* ========================================================================== */
+
+/* Provider Management Buttons */
+.provider-buttons-container {
+    display: flex;
+    gap: var(--space-2);
+    width: 100%;
+}
+
+.add-providers-button,
+.prompts-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--border-radius-md);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+    height: 32px;
+    white-space: nowrap;
+}
+
+/* Provider Button Styles */
+.add-providers-button {
+    background: rgba(var(--accent-blue-rgb), 0.1);
+    color: var(--accent-blue);
+    border-color: rgba(var(--accent-blue-rgb), 0.2);
+    flex: 1;
+}
+
+.add-providers-button:hover {
+    background: rgba(var(--accent-blue-rgb), 0.2);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(var(--accent-blue-rgb), 0.15);
+}
+
+.add-providers-button.configured {
+    background: rgba(var(--accent-green-rgb), 0.1);
+    color: var(--accent-green);
+    border-color: rgba(var(--accent-green-rgb), 0.2);
+}
+
+/* Prompts Button Styles */
+.prompts-button {
+    background: rgba(var(--card-bg-base-rgb), 0.5);
+    color: var(--text-secondary-color);
+    border: 1px solid var(--border-color);
+}
+
+.prompts-button:hover {
+    background: rgba(var(--card-bg-base-rgb), 0.8);
+    color: var(--text-color);
+    border-color: var(--border-hover-color);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Light Mode Button Overrides */
+body.light-mode .add-providers-button {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(235, 245, 255, 0.8) 100%);
+    border-color: rgba(59, 130, 246, 0.3);
+    box-shadow:
+        0 1px 2px rgba(59, 130, 246, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+body.light-mode .add-providers-button:hover {
+    background: linear-gradient(180deg, #ffffff 0%, rgba(240, 248, 255, 0.9) 100%);
+    border-color: rgba(59, 130, 246, 0.4);
+    box-shadow:
+        0 4px 12px rgba(59, 130, 246, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 1);
+    transform: translateY(-1px);
+}
+
+body.light-mode .prompts-button {
+    background: rgba(255, 255, 255, 0.5);
+    border-color: rgba(0, 0, 0, 0.15);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+body.light-mode .prompts-button:hover {
+    background: rgba(255, 255, 255, 0.8);
+    border-color: rgba(0, 0, 0, 0.25);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    transform: translateY(-1px);
+}
+
+/* Material Symbols in Buttons */
+.add-providers-button .material-symbols-outlined,
+.prompts-button .material-symbols-outlined {
+    font-size: 16px;
+}

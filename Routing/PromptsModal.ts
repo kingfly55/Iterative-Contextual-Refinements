@@ -5,7 +5,7 @@
 
 import { initializePromptStyling, updatePromptContent } from '../Components/PromptStyling';
 import { PromptRefiner } from './PromptRefiner';
-import { openPromptDiffModal } from '../Components/DiffModal';
+import { openPromptDiffModal } from '../Components/DiffModal/DiffModalController';
 
 export class PromptsModal {
     private elements: {
@@ -161,13 +161,13 @@ export class PromptsModal {
                     const targetPane = activeModeContainer.querySelector(`.prompt-content-pane[data-prompt-key="${promptKey}"]`);
                     if (targetPane) {
                         targetPane.classList.add('active');
-                        
+
                         // Apply dual-panel class if there are 2 prompt cards
                         const cardCount = targetPane.querySelectorAll('.prompt-card').length;
                         if (cardCount === 2) {
                             targetPane.classList.add('dual-panel');
                         }
-                        
+
                         // Update prompt content when switching panes
                         setTimeout(() => updatePromptContent(), 50);
                     }
@@ -212,7 +212,7 @@ export class PromptsModal {
                 },
                 {
                     groupTitle: "2. SOLUTION DEVELOPMENT",
-                    prompts: ["deepthink-solution-attempt", "deepthink-solution-critique", "deepthink-dissected-synthesis", "deepthink-self-improvement"]
+                    prompts: ["deepthink-solution-attempt", "deepthink-solution-critique", "deepthink-dissected-synthesis", "deepthink-self-improvement", "deepthink-structured-solution-pool"]
                 },
                 {
                     groupTitle: "3. HYPOTHESIS EXPLORATION",
@@ -220,7 +220,7 @@ export class PromptsModal {
                 },
                 {
                     groupTitle: "4. EVALUATION & JUDGMENT",
-                    prompts: ["deepthink-red-team", "deepthink-final-judge"]
+                    prompts: ["deepthink-red-team", "deepthink-post-quality-filter", "deepthink-final-judge"]
                 }
             ],
             react: [
@@ -404,7 +404,8 @@ export class PromptsModal {
             'hypothesisGeneration': 'sys-deepthink-hypothesis-generation',
             'hypothesisTester': 'sys-deepthink-hypothesis-tester',
             'redTeam': 'sys-deepthink-red-team',
-            'finalJudge': 'sys-deepthink-final-judge'
+            'finalJudge': 'sys-deepthink-final-judge',
+            'structuredSolutionPool': 'sys-deepthink-structured-solution-pool'
         };
     }
 
@@ -750,7 +751,8 @@ export class PromptsModal {
             'hypothesisGeneration': 'sys-deepthink-hypothesis-generation',
             'hypothesisTester': 'sys-deepthink-hypothesis-tester',
             'redTeam': 'sys-deepthink-red-team',
-            'finalJudge': 'sys-deepthink-final-judge'
+            'finalJudge': 'sys-deepthink-final-judge',
+            'structuredSolutionPool': 'sys-deepthink-structured-solution-pool'
         };
 
         // React mode agents

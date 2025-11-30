@@ -9,7 +9,7 @@ import Anthropic from "@anthropic-ai/sdk";
 
 export interface StructuredMessage {
     role: 'system' | 'assistant' | 'user';
-    content: string | any;  // Can be string or complete Gemini content object with thought signatures
+    content: string;  // Plain text only (thought signatures disabled for Gemini)
 }
 
 export interface ThinkingConfig {
@@ -69,11 +69,8 @@ export class GoogleAIProvider implements AIProvider {
             const geminiContents: any[] = [];
 
             for (const msg of promptOrParts) {
-                // Check if content is already a Gemini content object (preserves thought signatures)
-                if (typeof msg.content === 'object' && msg.content.parts) {
-                    // Complete content object with thought signatures - preserve as-is
-                    geminiContents.push(msg.content);
-                } else if (msg.role === 'system') {
+                // Convert all messages to plain text (thought signatures disabled)
+                if (msg.role === 'system') {
                     // System messages go to user role in Gemini
                     geminiContents.push({
                         role: 'user',

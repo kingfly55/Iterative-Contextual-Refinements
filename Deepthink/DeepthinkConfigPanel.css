@@ -1,0 +1,1056 @@
+/**
+ * DeepthinkConfigPanel.css
+ * Optimized layout for larger right panel space
+ * Uses existing Routing.css classes for all controls
+ */
+
+.deepthink-config-panel {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.deepthink-config-scroll-container {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: var(--space-3);
+    /* 12px */
+    display: grid;
+    grid-template-rows: auto 1fr;
+    /* Top row auto-sized, bottom row takes remaining space */
+    gap: var(--gap-sm);
+    /* 12px */
+}
+
+/* Row containers - fill available space */
+.config-row-container {
+    width: 100%;
+    min-height: 0;
+    /* Allow grid to control height */
+}
+
+/* Inner grid with equal heights */
+.config-row-container:first-child .config-row-inner {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--gap-sm);
+    /* 12px */
+    height: 100%;
+    /* Fill parent height */
+}
+
+/* Bottom Row: Information Packet + Refinement - Equal sized cards */
+.config-row-container:last-child .config-row-inner {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--gap-sm);
+    /* 12px */
+    height: 100%;
+    /* Fill parent height */
+}
+
+/* Ensure all child containers fill available height */
+.config-row-inner>* {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Compact spacing for all sections */
+.deepthink-config-scroll-container .strategy-execution-container,
+.deepthink-config-scroll-container .red-team-options-container,
+.deepthink-config-scroll-container .information-packet-container,
+.deepthink-config-scroll-container .refinement-options-container {
+    margin: 0;
+    flex: 1;
+    /* Fill available height */
+}
+
+/* Make cards inside containers also stretch */
+.deepthink-config-scroll-container .strategy-execution-card,
+.deepthink-config-scroll-container .post-quality-filter-card-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.deepthink-config-scroll-container .post-quality-filter-card-wrapper .refinement-method-card {
+    flex: 1;
+}
+
+/* Make refinement methods section grow to fill available space */
+.deepthink-config-scroll-container .refinement-methods {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Refinement methods row layout */
+.deepthink-config-scroll-container .refinement-methods-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--gap-xs);
+    /* 8px */
+    margin-bottom: var(--space-2);
+    /* 8px */
+}
+
+/* Reduce padding in sections for better space utilization */
+.deepthink-config-scroll-container .strategy-execution-section {
+    padding: var(--card-padding-xs);
+    /* 12px */
+}
+
+.deepthink-config-scroll-container .refinement-method-card {
+    padding: var(--space-2) var(--card-padding-xs);
+    /* 8px 12px */
+    margin-bottom: var(--space-2);
+    /* 8px */
+}
+
+.deepthink-config-scroll-container .refinement-master-control {
+    padding: var(--card-padding-xs);
+    /* 12px */
+    margin-bottom: var(--space-2);
+    /* 8px */
+}
+
+.deepthink-config-scroll-container .method-card-description {
+    font-size: var(--font-size-xs);
+    /* 12px */
+    line-height: var(--line-height-snug);
+    /* 1.375 */
+}
+
+/* Make Information Packet window more compact */
+.deepthink-config-scroll-container .information-packet-window {
+    margin-bottom: var(--space-2);
+    /* 8px */
+    display: flex;
+    flex-direction: column;
+}
+
+.deepthink-config-scroll-container .window-content {
+    padding: var(--card-padding-xs) var(--space-2);
+    /* 12px 8px */
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    /* Allow content to grow */
+}
+
+.deepthink-config-scroll-container .loading-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-xs);
+    /* 8px */
+    padding: var(--space-1) 0;
+    /* 4px 0 */
+    flex: 1;
+    /* Fill available space */
+    justify-content: space-evenly;
+    /* Distribute lines evenly */
+}
+
+.deepthink-config-scroll-container .execution-agents-visualization {
+    margin: var(--space-2) 0 var(--space-2) 0;
+    /* 8px 0 8px 0 */
+}
+
+/* Information Packet collapse animation */
+.deepthink-config-scroll-container .information-packet-window.collapsed .window-content,
+.deepthink-config-scroll-container .information-packet-window.collapsed .execution-agents-visualization,
+.deepthink-config-scroll-container .information-packet-window.collapsed+.execution-agents-visualization,
+.deepthink-config-scroll-container .information-packet-window.collapsed~.hypothesis-slider-card {
+    display: none;
+}
+
+.deepthink-config-scroll-container .information-packet-window {
+    transition: all 0.3s ease;
+}
+
+.deepthink-config-scroll-container .information-packet-window.collapsed {
+    flex: 0 0 auto;
+}
+
+/* Strategy Execution Container - Subtle red accent background */
+.deepthink-config-scroll-container .strategy-execution-container {
+    background: rgba(232, 107, 107, 0.04);
+    border: 1px solid rgba(232, 107, 107, 0.15);
+    border-radius: var(--border-radius-md);
+    padding: var(--card-padding-sm);
+    /* 16px */
+    display: flex;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Light Mode Override for Strategy Execution */
+body.light-mode .deepthink-config-scroll-container .strategy-execution-container {
+    border-color: rgba(232, 107, 107, 0.4);
+    background: rgba(232, 107, 107, 0.08);
+}
+
+/* Strategy execution card fills container */
+.deepthink-config-scroll-container .strategy-execution-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-sm);
+    /* 12px - Space between sections */
+}
+
+/* Strategy execution sections */
+.deepthink-config-scroll-container .strategy-execution-section {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Strategy Execution sliders - Red accent thumbs */
+.deepthink-config-scroll-container .strategy-execution-container .slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--card-bg-color);
+    border: 3px solid #e86b6b;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(232, 107, 107, 0.4);
+}
+
+.deepthink-config-scroll-container .strategy-execution-container .slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--card-bg-color);
+    border: 3px solid #e86b6b;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(232, 107, 107, 0.4);
+}
+
+/* Hypothesis Slider Card - macOS window style to match Information Packet */
+.deepthink-config-scroll-container .hypothesis-slider-card {
+    background-color: rgba(var(--accent-silent-blue-rgb), 0.01);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    padding: var(--card-padding-xs);
+    /* 12px */
+    margin-top: var(--space-2);
+    /* 8px */
+}
+
+/* Light Mode Override for Hypothesis Card */
+body.light-mode .deepthink-config-scroll-container .hypothesis-slider-card {
+    border-color: rgba(0, 0, 0, 0.15);
+    background-color: rgba(66, 133, 244, 0.05);
+}
+
+/* Hypothesis slider with blue accent - background set dynamically */
+.deepthink-config-scroll-container .hypothesis-slider-card .slider {
+    border-color: rgba(66, 133, 244, 0.2);
+}
+
+.deepthink-config-scroll-container .hypothesis-slider-card .slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--card-bg-color);
+    border: 3px solid var(--accent-blue);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(66, 133, 244, 0.4);
+}
+
+.deepthink-config-scroll-container .hypothesis-slider-card .slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--card-bg-color);
+    border: 3px solid var(--accent-blue);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(66, 133, 244, 0.4);
+}
+
+.deepthink-config-scroll-container .hypothesis-slider-card .input-label {
+    color: var(--text-primary-color);
+}
+
+.deepthink-config-scroll-container .hypothesis-slider-card #dt-hypothesis-value {
+    color: var(--accent-blue);
+    font-weight: 600;
+}
+
+/* Dimmed styling for disabled sub-strategies */
+.deepthink-config-scroll-container .strategy-execution-section.dimmed {
+    opacity: 0.5;
+}
+
+.deepthink-config-scroll-container .disabled-label {
+    font-size: 11px;
+    color: var(--text-secondary-color);
+    font-style: italic;
+    margin-left: 6px;
+    opacity: 0.7;
+}
+
+/* Disabled refinement method cards */
+.deepthink-config-scroll-container .refinement-method-card.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Only block pointer events on the description, not the whole card */
+.deepthink-config-scroll-container .refinement-method-card.disabled .method-card-description {
+    pointer-events: none;
+}
+
+/* Allow clicking on disabled checkboxes to show they're disabled, but block actual interaction */
+.deepthink-config-scroll-container .refinement-method-card.disabled input[disabled] {
+    pointer-events: none;
+}
+
+.deepthink-config-scroll-container .post-quality-filter-card.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.deepthink-config-scroll-container .post-quality-filter-card.disabled .method-card-description {
+    pointer-events: none;
+}
+
+.deepthink-config-scroll-container .post-quality-filter-card.disabled input[disabled] {
+    pointer-events: none;
+}
+
+/* Solution Refinement Container - Purple accent background */
+.deepthink-config-scroll-container .refinement-options-container {
+    background: rgba(139, 92, 246, 0.08);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: var(--border-radius-md);
+    padding: 1rem;
+}
+
+/* Light Mode Override for Refinement Options */
+body.light-mode .deepthink-config-scroll-container .refinement-options-container {
+    border-color: rgba(139, 92, 246, 0.4);
+    background: rgba(139, 92, 246, 0.08);
+}
+
+/* Red Team Container - maintain proper spacing */
+.deepthink-config-scroll-container .red-team-options-container {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Dots Slider Styling (Pain Scale Design) */
+.slider-with-dots {
+    position: relative;
+    padding-bottom: 30px;
+}
+
+.slider-dots {
+    display: flex;
+    justify-content: space-between;
+    position: absolute;
+    width: 100%;
+    bottom: 0;
+    pointer-events: none;
+}
+
+.slider-dot {
+    font-size: 11px;
+    color: var(--text-secondary-color);
+    font-weight: 500;
+    position: relative;
+    flex: 0 0 auto;
+    text-align: center;
+}
+
+.slider-dot::before {
+    content: '';
+    position: absolute;
+    top: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 3px;
+    height: 10px;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.slider-dot.active {
+    color: #e86b6b;
+    font-weight: 600;
+}
+
+.slider-dot.active::before {
+    background: #e86b6b;
+    width: 4px;
+    height: 12px;
+}
+
+/* Base slider styles for deepthink config panel - backgrounds set by JavaScript */
+.deepthink-config-scroll-container .slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 10px;
+    outline: none;
+    border: 1px solid var(--border-color);
+}
+
+/* Dots slider uses dynamic background set by JavaScript */
+
+/* Dots slider thumb */
+.dots-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--card-bg-color);
+    border: 3px solid #e86b6b;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(232, 107, 107, 0.4);
+    position: relative;
+    z-index: 2;
+}
+
+.dots-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--card-bg-color);
+    border: 3px solid #e86b6b;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(232, 107, 107, 0.4);
+}
+
+/* Responsive: stack on smaller screens */
+@media (max-width: 1400px) {
+    .config-row-container .config-row-inner {
+        grid-template-columns: 1fr !important;
+    }
+
+    .deepthink-config-scroll-container .refinement-methods-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .deepthink-config-scroll-container {
+        padding: 1rem;
+        gap: 0.75rem;
+    }
+}
+
+/* Universal Light Mode Border Fix for Deepthink Cards */
+body.light-mode .deepthink-config-scroll-container .refinement-method-card,
+body.light-mode .deepthink-config-scroll-container .post-quality-filter-card,
+body.light-mode .deepthink-config-scroll-container .strategy-execution-card,
+body.light-mode .deepthink-config-scroll-container .hypothesis-slider-card,
+body.light-mode .deepthink-config-scroll-container .information-packet-container,
+body.light-mode .deepthink-config-scroll-container .red-team-options-container,
+body.light-mode .deepthink-config-scroll-container .window-content,
+body.light-mode .deepthink-config-scroll-container .execution-agents-visualization {
+    border-color: rgba(0, 0, 0, 0.15) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* Ensure backgrounds are not too transparent */
+body.light-mode .deepthink-config-scroll-container .refinement-method-card,
+body.light-mode .deepthink-config-scroll-container .post-quality-filter-card {
+    background: rgba(255, 255, 255, 0.6);
+}
+
+/* ========================================================================== */
+/* == DEEPTHINK CONFIG PANEL STYLES ======================================== */
+/* ========================================================================== */
+
+/* Custom Slider Styling */
+.slider-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.slider-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-secondary-color);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+}
+
+.slider-value {
+    color: var(--accent-blue);
+    font-weight: 600;
+    font-size: var(--font-size-sm);
+}
+
+/* Sidebar Slider Styles (Temperature, Top-P, Refinement Stages) */
+#temperature-slider,
+#top-p-slider,
+#refinement-stages-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    background: var(--sub-panel-bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    outline: none;
+    backdrop-filter: var(--card-blur-effect);
+    transition: all var(--transition-speed) var(--easing-curve);
+    cursor: pointer;
+}
+
+#temperature-slider:hover,
+#top-p-slider:hover,
+#refinement-stages-slider:hover {
+    border-color: var(--border-hover-color);
+}
+
+/* Temperature Slider - Pink Glow */
+#temperature-slider:hover {
+    box-shadow: 0 0 10px rgba(var(--accent-pink-rgb), 0.2);
+}
+
+#temperature-slider:focus {
+    border-color: var(--accent-pink);
+    box-shadow: 0 0 15px rgba(var(--accent-pink-rgb), 0.4);
+}
+
+#temperature-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: var(--card-bg-color);
+    border: 2px solid var(--accent-pink);
+    border-radius: 50%;
+    cursor: pointer;
+    backdrop-filter: var(--card-blur-effect);
+    transition: all var(--transition-speed) var(--easing-curve);
+    box-shadow: 0 2px 8px rgba(var(--accent-pink-rgb), 0.3);
+}
+
+#temperature-slider::-webkit-slider-thumb:hover {
+    background: var(--card-bg-hover-color);
+    border-color: var(--accent-pink);
+    box-shadow: 0 0 20px rgba(var(--accent-pink-rgb), 0.5);
+    transform: scale(1.1);
+}
+
+#temperature-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: var(--card-bg-color);
+    border: 2px solid var(--accent-pink);
+    border-radius: 50%;
+    cursor: pointer;
+    backdrop-filter: var(--card-blur-effect);
+    transition: all var(--transition-speed) var(--easing-curve);
+    box-shadow: 0 2px 8px rgba(var(--accent-pink-rgb), 0.3);
+}
+
+#temperature-slider::-moz-range-thumb:hover {
+    background: var(--card-bg-hover-color);
+    border-color: var(--accent-pink);
+    box-shadow: 0 0 20px rgba(var(--accent-pink-rgb), 0.5);
+    transform: scale(1.1);
+}
+
+/* Top P Slider - Blue Glow */
+#top-p-slider:hover {
+    box-shadow: 0 0 10px rgba(var(--accent-blue-rgb), 0.2);
+}
+
+#top-p-slider:focus {
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 15px rgba(var(--accent-blue-rgb), 0.4);
+}
+
+#top-p-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: var(--card-bg-color);
+    border: 2px solid var(--accent-blue);
+    border-radius: 50%;
+    cursor: pointer;
+    backdrop-filter: var(--card-blur-effect);
+    transition: all var(--transition-speed) var(--easing-curve);
+    box-shadow: 0 2px 8px rgba(var(--accent-blue-rgb), 0.3);
+}
+
+#top-p-slider::-webkit-slider-thumb:hover {
+    background: var(--card-bg-hover-color);
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 20px rgba(var(--accent-blue-rgb), 0.5);
+}
+
+#top-p-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: var(--card-bg-color);
+    border: 2px solid var(--accent-blue);
+    border-radius: 50%;
+    cursor: pointer;
+    backdrop-filter: var(--card-blur-effect);
+    transition: all var(--transition-speed) var(--easing-curve);
+    box-shadow: 0 2px 8px rgba(var(--accent-blue-rgb), 0.3);
+}
+
+#top-p-slider::-moz-range-thumb:hover {
+    background: var(--card-bg-hover-color);
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 20px rgba(var(--accent-blue-rgb), 0.5);
+    transform: scale(1.1);
+}
+
+/* Information Packet Container */
+.information-packet-container {
+    background: rgba(var(--accent-silent-blue-rgb), 0.05);
+    border: 1px solid rgba(var(--accent-silent-blue-rgb), 0.30);
+    border-radius: var(--border-radius-md);
+    padding: 0.75rem;
+    margin-top: 1rem;
+    position: relative;
+}
+
+
+/* Window Toggle Styles - Moved to Routing/Routing.css */
+
+/* Ensure Model Parameters are visible in all modes (temp/top-p only, not refinement stages) */
+#controls-sidebar #model-parameters-container {
+    display: flex !important;
+}
+
+#controls-sidebar #temperature-slider,
+#controls-sidebar #top-p-slider {
+    display: block !important;
+    visibility: visible !important;
+}
+
+/* Refinement stages slider visibility is mode-specific - managed by JS */
+
+/* Information Packet Window */
+.information-packet-window {
+    background: rgba(var(--accent-blue-rgb), 0.015);
+    border: 1px solid rgba(var(--accent-blue-rgb), 0.20);
+    border-radius: 16px;
+    backdrop-filter: blur(35px);
+    -webkit-backdrop-filter: blur(35px);
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.window-header {
+    background: rgba(var(--accent-blue-rgb), 0.025);
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(var(--accent-blue-rgb), 0.05);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+}
+
+.window-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.window-right {
+    display: flex;
+    align-items: center;
+}
+
+.window-controls {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.window-button {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.window-button.close {
+    background: #ff5f56;
+}
+
+.window-button.minimize {
+    background: #ffbd2e;
+}
+
+.window-button.maximize {
+    background: #27ca3f;
+}
+
+.window-title {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    opacity: 0.8;
+    transition: color 0.3s ease;
+}
+
+
+
+.window-content {
+    padding: 1rem;
+}
+
+.loading-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.loading-line {
+    height: 8px;
+    background: rgba(var(--accent-blue-rgb), 0.4);
+    border-radius: 10px;
+    /* Remove any animation to make it static */
+    animation: none;
+}
+
+.execution-agents-visualization {
+    position: relative;
+    padding: 1rem 0;
+}
+
+.connection-nodes {
+    display: flex;
+    justify-content: center;
+    margin: 0;
+    padding: 0;
+    position: relative;
+    z-index: 1;
+}
+
+.connection-svg {
+    width: 100%;
+    height: 40px;
+    max-width: 400px;
+    display: block;
+    margin: 0;
+    padding: 0;
+}
+
+.execution-agents-visualization {
+    transition: all 0.3s ease;
+    margin: 0;
+    padding: 0;
+}
+
+.execution-agents-visualization.hidden {
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+}
+
+.window-content.hidden {
+    display: none;
+}
+
+.information-packet-window.collapsed .window-content {
+    display: none;
+}
+
+.execution-agents-wrapper {
+    background: rgba(var(--accent-silent-green-rgb), 0.05);
+    border: 1px solid rgba(var(--accent-silent-green-rgb), 0.2);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin: 0;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    position: relative;
+    overflow: hidden;
+}
+
+.execution-agents-wrapper::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(var(--accent-silent-green-rgb), 0.03);
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+    z-index: -1;
+}
+
+.execution-agents-text {
+    text-align: center;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--accent-silent-green);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+.hypothesis-slider-container {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(var(--accent-blue-rgb), 0.1);
+    transition: opacity 0.3s ease, max-height 0.3s ease;
+}
+
+.hypothesis-slider-container.hidden {
+    opacity: 0.3;
+    pointer-events: none;
+    max-height: 0;
+    overflow: hidden;
+    margin-top: 0;
+    padding-top: 0;
+}
+
+/* Evolution Convergence Options Container */
+.evolution-convergence-container {
+    background: rgba(var(--accent-pink-rgb), 0.10);
+    border: 1px solid rgba(var(--accent-pink-rgb), 0.3);
+    border-radius: 16px;
+    padding: 1.125rem;
+    margin-top: 1.125rem;
+    transition: all var(--transition-speed) var(--easing-curve);
+}
+
+.evolution-convergence-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    white-space: nowrap;
+}
+
+.evolution-convergence-icon {
+    font-size: 20px;
+    color: var(--accent-pink);
+}
+
+.evolution-convergence-title {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--accent-pink);
+    margin: 0;
+    white-space: nowrap;
+    letter-spacing: -0.01em;
+}
+
+.evolution-convergence-buttons {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    margin-bottom: 14px;
+}
+
+.evolution-convergence-button {
+    flex: 1;
+    padding: 10px 14px;
+    background: rgba(var(--card-bg-base-rgb), 0.6);
+    border: 1px solid rgba(var(--accent-pink-rgb), 0.3);
+    border-radius: 18px;
+    color: var(--text-secondary-color);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    backdrop-filter: var(--card-blur-effect);
+    letter-spacing: -0.01em;
+}
+
+.evolution-convergence-button:hover {
+    transform: translateY(-1px);
+    background: rgba(var(--card-bg-base-rgb), 0.75);
+}
+
+.evolution-convergence-button.active {
+    background: rgba(var(--accent-pink-rgb), 0.05);
+    border-color: var(--accent-pink);
+    color: var(--accent-pink);
+    font-weight: 600;
+    box-shadow: 0 0 12px rgba(var(--accent-pink-rgb), 0.3);
+}
+
+.evolution-convergence-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.evolution-convergence-description {
+    padding: 10px 12px;
+    background: rgba(var(--card-bg-base-rgb), 0.6);
+    border-radius: 18px;
+    border: 1px solid rgba(var(--accent-pink-rgb), 0.3);
+}
+
+.evolution-mode-text {
+    font-size: 0.8125rem;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+}
+
+/* Feature Suggestions Container */
+.feature-suggestions-container {
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 12px;
+    background: rgba(var(--card-bg-base-rgb), 0.3);
+    border: 1px solid rgba(var(--border-color-rgb), 0.2);
+    border-radius: 16px;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+
+.feature-suggestions-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.feature-suggestions-container::-webkit-scrollbar-track {
+    background: rgba(var(--card-bg-base-rgb), 0.2);
+    border-radius: 10px;
+}
+
+.feature-suggestions-container::-webkit-scrollbar-thumb {
+    background: rgba(var(--accent-purple-rgb), 0.3);
+    border-radius: 10px;
+}
+
+.feature-suggestions-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(var(--accent-purple-rgb), 0.5);
+}
+
+.feature-suggestions-container h2 {
+    font-size: 1rem;
+    color: var(--accent-purple);
+    margin-top: 12px;
+    margin-bottom: 8px;
+}
+
+.feature-suggestions-container ul {
+    margin-left: 20px;
+}
+
+.feature-suggestions-container li {
+    margin-bottom: 6px;
+}
+
+.feature-suggestions-container strong {
+    color: var(--text-primary);
+}
+
+/* Red Team Options Container */
+.red-team-options-container {
+    background: rgba(var(--accent-pink-rgb), 0.15);
+    border: 1px solid rgba(var(--accent-pink-rgb), 0.3);
+    border-radius: 12px;
+    padding: 1rem;
+    margin-top: 1rem;
+    transition: all var(--transition-speed) var(--easing-curve);
+}
+
+.red-team-options-container:hover {
+    border-color: rgba(var(--accent-pink-rgb), 0.4);
+    background: rgba(var(--accent-pink-rgb), 0.2);
+}
+
+.red-team-options-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-weight: 600;
+    color: var(--accent-pink);
+    font-size: 0.9rem;
+}
+
+.red-team-options-header .material-symbols-outlined {
+    font-size: 18px;
+    color: var(--accent-pink);
+}
+
+.red-team-toggle-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.red-team-buttons {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+.red-team-button {
+    flex: 1;
+    padding: 8px 12px;
+    background: rgba(var(--card-bg-base-rgb), 0.6);
+    border: 1px solid rgba(var(--accent-pink-rgb), 0.3);
+    border-radius: 16px;
+    color: var(--text-secondary-color);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    backdrop-filter: var(--card-blur-effect);
+}
+
+.red-team-button:hover {
+    background: rgba(var(--card-bg-base-rgb), 0.8);
+    border-color: rgba(var(--accent-pink-rgb), 0.5);
+    color: var(--text-color);
+}
+
+.red-team-button.active {
+    background: rgba(var(--accent-pink-rgb), 0.2);
+    border-color: var(--accent-pink);
+    color: var(--accent-pink);
+    font-weight: 600;
+    box-shadow: 0 0 12px rgba(var(--accent-pink-rgb), 0.3);
+}
+
+.red-team-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.red-team-description {
+    font-size: 0.75rem;
+    color: var(--text-tertiary-color);
+    text-align: center;
+    margin-top: 4px;
+}
+
+/* Sidebar Sliders - Firefox Track */
+#temperature-slider::-moz-range-track,
+#top-p-slider::-moz-range-track,
+#refinement-stages-slider::-moz-range-track {
+    width: 100%;
+    height: 6px;
+    background: var(--sub-panel-bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    backdrop-filter: var(--card-blur-effect);
+}

@@ -4,7 +4,7 @@
  */
 
 import * as esbuild from 'esbuild-wasm';
-import { ReactPipelineState } from '../index.tsx';
+import { ReactPipelineState } from '../Core/Types';
 
 // Build configuration interface
 interface BuildConfig {

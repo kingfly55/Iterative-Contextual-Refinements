@@ -43,7 +43,8 @@
 }
 
 .prompt-refiner-header {
-    padding: 1.25rem 1.5rem;
+    padding: var(--space-5) var(--space-6);  /* 20px 24px */
+    min-height: var(--button-height-xl);  /* 48px */
     border-bottom: 1px solid var(--border-color);
     display: flex;
     align-items: center;
@@ -53,8 +54,10 @@
 
 .prompt-refiner-title {
     margin: 0;
-    font-size: 1.125rem;
-    font-weight: 600;
+    font-size: var(--font-size-md);  /* 18px */
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-tight);
+    letter-spacing: var(--letter-spacing-tight);
     color: var(--text-color);
 }
 
@@ -63,7 +66,7 @@
     border: none;
     color: var(--text-tertiary-color);
     cursor: pointer;
-    padding: 0.25rem;
+    padding: var(--space-2);  /* 8px */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -77,16 +80,16 @@
 }
 
 .prompt-refiner-close .material-symbols-outlined {
-    font-size: 1.25rem;
+    font-size: var(--icon-size-lg);  /* 24px */
 }
 
 .prompt-refiner-body {
-    padding: 1.5rem;
+    padding: var(--spacing-section-sm);  /* 24px */
     overflow-y: visible;
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: var(--gap-lg);  /* 24px */
     min-height: 450px;
 }
 
@@ -94,7 +97,7 @@
 .prompt-refiner-model-group {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--gap-sm);  /* 12px */
 }
 
 .prompt-refiner-label {

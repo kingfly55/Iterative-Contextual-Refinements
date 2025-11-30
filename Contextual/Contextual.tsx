@@ -18,12 +18,13 @@ import {
 import { CustomizablePromptsContextual } from './ContextualPrompts';
 import { renderContextualUI, updateContextualUI } from './ContextualUI';
 import { callAI, getSelectedModel, getSelectedTemperature, getSelectedTopP } from '../Routing';
-import { updateControlsState } from '../index';
+import { updateControlsState } from '../UI/Controls';
+import { globalState } from '../Core/State';
 
 // Global state
 let activeContextualState: ContextualState | null = null;
 let contextualUIRoot: any = null;
-let isContextualRunning = false;
+// isContextualRunning is now in globalState
 let abortController: AbortController | null = null;
 let mainGeneratorManager: MainGeneratorHistoryManager | null = null;
 let iterativeAgentManager: IterativeAgentHistoryManager | null = null;
@@ -35,7 +36,7 @@ let onContentUpdated: ((content: string) => void) | null = null;
 // Retry configuration
 const MAX_RETRIES = 3;
 const INITIAL_DELAY_MS = 20000;
-const BACKOFF_FACTOR = 4;
+const BACKOFF_FACTOR = 2;
 
 // Thinking configuration with dummy tool to enable thought signatures
 // This tool is never actually called - it just enables Gemini to generate thought signatures
@@ -93,14 +94,14 @@ export function renderContextualMode() {
 }
 
 export async function startContextualProcess(initialUserRequest: string, customPrompts: CustomizablePromptsContextual) {
-    if (!initialUserRequest || isContextualRunning) return;
+    if (!initialUserRequest || globalState.isContextualRunning) return;
 
     // Store custom prompts for use in helper functions
     contextualCustomPrompts = customPrompts;
 
     activeContextualState = createInitialContextualState(initialUserRequest);
     activeContextualState.isRunning = true;
-    isContextualRunning = true;
+    globalState.isContextualRunning = true;
     updateControlsState();
     abortController = new AbortController();
 
@@ -121,7 +122,7 @@ export function stopContextualProcess() {
     if (abortController) {
         abortController.abort();
     }
-    isContextualRunning = false;
+    globalState.isContextualRunning = false;
     if (activeContextualState) {
         activeContextualState.isRunning = false;
         activeContextualState.isProcessing = false;
@@ -142,17 +143,17 @@ export function setContextualStateForImport(state: ContextualState | null) {
         state.isRunning = false;
         state.isProcessing = false;
     }
-    isContextualRunning = false;
+    globalState.isContextualRunning = false;
     contextualUIRoot = null;
 }
 
 async function runContextualLoop() {
-    if (!activeContextualState || !isContextualRunning || !mainGeneratorManager) return;
+    if (!activeContextualState || !globalState.isContextualRunning || !mainGeneratorManager) return;
 
-    while (isContextualRunning && activeContextualState) {
+    while (globalState.isContextualRunning && activeContextualState) {
         try {
             // Check if we should stop before starting new iteration
-            if (!isContextualRunning || abortController?.signal.aborted) {
+            if (!globalState.isContextualRunning || abortController?.signal.aborted) {
                 break;
             }
 
@@ -163,7 +164,7 @@ async function runContextualLoop() {
             // Step 1: Main Generator Agent generates
             const mainGenerationResult = await callMainGeneratorAgent();
 
-            if (!mainGenerationResult || abortController?.signal.aborted || !isContextualRunning) {
+            if (!mainGenerationResult || abortController?.signal.aborted || !globalState.isContextualRunning) {
                 break;
             }
 
@@ -221,7 +222,7 @@ async function runContextualLoop() {
             activeContextualState.messages.push(mainMsg);
 
             // Add to history with Gemini content for thought signature preservation
-            await mainGeneratorManager.addGeneration(mainGeneration, activeContextualState.iterationCount, mainGenGeminiContent);
+            await mainGeneratorManager.addGeneration(mainGeneration, activeContextualState.iterationCount);
 
             if (onContentUpdated) {
                 try { onContentUpdated(mainGeneration); } catch { }
@@ -229,7 +230,7 @@ async function runContextualLoop() {
 
             updateContextualUI(contextualUIRoot, activeContextualState, stopContextualProcess);
 
-            if (abortController?.signal.aborted || !isContextualRunning) break;
+            if (abortController?.signal.aborted || !globalState.isContextualRunning) break;
 
             // Step 2: Iterative Agent provides suggestions
             if (!iterativeAgentManager) {
@@ -238,7 +239,7 @@ async function runContextualLoop() {
 
             const suggestionsResult = await callIterativeAgent(mainGeneration);
 
-            if (!suggestionsResult || abortController?.signal.aborted || !isContextualRunning) {
+            if (!suggestionsResult || abortController?.signal.aborted || !globalState.isContextualRunning) {
                 break;
             }
 
@@ -261,7 +262,7 @@ async function runContextualLoop() {
 
             updateContextualUI(contextualUIRoot, activeContextualState, stopContextualProcess);
 
-            if (abortController?.signal.aborted || !isContextualRunning) break;
+            if (abortController?.signal.aborted || !globalState.isContextualRunning) break;
 
             // Step 3: Strategic Pool Agent generates strategies (after first iteration)
             if (!strategicPoolAgentManager) {
@@ -270,7 +271,7 @@ async function runContextualLoop() {
 
             const strategicPoolResult = await callStrategicPoolAgent(mainGeneration, suggestions);
 
-            if (!strategicPoolResult || abortController?.signal.aborted || !isContextualRunning) {
+            if (!strategicPoolResult || abortController?.signal.aborted || !globalState.isContextualRunning) {
                 break;
             }
 
@@ -311,7 +312,7 @@ async function runContextualLoop() {
             activeContextualState.messages.push(stratMsg);
 
             // Add to strategic pool history with Gemini content for thought signature preservation
-            await strategicPoolAgentManager.addStrategicPool(strategicPool, strategicPoolGeminiContent);
+            await strategicPoolAgentManager.addStrategicPool(strategicPool);
 
             // Now format the combined critique + strategic pool for main generator
             const combinedCritique = [
@@ -328,14 +329,14 @@ async function runContextualLoop() {
             // Add to histories with Gemini content for thought signature preservation
             await mainGeneratorManager.addIterativeResponse(combinedCritique, activeContextualState.iterationCount);
             await mainGeneratorManager.addIterativeSuggestion(combinedCritique);
-            await iterativeAgentManager.addFixedGeneration(mainGeneration, activeContextualState.iterationCount, mainGenGeminiContent);
-            await iterativeAgentManager.addSuggestion(suggestions, activeContextualState.iterationCount, suggestionsGeminiContent);
+            await iterativeAgentManager.addFixedGeneration(mainGeneration, activeContextualState.iterationCount);
+            await iterativeAgentManager.addSuggestion(suggestions, activeContextualState.iterationCount);
             await iterativeAgentManager.addIterativeSuggestion(suggestions);
 
             activeContextualState.isProcessing = false;
             updateContextualUI(contextualUIRoot, activeContextualState, stopContextualProcess);
 
-            if (abortController?.signal.aborted || !isContextualRunning) break;
+            if (abortController?.signal.aborted || !globalState.isContextualRunning) break;
 
             // Small delay before next iteration (check for abort during delay)
             await new Promise((resolve, reject) => {
@@ -351,7 +352,7 @@ async function runContextualLoop() {
                 return;
             });
 
-            if (!isContextualRunning) break;
+            if (!globalState.isContextualRunning) break;
 
         } catch (error) {
             const errMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -388,7 +389,7 @@ async function callMainGeneratorAgent(): Promise<{ text: string; geminiContent?:
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        if (abortController?.signal.aborted || !isContextualRunning) {
+        if (abortController?.signal.aborted || !globalState.isContextualRunning) {
             throw new Error('Process stopped by user');
         }
 
@@ -408,7 +409,7 @@ async function callMainGeneratorAgent(): Promise<{ text: string; geminiContent?:
                 });
             }
 
-            if (!isContextualRunning) {
+            if (!globalState.isContextualRunning) {
                 throw new Error('Process stopped by user');
             }
 
@@ -472,7 +473,7 @@ async function callIterativeAgent(currentGeneration: string): Promise<{ text: st
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        if (abortController?.signal.aborted || !isContextualRunning) {
+        if (abortController?.signal.aborted || !globalState.isContextualRunning) {
             throw new Error('Process stopped by user');
         }
 
@@ -492,7 +493,7 @@ async function callIterativeAgent(currentGeneration: string): Promise<{ text: st
                 });
             }
 
-            if (!isContextualRunning) {
+            if (!globalState.isContextualRunning) {
                 throw new Error('Process stopped by user');
             }
 
@@ -560,7 +561,7 @@ async function callStrategicPoolAgent(currentGeneration: string, currentCritique
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        if (abortController?.signal.aborted || !isContextualRunning) {
+        if (abortController?.signal.aborted || !globalState.isContextualRunning) {
             throw new Error('Process stopped by user');
         }
 
@@ -580,7 +581,7 @@ async function callStrategicPoolAgent(currentGeneration: string, currentCritique
                 });
             }
 
-            if (!isContextualRunning) {
+            if (!globalState.isContextualRunning) {
                 throw new Error('Process stopped by user');
             }
 

@@ -29,6 +29,7 @@ export class ApiCallEstimator {
         const refinementEnabled = params.refinementEnabled;
         const dissectedObservationsEnabled = params.dissectedObservationsEnabled;
         const iterativeCorrectionsEnabled = params.iterativeCorrectionsEnabled;
+        const postQualityFilterEnabled = params.postQualityFilterEnabled;
         const redTeamEnabled = params.redTeamAggressiveness !== 'off';
 
         let totalCalls = 0;
@@ -59,9 +60,25 @@ export class ApiCallEstimator {
         // 7-9. Refinement Track (only if refinement enabled)
         if (refinementEnabled) {
             if (iterativeCorrectionsEnabled) {
-                // Iterative Corrections Mode:
-                // For each solution: 3 iterations × (1 critique + 1 correction) = 6 calls per solution
-                totalCalls += solutionCount * 6;
+                // Initial critiques for all strategies (when skip sub-strategies is enabled)
+                if (skipSubStrategies) {
+                    totalCalls += strategiesCount; // Initial critiques
+                    
+                    // PostQualityFilter (only if enabled)
+                    if (postQualityFilterEnabled) {
+                        // Worst case: PostQualityFilter runs 3 times, each time kills all strategies
+                        // and generates new ones, then executes and critiques them
+                        // Iteration 1: 1 PostQF call + N strategy generation + N executions + N critiques
+                        // Iteration 2: 1 PostQF call + N strategy generation + N executions + N critiques  
+                        // Iteration 3: 1 PostQF call + N strategy generation + N executions + N critiques
+                        const postQFIterations = 3;
+                        totalCalls += postQFIterations * (1 + 1 + strategiesCount + strategiesCount); // PQF + StratGen + Solutions + Critiques
+                    }
+                }
+                
+                // For each solution: 3 iterations × (1 critique + 1 correction + 1 solution pool) = 9 calls per solution
+                // Note: Solution pool calls = critique calls (1 per iteration)
+                totalCalls += solutionCount * 9;
             } else {
                 // Standard Refinement Mode:
                 // 7. Solution Critique (N calls - one per main strategy)
@@ -134,6 +151,7 @@ export class ApiCallEstimator {
             'skip-sub-strategies-toggle',
             'dissected-observations-toggle',
             'iterative-corrections-toggle',
+            'post-quality-filter-toggle',
             'hypothesis-toggle'
         ];
 

@@ -192,6 +192,10 @@ export class RoutingManager {
         return this.modelConfigManager.isProvideAllSolutionsToCorrectors();
     }
 
+    public isPostQualityFilterEnabled(): boolean {
+        return this.modelConfigManager.isPostQualityFilterEnabled();
+    }
+
     public hasValidApiKey(): boolean {
         return this.apiKeyManager.hasValidApiKey();
     }

@@ -22,6 +22,7 @@ export class ModelSelectionUI {
         dissectedObservationsToggle: HTMLInputElement | null;
         iterativeCorrectionsToggle: HTMLInputElement | null;
         provideAllSolutionsToggle: HTMLInputElement | null;
+        postQualityFilterToggle: HTMLInputElement | null;
         temperatureValue: HTMLSpanElement | null;
         topPValue: HTMLSpanElement | null;
         refinementStagesValue: HTMLSpanElement | null;
@@ -45,6 +46,7 @@ export class ModelSelectionUI {
             dissectedObservationsToggle: null,
             iterativeCorrectionsToggle: null,
             provideAllSolutionsToggle: null,
+            postQualityFilterToggle: null,
             temperatureValue: null,
             topPValue: null,
             refinementStagesValue: null,
@@ -68,6 +70,7 @@ export class ModelSelectionUI {
             dissectedObservationsToggle: document.getElementById('dissected-observations-toggle') as HTMLInputElement,
             iterativeCorrectionsToggle: document.getElementById('iterative-corrections-toggle') as HTMLInputElement,
             provideAllSolutionsToggle: document.getElementById('provide-all-solutions-toggle') as HTMLInputElement,
+            postQualityFilterToggle: document.getElementById('post-quality-filter-toggle') as HTMLInputElement,
             temperatureValue: document.getElementById('temperature-value') as HTMLSpanElement,
             topPValue: document.getElementById('top-p-value') as HTMLSpanElement,
             refinementStagesValue: document.getElementById('refinement-stages-value') as HTMLSpanElement,
@@ -358,7 +361,15 @@ export class ModelSelectionUI {
         // Strategies slider
         if (this.elements.strategiesSlider && this.elements.strategiesValue) {
             this.elements.strategiesSlider.addEventListener('input', () => {
-                const value = parseInt(this.elements.strategiesSlider!.value);
+                let value = parseInt(this.elements.strategiesSlider!.value);
+                
+                // Enforce max 5 strategies when iterative corrections is enabled
+                const iterativeEnabled = this.elements.iterativeCorrectionsToggle?.checked || false;
+                if (iterativeEnabled && value > 5) {
+                    value = 5;
+                    this.elements.strategiesSlider!.value = '5';
+                }
+                
                 this.modelConfig.updateParameter('strategiesCount', value);
                 this.elements.strategiesValue!.textContent = value.toString();
             });
@@ -477,6 +488,7 @@ export class ModelSelectionUI {
                 // When iterative corrections is enabled:
                 // 1. Disable dissected observations synthesis
                 // 2. Disable sub-strategies and disable the toggle
+                // 3. Limit strategies to max 5 for efficient context management
                 if (isEnabled) {
                     // Disable dissected observations
                     if (this.elements.dissectedObservationsToggle) {
@@ -498,6 +510,17 @@ export class ModelSelectionUI {
                             if (sliderContainer) {
                                 sliderContainer.classList.add('disabled');
                             }
+                        }
+                    }
+                    
+                    // Limit strategies to max 5 for StructuredSolutionPool context management
+                    if (this.elements.strategiesSlider && this.elements.strategiesValue) {
+                        const currentStrategies = parseInt(this.elements.strategiesSlider.value);
+                        if (currentStrategies > 5) {
+                            this.elements.strategiesSlider.value = '5';
+                            this.elements.strategiesValue.textContent = '5';
+                            this.modelConfig.updateParameter('strategiesCount', 5);
+                            console.log('[ModelSelectionUI] Limited strategies to 5 for IterativeCorrections mode');
                         }
                     }
                 } else {
@@ -531,6 +554,13 @@ export class ModelSelectionUI {
                 }
                 
                 this.modelConfig.updateParameter('provideAllSolutionsToCorrectors', this.elements.provideAllSolutionsToggle!.checked);
+            });
+        }
+
+        // Post Quality Filter toggle
+        if (this.elements.postQualityFilterToggle) {
+            this.elements.postQualityFilterToggle.addEventListener('change', () => {
+                this.modelConfig.updateParameter('postQualityFilterEnabled', this.elements.postQualityFilterToggle!.checked);
             });
         }
 

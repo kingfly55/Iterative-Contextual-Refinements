@@ -1,0 +1,993 @@
+/* ============================================
+   SOLUTION POOL — PREMIUM INTERFACE DESIGN
+   ============================================ */
+
+.solution-pool-container {
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: var(--bg-primary);
+}
+
+/* Header Section — Bold Statement */
+.solution-pool-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-component-lg) var(--spacing-section-md);
+    /* 24px 32px */
+    min-height: var(--button-height-xl);
+    /* 48px */
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    position: relative;
+}
+
+.solution-pool-header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-md);
+    /* 16px */
+}
+
+.solution-pool-icon {
+    font-size: var(--icon-size-xl);
+    /* 32px */
+    color: var(--accent-purple);
+    opacity: 0.9;
+    transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.solution-pool-header-left:hover .solution-pool-icon {
+    opacity: 1;
+}
+
+.solution-pool-title-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    /* 4px */
+}
+
+.solution-pool-title {
+    margin: 0;
+    font-size: var(--font-size-md);
+    /* 18px */
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+    letter-spacing: var(--letter-spacing-tight);
+    line-height: var(--line-height-tight);
+}
+
+.solution-pool-subtitle {
+    margin: 0;
+    font-size: var(--font-size-xs);
+    /* 12px */
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-medium);
+    letter-spacing: var(--letter-spacing-wide);
+    line-height: var(--line-height-tight);
+    opacity: 0.85;
+}
+
+/* Header Buttons Container */
+.solution-pool-header-buttons {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-sm);
+    /* 12px */
+}
+
+/* Current Pool Button — Database View */
+.solution-pool-current-button {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-xs);
+    /* 8px */
+    padding: var(--space-2) var(--space-4);
+    /* 8px 16px */
+    min-height: var(--button-height-xs);
+    /* 32px */
+    background: rgba(var(--accent-blue-rgb), 0.08);
+    border: 1px solid rgba(var(--accent-blue-rgb), 0.2);
+    border-radius: var(--border-radius-sm);
+    color: var(--accent-blue);
+    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-xs);
+    /* 12px */
+    line-height: var(--line-height-tight);
+    cursor: pointer;
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    letter-spacing: var(--letter-spacing-wide);
+}
+
+.solution-pool-current-button:hover {
+    background: rgba(var(--accent-blue-rgb), 0.15);
+    border-color: rgba(var(--accent-blue-rgb), 0.4);
+    box-shadow: 0 8px 24px rgba(var(--accent-blue-rgb), 0.2),
+        0 0 0 1px rgba(var(--accent-blue-rgb), 0.1);
+}
+
+.solution-pool-current-button:active {
+    background: rgba(var(--accent-blue-rgb), 0.2);
+    box-shadow: 0 4px 12px rgba(var(--accent-blue-rgb), 0.25);
+}
+
+/* Light Mode Override for Current Pool Button */
+body.light-mode .solution-pool-current-button {
+    border-color: rgba(var(--accent-blue-rgb), 0.4);
+    background: rgba(var(--accent-blue-rgb), 0.1);
+}
+
+.solution-pool-current-button .material-symbols-outlined {
+    font-size: 1rem;
+    transition: opacity 0.3s ease;
+}
+
+.solution-pool-current-button:hover .material-symbols-outlined {
+    opacity: 0.9;
+}
+
+/* Evolution Button — Refined Interaction */
+.solution-pool-evolution-button {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1rem;
+    background: rgba(var(--accent-purple-rgb), 0.08);
+    border: 1px solid rgba(var(--accent-purple-rgb), 0.2);
+    border-radius: var(--border-radius-sm);
+    color: var(--accent-purple);
+    font-weight: 600;
+    font-size: 0.8125rem;
+    cursor: pointer;
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    letter-spacing: 0.01em;
+}
+
+.solution-pool-evolution-button:hover {
+    background: rgba(var(--accent-purple-rgb), 0.15);
+    border-color: rgba(var(--accent-purple-rgb), 0.4);
+    box-shadow: 0 8px 24px rgba(var(--accent-purple-rgb), 0.2),
+        0 0 0 1px rgba(var(--accent-purple-rgb), 0.1);
+}
+
+.solution-pool-evolution-button:active {
+    background: rgba(var(--accent-purple-rgb), 0.2);
+    box-shadow: 0 4px 12px rgba(var(--accent-purple-rgb), 0.15);
+}
+
+/* Light Mode Override for View Pool Button */
+body.light-mode .view-pool-button {
+    border-color: rgba(var(--accent-purple-rgb), 0.4);
+    background: rgba(var(--accent-purple-rgb), 0.1);
+}
+
+.solution-pool-evolution-button .material-symbols-outlined {
+    font-size: 1rem;
+    transition: opacity 0.3s ease;
+}
+
+.solution-pool-evolution-button:hover .material-symbols-outlined {
+    opacity: 0.9;
+}
+
+/* Light Mode Override for Evolution Button */
+body.light-mode .solution-pool-evolution-button {
+    border-color: rgba(var(--accent-purple-rgb), 0.4);
+    background: rgba(var(--accent-purple-rgb), 0.1);
+}
+
+/* Disabled State — Elegant Messaging */
+.solution-pool-disabled-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem 2rem;
+    text-align: center;
+}
+
+.disabled-icon {
+    font-size: 3rem;
+    color: var(--text-tertiary);
+    opacity: 0.3;
+    margin-bottom: 1rem;
+    animation: gentlePulse 3s ease-in-out infinite;
+}
+
+@keyframes gentlePulse {
+
+    0%,
+    100% {
+        opacity: 0.3;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.solution-pool-disabled-state h4 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+}
+
+.solution-pool-disabled-state p {
+    margin: 0.25rem 0;
+    color: var(--text-secondary);
+    max-width: 480px;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    font-weight: 500;
+}
+
+.disabled-hint {
+    margin-top: 1rem !important;
+    padding: 0.75rem 1.25rem;
+    background: rgba(var(--accent-purple-rgb), 0.06);
+    border: 1px solid rgba(var(--accent-purple-rgb), 0.15);
+    border-radius: var(--border-radius-sm);
+    color: var(--accent-purple);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+/* Empty State — Refined Waiting */
+.solution-pool-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem 2rem;
+    text-align: center;
+}
+
+.empty-icon {
+    font-size: 3rem;
+    color: var(--text-tertiary);
+    opacity: 0.4;
+    margin-bottom: 1rem;
+    animation: smoothSpin 4s linear infinite;
+}
+
+@keyframes smoothSpin {
+    from {
+        opacity: 0.4;
+    }
+
+    50% {
+        opacity: 0.6;
+    }
+
+    to {
+        opacity: 0.4;
+    }
+}
+
+.solution-pool-empty-state h4 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+}
+
+.solution-pool-empty-state p {
+    margin: 0.25rem 0;
+    color: var(--text-secondary);
+    max-width: 480px;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    font-weight: 500;
+}
+
+/* Status Bar */
+.solution-pool-status-bar {
+    padding: 0.75rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.pool-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.875rem;
+    border-radius: var(--border-radius-sm);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    border: 1px solid transparent;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pool-status-badge.status-processing {
+    background: rgba(var(--accent-blue-rgb), 0.08);
+    border-color: rgba(var(--accent-blue-rgb), 0.2);
+    color: var(--accent-blue);
+}
+
+.pool-status-badge.status-completed {
+    background: rgba(34, 197, 94, 0.08);
+    border-color: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+}
+
+.pool-status-badge.status-error {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+/* Light Mode Override for Status Badges */
+body.light-mode .pool-status-badge.status-processing {
+    border-color: rgba(var(--accent-blue-rgb), 0.4);
+}
+
+body.light-mode .pool-status-badge.status-completed {
+    border-color: rgba(34, 197, 94, 0.4);
+}
+
+body.light-mode .pool-status-badge.status-error {
+    border-color: rgba(239, 68, 68, 0.4);
+}
+
+.pool-status-badge .material-symbols-outlined {
+    font-size: 1rem;
+    opacity: 0.9;
+}
+
+/* Pool Agents Summary — Refined Metrics */
+.pool-agents-summary {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    padding: 1rem 2rem;
+    background: rgba(var(--accent-purple-rgb), 0.03);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.pool-metric {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.metric-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--accent-purple);
+    letter-spacing: -0.02em;
+    line-height: 1;
+}
+
+.metric-label {
+    font-size: 0.6875rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    opacity: 0.8;
+}
+
+/* Solution Pool Content — Breathing Space */
+.solution-pool-content-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.5rem;
+    background: var(--bg-primary);
+}
+
+.structured-pool-display {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+/* Strategy Block — Refined Cards */
+.strategy-block {
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    overflow: hidden;
+    background: var(--bg-secondary);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.strategy-block:hover {
+    border-color: rgba(var(--accent-purple-rgb), 0.3);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12),
+        0 0 0 1px rgba(var(--accent-purple-rgb), 0.08);
+}
+
+/* Light Mode Override for Strategy Block */
+body.light-mode .strategy-block {
+    border-color: rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+}
+
+.strategy-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    background: rgba(var(--accent-purple-rgb), 0.04);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.strategy-header .material-symbols-outlined {
+    font-size: 1.25rem;
+    color: var(--accent-purple);
+    opacity: 0.9;
+}
+
+.strategy-name {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: -0.01em;
+}
+
+/* Pool Sections — Refined Content Areas */
+.pool-section {
+    padding: 1.25rem;
+    border-bottom: 1px solid rgba(var(--border-color-rgb, 128, 128, 128), 0.3);
+}
+
+.pool-section:last-child {
+    border-bottom: none;
+}
+
+/* Light Mode Override for Pool Section */
+body.light-mode .pool-section {
+    border-bottom-color: rgba(0, 0, 0, 0.1);
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.section-header .material-symbols-outlined {
+    font-size: 1.125rem;
+    opacity: 0.9;
+}
+
+.section-title {
+    font-size: 0.875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.section-content {
+    padding: 1rem;
+    background: var(--bg-primary);
+    border-radius: var(--border-radius-sm);
+    border: 1px solid var(--border-color);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 350px;
+    overflow-y: auto;
+    transition: border-color 0.3s ease;
+}
+
+.section-content:hover {
+    border-color: rgba(var(--accent-purple-rgb), 0.2);
+}
+
+/* Light Mode Override for Section Content */
+body.light-mode .section-content {
+    border-color: rgba(0, 0, 0, 0.15);
+    background: rgba(255, 255, 255, 0.6);
+}
+
+/* Section Type Specific Styles */
+.pool-section.original-solution .section-header {
+    color: var(--accent-green);
+}
+
+.pool-section.original-solution .section-header .material-symbols-outlined {
+    color: var(--accent-green);
+}
+
+.pool-section.critique .section-header {
+    color: var(--accent-orange);
+}
+
+.pool-section.critique .section-header .material-symbols-outlined {
+    color: var(--accent-orange);
+}
+
+.pool-section.corrected-solution .section-header {
+    color: var(--accent-blue);
+}
+
+.pool-section.corrected-solution .section-header .material-symbols-outlined {
+    color: var(--accent-blue);
+}
+
+.pool-section.solution-pool .section-header {
+    color: var(--accent-purple);
+}
+
+.pool-section.solution-pool .section-header .material-symbols-outlined {
+    color: var(--accent-purple);
+}
+
+/* Pool Agents Section — Refined Organization */
+.pool-agents-section {
+    padding: 1.5rem;
+    background: rgba(var(--accent-purple-rgb), 0.02);
+    border-top: 1px solid var(--border-color);
+}
+
+.pool-agents-title {
+    margin: 0 0 1rem 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    letter-spacing: -0.01em;
+}
+
+.pool-agents-title::before {
+    content: '◆';
+    color: var(--accent-purple);
+    font-size: 0.75rem;
+    opacity: 0.8;
+}
+
+/* Pool Agent Card — Enhanced Interaction */
+.pool-agent-card {
+    margin-bottom: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    background: var(--bg-secondary);
+    overflow: hidden;
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pool-agent-card:hover {
+    border-color: rgba(var(--accent-purple-rgb), 0.3);
+    box-shadow: 0 8px 20px rgba(var(--accent-purple-rgb), 0.1),
+        0 0 0 1px rgba(var(--accent-purple-rgb), 0.05);
+}
+
+/* Light Mode Override for Pool Agent Card */
+body.light-mode .pool-agent-card {
+    border-color: rgba(0, 0, 0, 0.15);
+    background: rgba(255, 255, 255, 0.8);
+}
+
+.pool-agent-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.875rem 1.25rem;
+    cursor: pointer;
+    user-select: none;
+    background: rgba(var(--accent-purple-rgb), 0.04);
+    transition: background 0.3s ease;
+}
+
+.pool-agent-header:hover {
+    background: rgba(var(--accent-purple-rgb), 0.08);
+}
+
+.pool-agent-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.agent-icon {
+    color: var(--accent-purple);
+    font-size: 1.125rem;
+    opacity: 0.9;
+}
+
+.agent-title {
+    font-weight: 700;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    letter-spacing: 0.01em;
+}
+
+.pool-agent-header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.toggle-icon {
+    color: var(--text-secondary);
+    font-size: 1.5rem;
+    transition: opacity 0.3s ease;
+    opacity: 0.7;
+}
+
+.pool-agent-header:hover .toggle-icon {
+    opacity: 1;
+}
+
+.pool-agent-details {
+    padding: 1.25rem;
+    border-top: 1px solid var(--border-color);
+}
+
+/* Light Mode Override for Pool Agent Details */
+body.light-mode .pool-agent-details {
+    border-top-color: rgba(0, 0, 0, 0.1);
+}
+
+.pool-agent-details.hidden {
+    display: none;
+}
+
+/* Agent Output Section */
+.agent-output-section {
+    margin-bottom: 1rem;
+}
+
+.output-section-title {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.9;
+}
+
+.agent-output-content {
+    padding: 1rem;
+    background: var(--bg-primary);
+    border-radius: var(--border-radius-sm);
+    border: 1px solid var(--border-color);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 400px;
+    overflow-y: auto;
+    transition: border-color 0.3s ease;
+}
+
+.agent-output-content:hover {
+    border-color: rgba(var(--accent-purple-rgb), 0.2);
+}
+
+/* Light Mode Override for Agent Output Content */
+body.light-mode .agent-output-content {
+    border-color: rgba(0, 0, 0, 0.15);
+    background: rgba(255, 255, 255, 0.6);
+}
+
+/* Agent Error Section — Elegant Error Display */
+.agent-error-section {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.875rem 1rem;
+    background: rgba(239, 68, 68, 0.06);
+    border-radius: var(--border-radius-sm);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+/* Light Mode Override for Error Section */
+body.light-mode .agent-error-section {
+    border-color: rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.agent-error-section .material-symbols-outlined {
+    font-size: 1.125rem;
+    opacity: 0.9;
+}
+
+/* Scrollbar Styling — Refined Elegance */
+.solution-pool-content-wrapper::-webkit-scrollbar,
+.section-content::-webkit-scrollbar,
+.agent-output-content::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.solution-pool-content-wrapper::-webkit-scrollbar-track,
+.section-content::-webkit-scrollbar-track,
+.agent-output-content::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 8px;
+}
+
+.solution-pool-content-wrapper::-webkit-scrollbar-thumb,
+.section-content::-webkit-scrollbar-thumb,
+.agent-output-content::-webkit-scrollbar-thumb {
+    background: rgba(var(--border-color-rgb, 128, 128, 128), 0.4);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    transition: background 0.3s ease;
+}
+
+.solution-pool-content-wrapper::-webkit-scrollbar-thumb:hover,
+.section-content::-webkit-scrollbar-thumb:hover,
+.agent-output-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(var(--accent-purple-rgb), 0.4);
+    background-clip: padding-box;
+}
+
+/* Responsive Design — Adaptive Elegance */
+@media (max-width: 768px) {
+    .solution-pool-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+        padding: 1.25rem;
+    }
+
+    .solution-pool-header-buttons {
+        width: 100%;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .solution-pool-current-button,
+    .solution-pool-evolution-button {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .solution-pool-title {
+        font-size: 1rem;
+    }
+
+    .solution-pool-content-wrapper {
+        padding: 1rem;
+    }
+
+    .pool-iteration-container {
+        margin-bottom: 1rem;
+    }
+
+    .pool-iteration-header {
+        padding: 0.875rem 1rem;
+    }
+
+    .pool-iteration-title {
+        font-size: 0.9375rem;
+    }
+
+    .pool-iteration-content {
+        padding: 1rem;
+    }
+
+    .pool-agents-summary {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+
+    .pool-agents-section {
+        padding: 1rem;
+    }
+}
+
+/* Entrance Animation — Elegant Fade */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.pool-iteration-container {
+    animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.pool-iteration-container:nth-child(1) {
+    animation-delay: 0.05s;
+}
+
+.pool-iteration-container:nth-child(2) {
+    animation-delay: 0.1s;
+}
+
+.pool-iteration-container:nth-child(3) {
+    animation-delay: 0.15s;
+}
+
+/* Iteration Container — Architectural Presence */
+.pool-iteration-container {
+    margin-bottom: 1.5rem;
+    background: var(--bg-secondary);
+    border-radius: var(--border-radius-sm);
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 1;
+}
+
+.pool-iteration-container:hover {
+    border-color: rgba(var(--accent-purple-rgb), 0.35);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12),
+        0 0 0 1px rgba(var(--accent-purple-rgb), 0.08);
+}
+
+/* Light Mode Override for Pool Iteration Container */
+body.light-mode .pool-iteration-container {
+    border-color: rgba(0, 0, 0, 0.15);
+    background: rgba(255, 255, 255, 0.8);
+}
+
+.pool-iteration-header {
+    padding: 1rem 1.5rem;
+    background: rgba(var(--accent-purple-rgb), 0.04);
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* Light Mode Override for Pool Iteration Header */
+body.light-mode .pool-iteration-header {
+    border-bottom-color: rgba(0, 0, 0, 0.1);
+}
+
+.pool-iteration-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+}
+
+.pool-iteration-content {
+    padding: 1.5rem;
+    background: var(--bg-secondary);
+}
+
+/* Pool Empty State Mini — Subtle Feedback */
+.pool-empty-state-mini {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 1.5rem 1rem;
+    color: var(--text-tertiary);
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.pool-empty-state-mini .material-symbols-outlined {
+    font-size: 1.25rem;
+    animation: breathe 3s ease-in-out infinite;
+}
+
+@keyframes breathe {
+
+    0%,
+    100% {
+        opacity: 0.3;
+    }
+
+    50% {
+        opacity: 0.7;
+    }
+}
+
+/* Pool Pending State — Graceful Opacity */
+.red-team-agent-card.pool-pending {
+    opacity: 0.6;
+    transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.red-team-agent-card.pool-pending:hover {
+    opacity: 0.8;
+}
+
+/* Light Mode Override for Red Team Agent Card */
+body.light-mode .red-team-agent-card {
+    border-color: rgba(0, 0, 0, 0.15);
+    background: rgba(255, 255, 255, 0.8);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* Light Mode Override for Knowledge Packet Card */
+body.light-mode .knowledge-packet-card {
+    border-color: rgba(0, 0, 0, 0.15);
+    background: rgba(255, 255, 255, 0.8);
+}
+
+/* Light Mode Override for Text Containers */
+body.light-mode .hypothesis-text-container,
+body.light-mode .sub-strategy-text-container {
+    border-color: rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.5);
+}
+
+/* View Pool Button — Premium Action */
+.view-pool-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.875rem 1rem;
+    background: rgba(var(--accent-purple-rgb), 0.06);
+    border: 1px solid rgba(var(--accent-purple-rgb), 0.2);
+    border-radius: var(--border-radius-sm);
+    color: var(--accent-purple);
+    font-weight: 600;
+    font-size: 0.8125rem;
+    cursor: pointer;
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    letter-spacing: 0.01em;
+}
+
+.view-pool-button:hover {
+    background: rgba(var(--accent-purple-rgb), 0.12);
+    border-color: rgba(var(--accent-purple-rgb), 0.35);
+    box-shadow: 0 8px 20px rgba(var(--accent-purple-rgb), 0.18),
+        0 0 0 1px rgba(var(--accent-purple-rgb), 0.08);
+    color: var(--accent-purple);
+}
+
+.view-pool-button:active {
+    background: rgba(var(--accent-purple-rgb), 0.15);
+    box-shadow: 0 4px 12px rgba(var(--accent-purple-rgb), 0.2);
+}
+
+.view-pool-button .material-symbols-outlined {
+    font-size: 1rem;
+    opacity: 0.9;
+    transition: opacity 0.3s ease;
+}
+
+.view-pool-button:hover .material-symbols-outlined {
+    opacity: 1;
+}
+
+/* Solution Pool Specific Grid Override — Compact Cards */
+.pool-iteration-content .red-team-agents-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1rem;
+}
+
+@media (min-width: 1400px) {
+    .pool-iteration-content .red-team-agents-grid {
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .pool-iteration-content .red-team-agents-grid {
+        grid-template-columns: 1fr;
+    }
+}

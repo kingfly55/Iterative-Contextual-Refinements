@@ -71,14 +71,14 @@ export interface CapturedInteraction {
     element: {
         tag: string;
         id?: string;
-        classes: string[];
+        classes?: string[];
         text: string;
         value?: any;
-        attributes: Record<string, string>;
+        attributes?: Record<string, string>;
     };
-    position: { x: number; y: number };
-    extractedState: ApplicationState;
-    screenSnapshot: string; // HTML of current screen
+    position?: { x: number; y: number };
+    extractedState?: ApplicationState;
+    screenSnapshot?: string; // HTML of current screen
 }
 
 export interface ScreenHistoryItem {
@@ -110,7 +110,7 @@ export interface GenerativeUIState {
     iterations: IterationState[];
     finalCode: string | null;
     error?: string | null;
-    
+
     // Interactive mode fields
     interactionHistory: CapturedInteraction[]; // All interactions
     screenHistory: ScreenHistoryItem[]; // All screens generated

@@ -1,0 +1,8 @@
+/* Sidebar-specific styles are imported from existing files */
+/* This file serves as a centralized import point for sidebar styling */
+
+/* Most sidebar styles are already defined in:
+   - styles/sidebar.css
+   - styles/components/inputs.css
+   - styles/components/buttons.css
+   This file is intentionally minimal to avoid duplication */

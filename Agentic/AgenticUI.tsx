@@ -111,7 +111,7 @@ export const MessageCard: React.FC<{ message: AgenticMessage }> = ({ message }) 
     // Component for rendering arXiv search results
     const ArxivSearchResults: React.FC<{ result: string }> = ({ result }) => {
         const [expandedPapers, setExpandedPapers] = React.useState<Set<number>>(new Set());
-        
+
         // Parse the search results
         const lines = result.split('\n');
         const papers: Array<{
@@ -127,11 +127,11 @@ export const MessageCard: React.FC<{ message: AgenticMessage }> = ({ message }) 
             journalRef?: string;
             doi?: string;
         }> = [];
-        
+
         let currentPaper: any = null;
         let inAbstract = false;
         let abstractLines: string[] = [];
-        
+
         for (const line of lines) {
             if (line.startsWith('[Paper ')) {
                 if (currentPaper && abstractLines.length > 0) {
@@ -171,12 +171,12 @@ export const MessageCard: React.FC<{ message: AgenticMessage }> = ({ message }) 
                 }
             }
         }
-        
+
         // Capture the last paper's abstract
         if (currentPaper && abstractLines.length > 0) {
             currentPaper.abstract = abstractLines.join(' ').trim();
         }
-        
+
         const togglePaper = (index: number) => {
             const newExpanded = new Set(expandedPapers);
             if (newExpanded.has(index)) {
@@ -186,10 +186,10 @@ export const MessageCard: React.FC<{ message: AgenticMessage }> = ({ message }) 
             }
             setExpandedPapers(newExpanded);
         };
-        
+
         const headerMatch = result.match(/^Found (\d+) papers/);
         const totalCount = headerMatch ? headerMatch[1] : papers.length;
-        
+
         return (
             <div className="arxiv-search-results">
                 <div className="arxiv-header">
@@ -305,8 +305,8 @@ export const MessageCard: React.FC<{ message: AgenticMessage }> = ({ message }) 
                             {failCount > 0 && <span className="failure-count">{failCount} failed</span>}
                         </div>
                     </div>
-                    <button 
-                        className="action-btn" 
+                    <button
+                        className="action-btn"
                         onClick={() => setExpanded(!expanded)}
                     >
                         {expanded ? 'Hide details' : 'Show details'}
@@ -331,14 +331,14 @@ export const MessageCard: React.FC<{ message: AgenticMessage }> = ({ message }) 
     // Render segments for agent messages
     const renderSegments = () => {
         if (!message.segments) return null;
-        
+
         return (
             <div className="message-inline-content">
                 {message.segments.map((segment, idx) => {
                     if (segment.kind === 'text') {
                         return (
-                            <div key={`seg-${idx}`} 
-                                 dangerouslySetInnerHTML={{ __html: renderMathContent(segment.text) }} />
+                            <div key={`seg-${idx}`}
+                                dangerouslySetInnerHTML={{ __html: renderMathContent(segment.text) }} />
                         );
                     } else if (segment.kind === 'tool') {
                         // Render tool call indicator
@@ -346,11 +346,11 @@ export const MessageCard: React.FC<{ message: AgenticMessage }> = ({ message }) 
                         const toolType = tool.type;
                         const rawToolType = tool.rawType;
                         let toolLabel = toolType;
-                        
+
                         // Check if it's a Deepthink agent tool
                         const isDeepthinkTool = rawToolType && isDeepthinkAgentTool(rawToolType);
                         let agentIcon = '';
-                        
+
                         if (isDeepthinkTool) {
                             // Get icon for Deepthink agents
                             const iconMapping: Record<string, string> = {
@@ -364,7 +364,7 @@ export const MessageCard: React.FC<{ message: AgenticMessage }> = ({ message }) 
                             };
                             agentIcon = iconMapping[rawToolType] || 'smart_toy';
                         }
-                        
+
                         if (toolType === 'multi_edit') {
                             const opCount = tool.operations?.length || 0;
                             toolLabel = `multi_edit (${opCount} operations)`;
@@ -375,7 +375,7 @@ export const MessageCard: React.FC<{ message: AgenticMessage }> = ({ message }) 
                         } else if (toolType === 'searchacademia') {
                             toolLabel = `searchacademia ("${tool.query}")`;
                         }
-                        
+
                         return (
                             <div key={`seg-${idx}`} className={`tool-call-indicator ${isDeepthinkTool ? 'deepthink-tool-indicator' : ''}`}>
                                 {isDeepthinkTool && agentIcon && (
@@ -402,7 +402,7 @@ export const MessageCard: React.FC<{ message: AgenticMessage }> = ({ message }) 
     // Render system blocks (structured system messages)
     const renderSystemBlocks = () => {
         if (!message.blocks) return null;
-        
+
         return (
             <div className="system-blocks">
                 {message.blocks.map((block, idx) => {
@@ -460,7 +460,7 @@ export const MessageCard: React.FC<{ message: AgenticMessage }> = ({ message }) 
                             // Show line range if specified
                             const toolCall = (block as any).toolCall;
                             let headerText = 'Content Read';
-                            
+
                             if (toolCall?.params && Array.isArray(toolCall.params) && toolCall.params.length === 2) {
                                 headerText = `Content Read (lines ${toolCall.params[0]}-${toolCall.params[1]})`;
                             } else if (toolCall?.params && Array.isArray(toolCall.params) && toolCall.params.length > 0) {
@@ -468,7 +468,7 @@ export const MessageCard: React.FC<{ message: AgenticMessage }> = ({ message }) 
                             } else {
                                 headerText = `Content Read (full content)`;
                             }
-                            
+
                             return (
                                 <div key={`block-${idx}`} className="tool-result">
                                     <div className="tool-result-header">{headerText}</div>
@@ -479,8 +479,8 @@ export const MessageCard: React.FC<{ message: AgenticMessage }> = ({ message }) 
                             return (
                                 <div key={`block-${idx}`} className="tool-result">
                                     <div className="tool-result-header">Tool Result: {block.tool}</div>
-                                    <div className="tool-result-content" 
-                                         dangerouslySetInnerHTML={{ __html: renderMathContent(block.result) }} />
+                                    <div className="tool-result-content"
+                                        dangerouslySetInnerHTML={{ __html: renderMathContent(block.result) }} />
                                 </div>
                             );
                         }
@@ -496,7 +496,7 @@ export const MessageCard: React.FC<{ message: AgenticMessage }> = ({ message }) 
         const [expanded, setExpanded] = React.useState(false);
         const lines = content.split('\n');
         const needsCollapse = lines.length > maxLines;
-        
+
         if (!needsCollapse || expanded) {
             return (
                 <div className="tool-result-content">
@@ -509,7 +509,7 @@ export const MessageCard: React.FC<{ message: AgenticMessage }> = ({ message }) 
                 </div>
             );
         }
-        
+
         const preview = lines.slice(0, maxLines).join('\n');
         return (
             <div className="tool-result-content">
@@ -564,7 +564,7 @@ export const MessageCard: React.FC<{ message: AgenticMessage }> = ({ message }) 
             .replace(/^\s*Commands?\s+executed:.*$/gmi, '')
             .replace(/\n{3,}/g, '\n\n')
             .trim();
-        
+
         return <div dangerouslySetInnerHTML={{ __html: renderMathContent(sanitized) }} />;
     };
 
@@ -673,18 +673,18 @@ export const CurrentTextPanel: React.FC<{ content: string; originalContent: stri
         if (false) {
             // Use diff library for proper diff visualization
             const diffResult = Diff.diffLines(originalContent, content);
-            
+
             return (
                 <div className="diff-view">
                     {diffResult.map((part, index) => {
                         const lines = part.value.split('\n').filter(line => line.length > 0);
                         return lines.map((line, lineIndex) => {
                             const globalIndex = index * 1000 + lineIndex; // Ensure unique keys
-                            const className = part.added ? 'diff-line added' : 
-                                            part.removed ? 'diff-line removed' : 
-                                            'diff-line unchanged';
+                            const className = part.added ? 'diff-line added' :
+                                part.removed ? 'diff-line removed' :
+                                    'diff-line unchanged';
                             const prefix = part.added ? '+ ' : part.removed ? '- ' : '  ';
-                            
+
                             return (
                                 <div key={globalIndex} className={className}>
                                     <span className="line-prefix">{prefix}</span>
@@ -696,7 +696,7 @@ export const CurrentTextPanel: React.FC<{ content: string; originalContent: stri
                 </div>
             );
         }
-        
+
         // Simple rendering using renderMathContent
         return <div dangerouslySetInnerHTML={{ __html: renderMathContent(content) }} />;
     };
@@ -706,30 +706,29 @@ export const CurrentTextPanel: React.FC<{ content: string; originalContent: stri
             <div className="text-panel-header">
                 <h3>Current Text</h3>
                 <div className="text-panel-actions">
-                    <button 
+                    <button
                         className="action-btn"
                         onClick={async () => {
-                            const { openEvolutionViewerFromHistory } = await import('../Components/DiffModal');
+                            const { openEvolutionViewerFromHistory } = await import("../Components/DiffModal/EvolutionViewer");
                             openEvolutionViewerFromHistory(state.contentHistory, state.id);
                         }}
                         title="View content evolution timeline (updates live)"
                     >
                         <span className="material-symbols-outlined">movie</span>
-                        View Evolution
                     </button>
-                    <button 
+                    <button
                         className="action-btn"
                         onClick={async (e) => {
                             const button = e.currentTarget;
                             const icon = button.querySelector('.material-symbols-outlined');
-                            
+
                             try {
                                 await navigator.clipboard.writeText(content);
-                                
+
                                 if (icon) {
                                     const originalIcon = icon.textContent;
                                     icon.textContent = 'check';
-                                    
+
                                     setTimeout(() => {
                                         icon.textContent = originalIcon;
                                     }, 1500);
@@ -756,7 +755,7 @@ export const AgenticUI: React.FC<AgenticUIProps> = ({ state, onStop }) => {
     // Update evolution viewer when content history changes
     React.useEffect(() => {
         const updateViewer = async () => {
-            const { updateEvolutionViewerIfOpen } = await import('../Components/DiffModal');
+            const { updateEvolutionViewerIfOpen } = await import('../Components/DiffModal/EvolutionViewer');
             updateEvolutionViewerIfOpen(state.id, state.contentHistory);
         };
         updateViewer();
@@ -764,13 +763,13 @@ export const AgenticUI: React.FC<AgenticUIProps> = ({ state, onStop }) => {
 
     return (
         <div className="agentic-ui-container">
-            <CurrentTextPanel 
-                content={state.currentContent} 
+            <CurrentTextPanel
+                content={state.currentContent}
                 originalContent={state.originalContent}
                 state={state}
             />
-            <AgentActivityPanel 
-                state={state} 
+            <AgentActivityPanel
+                state={state}
                 onStop={onStop}
             />
         </div>

@@ -4,7 +4,7 @@
  */
 
 // React imports removed - not needed for this file
-import { 
+import {
     createInitialState,
     parseAgentResponseWithSegments,
     AgenticState,
@@ -20,7 +20,8 @@ import { REACT_AGENTIC_SYSTEM_PROMPT } from './EmbeddedAgenticPrompts';
 import { renderReactAgenticEmbeddedUI, updateReactAgenticEmbeddedUI, forceReactAgenticUIRender } from './ReactAgenticEmbeddedUI';
 import { callAI, getSelectedModel, getSelectedTemperature, getSelectedTopP } from '../Routing';
 import { buildReactApp, parseFilesFromConcatenatedCode, createPreviewUrl } from './ReactBuildManager';
-import { updateControlsState } from '../index.tsx';
+import { updateControlsState } from '../UI/Controls';
+import { globalState } from '../Core/State';
 
 // Extended state for React mode
 interface ReactAgenticState extends AgenticState {
@@ -43,13 +44,13 @@ interface ReactAgenticState extends AgenticState {
 // Constants for retry logic
 const MAX_RETRIES = 3;
 const INITIAL_DELAY_MS = 20000;
-const BACKOFF_FACTOR = 4;
+const BACKOFF_FACTOR = 2;
 
 // Module-level variables
 let activeReactAgenticState: ReactAgenticState | null = null;
 let reactAgenticUIRoot: any = null;
 let reactAgenticUIContainer: HTMLElement | null = null; // Track the container
-let isReactAgenticRunning = false;
+// isReactAgenticRunning is now in globalState
 let abortController: AbortController | null = null;
 let conversationManager: AgenticConversationManager | null = null;
 let onContentUpdated: ((content: string, isComplete?: boolean) => void) | null = null;
@@ -95,11 +96,11 @@ async function executeStartWorkerAgents(state: ReactAgenticState): Promise<{ res
     try {
         // CRITICAL: Parse the UPDATED plan.txt and worker_prompts.json from currentContent
         // The agent may have refined them using multi_edit before calling this tool
-        
+
         // Parse plan.txt file
         const planFileMatch = state.currentContent.match(/\/\*\s*---\s*File:\s*plan\.txt\s*---\s*\*\/\s*([\s\S]*?)(?=\/\*\s*---\s*File:|$)/);
         let updatedPlanUsed = false;
-        
+
         if (planFileMatch) {
             const updatedPlan = planFileMatch[1].trim();
             if (updatedPlan && updatedPlan !== state.activeReactPipeline.orchestratorPlan) {
@@ -108,17 +109,17 @@ async function executeStartWorkerAgents(state: ReactAgenticState): Promise<{ res
                 console.log('[React Agentic] Using UPDATED plan.txt from agent refinements');
             }
         }
-        
+
         // Parse worker_prompts.json file
         const promptsFileMatch = state.currentContent.match(/\/\*\s*---\s*File:\s*worker_prompts\.json\s*---\s*\*\/\s*([\s\S]*?)(?=\/\*\s*---\s*File:|$)/);
         let updatedPromptsCount = 0;
-        
+
         if (promptsFileMatch) {
             try {
                 const promptsJson = JSON.parse(promptsFileMatch[1].trim());
                 if (promptsJson.worker_agents && Array.isArray(promptsJson.worker_agents)) {
                     console.log(`[React Agentic] Parsed ${promptsJson.worker_agents.length} UPDATED worker prompts from agent refinements`);
-                    
+
                     promptsJson.worker_agents.forEach((agent: any, index: number) => {
                         if (state.activeReactPipeline.stages[index]) {
                             state.activeReactPipeline.stages[index].title = agent.title;
@@ -132,7 +133,7 @@ async function executeStartWorkerAgents(state: ReactAgenticState): Promise<{ res
                 console.warn('[React Agentic] Failed to parse worker_prompts.json, using original prompts:', jsonError);
             }
         }
-        
+
         // Execute all worker agents in parallel
         const workerPromises = state.activeReactPipeline.stages.map(async (stage: any) => {
             if (!stage.systemInstruction || !stage.userPrompt) {
@@ -142,7 +143,7 @@ async function executeStartWorkerAgents(state: ReactAgenticState): Promise<{ res
             }
 
             stage.status = 'processing';
-            
+
             // Update pipeline stage status and trigger UI update
             if (state.activeReactPipeline) {
                 state.activeReactPipeline.stages[stage.id].status = 'processing';
@@ -151,7 +152,7 @@ async function executeStartWorkerAgents(state: ReactAgenticState): Promise<{ res
                     (window as any).renderReactModePipeline();
                 }
             }
-            
+
             // Render the user prompt with the plan
             stage.renderedUserPrompt = renderPrompt(stage.userPrompt, {
                 plan_txt: state.activeReactPipeline.orchestratorPlan || '',
@@ -173,24 +174,24 @@ async function executeStartWorkerAgents(state: ReactAgenticState): Promise<{ res
                 const responseText = extractTextFromAny(response);
                 stage.generatedContent = responseText;
                 stage.status = 'completed';
-                
+
                 // Update pipeline stage status
                 if (state.activeReactPipeline) {
                     state.activeReactPipeline.stages[stage.id].status = 'completed';
                     state.activeReactPipeline.stages[stage.id].generatedContent = responseText;
                 }
-                
+
                 return stage;
             } catch (error: any) {
                 stage.status = 'error';
                 stage.error = error.message || 'Worker agent failed';
-                
+
                 // Update pipeline stage status
                 if (state.activeReactPipeline) {
                     state.activeReactPipeline.stages[stage.id].status = 'error';
                     state.activeReactPipeline.stages[stage.id].error = stage.error;
                 }
-                
+
                 return stage;
             }
         });
@@ -227,32 +228,32 @@ async function executeStartWorkerAgents(state: ReactAgenticState): Promise<{ res
         // Store the combined code as current content but don't return it to avoid filling context
         // The agent should use read_current_content to read it when needed
         state.currentContent = combinedCode;
-        
+
         // Update the conversation manager's content (using module-level variable)
         if (conversationManager) {
             conversationManager.updateCurrentContent(combinedCode);
         }
-        
+
         // Trigger content update callback to update Monaco editor (using module-level variable)
         if (onContentUpdated) {
             onContentUpdated(combinedCode, false);
         }
-        
+
         // Count successful and failed workers
         const successCount = state.activeReactPipeline.stages.filter((s: any) => s.status === 'completed').length;
         const errorCount = state.activeReactPipeline.stages.filter((s: any) => s.status === 'error').length;
-        
+
         // Return a summary without the actual code content
         // This ensures the agent's context isn't immediately filled with the entire codebase
         const planMessage = updatedPlanUsed ? ' (using your refined plan.txt)' : '';
         const promptsMessage = updatedPromptsCount > 0 ? ` (using your refined prompts for ${updatedPromptsCount} agents)` : '';
-        
+
         return {
             result: `[TOOL_RESULT: All ${state.activeReactPipeline.stages.length} worker agents have completed their task and code generation${planMessage}${promptsMessage}.\n` +
-                    `✓ Successful: ${successCount}\n` +
-                    `✗ Failed: ${errorCount}\n\n` +
-                    `The application codebase has been assembled and is ready for review.\n` +
-                    `Use the read_current_content() tool to examine the generated code and identify any issues that need fixing.]`
+                `✓ Successful: ${successCount}\n` +
+                `✗ Failed: ${errorCount}\n\n` +
+                `The application codebase has been assembled and is ready for review.\n` +
+                `Use the read_current_content() tool to examine the generated code and identify any issues that need fixing.]`
         };
 
     } catch (error: any) {
@@ -269,7 +270,7 @@ async function executeCheckBuild(state: ReactAgenticState): Promise<{ result: st
     try {
         // Build the current content
         const buildResult = await buildReactApp(state.currentContent);
-        
+
         // Store the build result
         state.lastBuildResult = buildResult;
 
@@ -278,7 +279,7 @@ async function executeCheckBuild(state: ReactAgenticState): Promise<{ result: st
             if (buildResult.warnings.length > 0) {
                 result += '\n\nWarnings:\n' + buildResult.warnings.join('\n');
             }
-            
+
             // Create preview URL if build succeeded
             const files = parseFilesFromConcatenatedCode(state.currentContent);
             const previewUrl = createPreviewUrl(buildResult, files);
@@ -291,16 +292,16 @@ async function executeCheckBuild(state: ReactAgenticState): Promise<{ result: st
                         // Ignore cleanup errors
                     }
                 }
-                
+
                 // Store new preview URL and previous URL for future cleanup
                 state.activeReactPipeline.prevPreviewUrl = state.activeReactPipeline.previewUrl;
                 state.activeReactPipeline.previewUrl = previewUrl;
-                
+
                 // Trigger UI update to create/update preview tab
                 if (typeof (window as any).renderReactModePipeline === 'function') {
                     (window as any).renderReactModePipeline();
                 }
-                
+
                 // Auto-activate the preview tab after successful build
                 setTimeout(() => {
                     const previewTab = document.getElementById('react-tab-preview');
@@ -309,7 +310,7 @@ async function executeCheckBuild(state: ReactAgenticState): Promise<{ result: st
                     }
                 }, 100);
             }
-            
+
             return { result };
         } else {
             let result = '[BUILD_FAILED: Build errors detected]\n\n';
@@ -332,23 +333,23 @@ async function executeCheckBuild(state: ReactAgenticState): Promise<{ result: st
 async function executeReactToolCall(
     toolCall: ToolCall,
     state: ReactAgenticState
-): Promise<{ 
-    result: string; 
+): Promise<{
+    result: string;
     updatedContent?: string;
     isComplete?: boolean;
 }> {
     // Parse tool name from the tool call
     const toolType = (toolCall as any).type || (toolCall as any).name;
-    
+
     // Handle React-specific tools
     if (toolType === 'StartWorkerAgents') {
         return await executeStartWorkerAgents(state);
     }
-    
+
     if (toolType === 'CheckBuild') {
         return await executeCheckBuild(state);
     }
-    
+
     // Handle Exit tool
     if (toolType === 'Exit') {
         return {
@@ -356,7 +357,7 @@ async function executeReactToolCall(
             isComplete: true
         };
     }
-    
+
     // Handle read_current_content
     if (toolType === 'read_current_content') {
         const params = (toolCall as any).params;
@@ -375,28 +376,28 @@ async function executeReactToolCall(
             };
         }
     }
-    
+
     // Handle multi_edit (matching main Agentic mode logic)
     if (toolType === 'multi_edit') {
         const ops = (toolCall as any).operations || (toolCall as any).params;
-        
+
         if (!ops || !Array.isArray(ops) || ops.length === 0) {
             return {
                 result: '[TOOL_RESULT:multi_edit]\nMulti-edit finished: 0 OK, 0 FAIL\nNo operations were provided in multi_edit()'
             };
         }
-        
+
         let updatedContent = state.currentContent;
         const logs: string[] = [];
         const logsForHistory: string[] = [];  // Minimal logs for model context
         let okCount = 0;
         let failCount = 0;
-        
+
         // Apply all operations inside multi_edit
         for (let i = 0; i < ops.length; i++) {
             const op = ops[i];
             const result = applyDiffCommand(updatedContent, op as DiffCommand);
-            
+
             if (result.success) {
                 updatedContent = result.result;
                 // Full details for UI display
@@ -412,16 +413,16 @@ async function executeReactToolCall(
                 failCount++;
             }
         }
-        
+
         const summary = `Multi-edit finished: ${okCount} OK, ${failCount} FAIL`;
         const resultBody = [summary, ...logs].join('\n');
-        
+
         return {
             result: `[TOOL_RESULT:multi_edit]\n${resultBody}`,
             updatedContent: okCount > 0 ? updatedContent : undefined
         };
     }
-    
+
     return {
         result: `[SYSTEM_ERROR: Unknown tool: ${toolType}]`
     };
@@ -432,22 +433,22 @@ async function executeReactToolCall(
  */
 function parseReactToolCalls(text: string): ToolCall[] {
     const toolCalls: ToolCall[] = [];
-    
+
     // Check for StartWorkerAgents
     if (text.includes('[TOOL_CALL:StartWorkerAgents()]')) {
         toolCalls.push({ type: 'StartWorkerAgents', params: {} } as any);
     }
-    
+
     // Check for CheckBuild
     if (text.includes('[TOOL_CALL:CheckBuild()]')) {
         toolCalls.push({ type: 'CheckBuild', params: {} } as any);
     }
-    
+
     // Check for Exit
     if (text.includes('[TOOL_CALL:Exit()]')) {
         toolCalls.push({ type: 'Exit', params: {} } as any);
     }
-    
+
     // Parse read_current_content
     const readMatch = text.match(/\[TOOL_CALL:read_current_content\((\d+),\s*(\d+)\)\]/);
     if (readMatch) {
@@ -458,14 +459,14 @@ function parseReactToolCalls(text: string): ToolCall[] {
     } else if (text.includes('[TOOL_CALL:read_current_content()]')) {
         toolCalls.push({ type: 'read_current_content' } as any);
     }
-    
+
     // Parse multi_edit - this is more complex as it contains nested commands
     const multiEditMatch = text.match(/\[TOOL_CALL:multi_edit\(([\s\S]*?)\)\]/);
     if (multiEditMatch) {
         // Parse the commands inside multi_edit
         const commandsStr = multiEditMatch[1];
         const commands: DiffCommand[] = [];
-        
+
         // Parse search_and_replace
         const searchReplaceRegex = /search_and_replace\("([^"]*)",\s*"([^"]*)"\)/g;
         let match;
@@ -475,7 +476,7 @@ function parseReactToolCalls(text: string): ToolCall[] {
                 params: [match[1], match[2]]
             });
         }
-        
+
         // Parse delete
         const deleteRegex = /delete\("([^"]*)"\)/g;
         while ((match = deleteRegex.exec(commandsStr)) !== null) {
@@ -484,7 +485,7 @@ function parseReactToolCalls(text: string): ToolCall[] {
                 params: [match[1]]
             });
         }
-        
+
         // Parse insert_before
         const insertBeforeRegex = /insert_before\("([^"]*)",\s*"([^"]*)"\)/g;
         while ((match = insertBeforeRegex.exec(commandsStr)) !== null) {
@@ -493,7 +494,7 @@ function parseReactToolCalls(text: string): ToolCall[] {
                 params: [match[1], match[2]]
             });
         }
-        
+
         // Parse insert_after
         const insertAfterRegex = /insert_after\("([^"]*)",\s*"([^"]*)"\)/g;
         while ((match = insertAfterRegex.exec(commandsStr)) !== null) {
@@ -502,12 +503,12 @@ function parseReactToolCalls(text: string): ToolCall[] {
                 params: [match[1], match[2]]
             });
         }
-        
+
         if (commands.length > 0) {
             toolCalls.push({ type: 'multi_edit', params: commands } as any);
         }
     }
-    
+
     return toolCalls;
 }
 
@@ -521,11 +522,11 @@ export async function startReactAgenticProcess(
     customPrompts: any,
     contentUpdateCallback?: (content: string, isComplete?: boolean) => void
 ) {
-    if (isReactAgenticRunning) return;
-    
+    if (globalState.isReactAgenticRunning) return;
+
     // Set callback
     onContentUpdated = contentUpdateCallback || null;
-    
+
     // Initialize conversation manager with React-specific prompt
     const systemPrompt = REACT_AGENTIC_SYSTEM_PROMPT;
     conversationManager = new AgenticConversationManager(
@@ -533,7 +534,7 @@ export async function startReactAgenticProcess(
         systemPrompt,
         '' // No verifier for React mode
     );
-    
+
     // Initialize state
     activeReactAgenticState = {
         ...createInitialState(initialContent),
@@ -545,14 +546,14 @@ export async function startReactAgenticProcess(
         workersExecuted: false,
         conversationManager
     } as ReactAgenticState;
-    
-    isReactAgenticRunning = true;
+
+    globalState.isReactAgenticRunning = true;
     updateControlsState();
     abortController = new AbortController();
-    
+
     // Mount UI with embedded file manager
     reactAgenticUIContainer = container;
-    
+
     // Create download handler
     const handleDownload = async () => {
         if (activeReactAgenticState && activeReactAgenticState.currentContent) {
@@ -562,18 +563,18 @@ export async function startReactAgenticProcess(
             }
         }
     };
-    
+
     // Create view evolutions handler - shows content history modal
     const handleViewEvolutions = async () => {
         if (activeReactAgenticState && activeReactAgenticState.contentHistory && activeReactAgenticState.contentHistory.length > 0) {
-            const { openEvolutionViewerFromHistory } = await import('../Components/DiffModal');
+            const { openEvolutionViewerFromHistory } = await import('../Components/DiffModal/EvolutionViewer');
             const sessionId = `react-agentic-${activeReactAgenticState.activeReactPipeline?.id || 'session'}`;
             openEvolutionViewerFromHistory(activeReactAgenticState.contentHistory, sessionId);
         } else {
             alert('No content evolution history available yet.');
         }
     };
-    
+
     reactAgenticUIRoot = renderReactAgenticEmbeddedUI(
         container,
         activeReactAgenticState,
@@ -591,7 +592,7 @@ export async function startReactAgenticProcess(
         handleDownload,
         handleViewEvolutions
     );
-    
+
     // Run the agent loop
     await runReactAgentLoop();
 }
@@ -604,13 +605,13 @@ export function stopReactAgenticProcess() {
         abortController.abort();
         abortController = null;
     }
-    isReactAgenticRunning = false;
-    
+    globalState.isReactAgenticRunning = false;
+
     // Update the UI to reflect stopped state
     if (activeReactAgenticState && reactAgenticUIRoot) {
         activeReactAgenticState.isProcessing = false;
         activeReactAgenticState.isComplete = true;
-        
+
         // Add a system message indicating the process was stopped
         activeReactAgenticState.messages.push({
             id: `msg-${Date.now()}`,
@@ -619,22 +620,22 @@ export function stopReactAgenticProcess() {
             timestamp: Date.now(),
             status: 'success'
         });
-        
+
         // Update UI
         const handleDownload = async () => {
             if (typeof (window as any).createAndDownloadReactProjectZip === 'function') {
                 await (window as any).createAndDownloadReactProjectZip();
             }
         };
-        
+
         const handleViewEvolutions = async () => {
             if (activeReactAgenticState?.contentHistory && activeReactAgenticState.contentHistory.length > 0) {
-                const { openEvolutionViewerFromHistory } = await import('../Components/DiffModal');
+                const { openEvolutionViewerFromHistory } = await import('../Components/DiffModal/EvolutionViewer');
                 const sessionId = `react-agentic-${activeReactAgenticState.activeReactPipeline?.id || 'session'}`;
                 openEvolutionViewerFromHistory(activeReactAgenticState.contentHistory, sessionId);
             }
         };
-        
+
         updateReactAgenticEmbeddedUI(
             reactAgenticUIRoot,
             activeReactAgenticState,
@@ -649,7 +650,7 @@ export function stopReactAgenticProcess() {
             handleViewEvolutions
         );
     }
-    
+
     updateControlsState();
 }
 
@@ -657,13 +658,13 @@ export function stopReactAgenticProcess() {
  * Run the React agent loop
  */
 async function runReactAgentLoop() {
-    if (!activeReactAgenticState || !isReactAgenticRunning) return;
-    
+    if (!activeReactAgenticState || !globalState.isReactAgenticRunning) return;
+
     let iterations = 0;
     let consecutiveNoToolCalls = 0;
     const MAX_CONSECUTIVE_NO_TOOL_CALLS = 3;
     let lastLoopError: Error | null = null; // Track consecutive errors
-    
+
     // Create download handler once for the entire loop
     const handleDownload = async () => {
         if (activeReactAgenticState && activeReactAgenticState.currentContent) {
@@ -672,18 +673,18 @@ async function runReactAgentLoop() {
             }
         }
     };
-    
+
     // Create view evolutions handler
     const handleViewEvolutions = async () => {
         if (activeReactAgenticState && activeReactAgenticState.contentHistory && activeReactAgenticState.contentHistory.length > 0) {
-            const { openEvolutionViewerFromHistory } = await import('../Components/DiffModal');
+            const { openEvolutionViewerFromHistory } = await import('../Components/DiffModal/EvolutionViewer');
             const sessionId = `react-agentic-${activeReactAgenticState.activeReactPipeline?.id || 'session'}`;
             openEvolutionViewerFromHistory(activeReactAgenticState.contentHistory, sessionId);
         } else {
             alert('No content evolution history available yet.');
         }
     };
-    
+
     // Create content change handler once for the entire loop
     const handleContentChange = (newContent: string) => {
         if (activeReactAgenticState) {
@@ -694,10 +695,10 @@ async function runReactAgentLoop() {
             }
         }
     };
-    
-    while (isReactAgenticRunning && !activeReactAgenticState.isComplete) {
+
+    while (globalState.isReactAgenticRunning && !activeReactAgenticState.isComplete) {
         iterations++;
-        
+
         try {
             // Update state to show processing
             activeReactAgenticState.isProcessing = true;
@@ -710,7 +711,7 @@ async function runReactAgentLoop() {
                 handleDownload,
                 handleViewEvolutions
             );
-            
+
             // Add placeholder message
             const placeholderIndex = activeReactAgenticState.messages.length;
             activeReactAgenticState.messages.push({
@@ -730,30 +731,30 @@ async function runReactAgentLoop() {
                 handleViewEvolutions
             );
             await forceReactAgenticUIRender();
-            
+
             // Get AI response
             const modelName = activeReactAgenticState.customPromptsReactState?.model_agentic_embedded || getSelectedModel();
             const temperature = getSelectedTemperature();
             const topP = getSelectedTopP();
-            
+
             const structuredMessages = await conversationManager!.buildStructuredPrompt();
             const systemPrompt = conversationManager!.getSystemPrompt();
-            
+
             let responseText = '';
             let lastError: Error | null = null;
-            
+
             // Retry logic
             for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
                 if (abortController?.signal.aborted) {
                     throw new Error('Process stopped by user');
                 }
-                
+
                 try {
                     if (attempt > 0) {
                         const delay = INITIAL_DELAY_MS * Math.pow(BACKOFF_FACTOR, attempt - 1);
                         await new Promise(resolve => setTimeout(resolve, delay));
                     }
-                    
+
                     const response = await callAI(
                         structuredMessages,
                         temperature,
@@ -762,25 +763,25 @@ async function runReactAgentLoop() {
                         false,
                         topP
                     );
-                    
+
                     responseText = extractTextFromAny(response);
                     if (responseText) break;
-                    
+
                     throw new Error('Provider returned empty response');
                 } catch (error) {
                     lastError = error instanceof Error ? error : new Error(String(error));
                     if (attempt === MAX_RETRIES) break;
                 }
             }
-            
+
             if (!responseText) {
                 const errMsg = lastError
                     ? `AI call failed: ${lastError.message}`
                     : 'Provider returned an empty response.';
-                
+
                 // Remove placeholder
                 activeReactAgenticState.messages.splice(placeholderIndex, 1);
-                
+
                 // Add error message
                 activeReactAgenticState.messages.push({
                     id: newMsgId('system'),
@@ -790,7 +791,7 @@ async function runReactAgentLoop() {
                     status: 'error',
                     blocks: [{ kind: 'error', message: errMsg } as SystemBlock]
                 });
-                
+
                 activeReactAgenticState.isProcessing = false;
                 updateReactAgenticEmbeddedUI(
                     reactAgenticUIRoot,
@@ -804,11 +805,11 @@ async function runReactAgentLoop() {
                 await forceReactAgenticUIRender();
                 continue;
             }
-            
+
             // Parse response and extract tool calls using the same logic as main Agentic mode
             const parsedResponse = parseAgentResponseWithSegments(responseText);
             const { actions, segments } = parsedResponse;
-            
+
             // Filter for React-specific tools and standard agentic tools
             const reactSpecificTools = ['StartWorkerAgents', 'CheckBuild'];
             const allActions = actions.filter((action: any) => {
@@ -819,14 +820,14 @@ async function runReactAgentLoop() {
                 if (['read_current_content', 'multi_edit', 'Exit'].includes(actionType)) return true;
                 return false;
             });
-            
+
             // Also check for React-specific tools using legacy parsing
             const legacyReactTools = parseReactToolCalls(responseText);
             const reactOnlyTools = legacyReactTools.filter((t: any) => reactSpecificTools.includes(t.type));
-            
+
             // Combine: React-specific from legacy + standard from main parser
             const combinedActions = [...reactOnlyTools, ...allActions.filter((a: any) => !reactSpecificTools.includes(a.type))];
-            
+
             // Update placeholder with actual message (using segments from parser)
             activeReactAgenticState.messages[placeholderIndex] = {
                 id: newMsgId('agent'),
@@ -837,15 +838,15 @@ async function runReactAgentLoop() {
                 segments: segments || [],
                 toolCalls: combinedActions.length > 0 ? (combinedActions as any) : undefined
             };
-            
+
             // Add to conversation history
             await conversationManager!.addAgentMessage(responseText);
-            
+
             // Execute tool calls
             if (combinedActions.length === 0) {
                 // No tools executed - warn the agent
                 consecutiveNoToolCalls++;
-                
+
                 if (consecutiveNoToolCalls >= MAX_CONSECUTIVE_NO_TOOL_CALLS) {
                     const loopErrorContent = `Agent is stuck in a loop (${consecutiveNoToolCalls} consecutive turns without tool calls). Stopping.`;
                     const loopErrorMsg: AgenticMessage = {
@@ -858,7 +859,7 @@ async function runReactAgentLoop() {
                     };
                     activeReactAgenticState.messages.push(loopErrorMsg);
                     activeReactAgenticState.isComplete = true;
-                    
+
                     updateReactAgenticEmbeddedUI(
                         reactAgenticUIRoot,
                         activeReactAgenticState,
@@ -871,7 +872,7 @@ async function runReactAgentLoop() {
                     await forceReactAgenticUIRender();
                     break;
                 }
-                
+
                 const noToolContent = `No tool was executed (attempt ${consecutiveNoToolCalls}/${MAX_CONSECUTIVE_NO_TOOL_CALLS}). You MUST output a tool call. Use: [TOOL_CALL:toolname(...)]`;
                 const noToolMsg: AgenticMessage = {
                     id: newMsgId('system'),
@@ -882,9 +883,9 @@ async function runReactAgentLoop() {
                     blocks: [{ kind: 'error', message: 'No tool was executed. Please use proper tool call syntax.' } as SystemBlock]
                 };
                 activeReactAgenticState.messages.push(noToolMsg);
-                
+
                 await conversationManager!.addSystemMessage(noToolContent);
-                
+
                 updateReactAgenticEmbeddedUI(
                     reactAgenticUIRoot,
                     activeReactAgenticState,
@@ -897,7 +898,7 @@ async function runReactAgentLoop() {
                 await forceReactAgenticUIRender();
             } else {
                 consecutiveNoToolCalls = 0;
-                
+
                 // Execute ONLY the first action (single-tool-per-turn enforcement)
                 const toolCall = combinedActions[0] as any;
                 let result;
@@ -906,7 +907,7 @@ async function runReactAgentLoop() {
                 } catch (toolError) {
                     const errorMsg = toolError instanceof Error ? toolError.message : String(toolError);
                     console.error('Tool execution error:', toolError);
-                    
+
                     // Add error result as system message
                     const toolErrorMsg: AgenticMessage = {
                         id: newMsgId('system'),
@@ -917,7 +918,7 @@ async function runReactAgentLoop() {
                         blocks: [{ kind: 'error', message: `Tool execution failed: ${errorMsg}` } as SystemBlock]
                     };
                     activeReactAgenticState.messages.push(toolErrorMsg);
-                    
+
                     // Update UI to show error
                     updateReactAgenticEmbeddedUI(
                         reactAgenticUIRoot,
@@ -929,21 +930,21 @@ async function runReactAgentLoop() {
                         handleViewEvolutions
                     );
                     await forceReactAgenticUIRender();
-                    
+
                     // Continue to next iteration to let agent see the error
                     continue;
                 }
-                
+
                 // Update content if changed
                 if (result.updatedContent) {
                     activeReactAgenticState.currentContent = result.updatedContent;
                     conversationManager!.updateCurrentContent(result.updatedContent);
-                    
+
                     // Add to content history for "View Evolution" tracking
                     // Extract edit count from result message (e.g., "Multi-edit finished: 3 OK, 1 FAIL")
                     const okMatch = result.result.match(/(\d+)\s+OK/);
                     const okCount = okMatch ? parseInt(okMatch[1]) : 1;
-                    
+
                     if (okCount > 0) {
                         activeReactAgenticState.contentHistory = [
                             ...activeReactAgenticState.contentHistory,
@@ -953,7 +954,7 @@ async function runReactAgentLoop() {
                                 timestamp: Date.now()
                             }
                         ];
-                        
+
                         // Update UI immediately to show new history entry in "View Evolution"
                         updateReactAgenticEmbeddedUI(
                             reactAgenticUIRoot,
@@ -965,14 +966,14 @@ async function runReactAgentLoop() {
                             handleViewEvolutions
                         );
                     }
-                    
+
                     // Parse the updated concatenated code back into individual files
                     // and update the worker stages so changes persist
                     try {
                         const updatedFiles = parseFilesFromConcatenatedCode(result.updatedContent);
                         if (activeReactAgenticState.activeReactPipeline && updatedFiles.size > 0) {
                             console.log('[React Agentic] Parsed', updatedFiles.size, 'files from updated content');
-                            
+
                             // Update each stage with its corresponding file content
                             activeReactAgenticState.activeReactPipeline.stages.forEach((stage: any) => {
                                 const fileName = stage.title || `Agent${stage.id + 1}Output`;
@@ -985,7 +986,7 @@ async function runReactAgentLoop() {
                                     }
                                 }
                             });
-                            
+
                             // Trigger React pipeline UI update to reflect changes in worker tabs
                             if (typeof (window as any).renderReactModePipeline === 'function') {
                                 (window as any).renderReactModePipeline();
@@ -995,19 +996,19 @@ async function runReactAgentLoop() {
                         console.warn('Could not parse updated content back into files:', parseError);
                         // Continue anyway - the concatenated content is still updated
                     }
-                    
+
                     if (onContentUpdated) {
                         onContentUpdated(result.updatedContent, result.isComplete);
                     }
                 }
-                
+
                 // Determine status based on result content
                 const hasError = result.result.includes('[SYSTEM_ERROR') || result.result.includes('[BUILD_FAILED');
                 const toolStatus: 'success' | 'error' = hasError ? 'error' : 'success';
-                
+
                 // Determine tool name for display
                 const toolName = toolCall.type || 'unknown';
-                
+
                 // Add tool result as system message with proper blocks
                 const toolResultMsg: AgenticMessage = {
                     id: newMsgId('system'),
@@ -1015,18 +1016,18 @@ async function runReactAgentLoop() {
                     content: result.result,
                     timestamp: Date.now(),
                     status: toolStatus,
-                    blocks: [{ 
-                        kind: hasError ? 'error' : 'tool_result', 
+                    blocks: [{
+                        kind: hasError ? 'error' : 'tool_result',
                         tool: toolName,
-                        result: result.result, 
-                        message: hasError ? result.result : undefined 
+                        result: result.result,
+                        message: hasError ? result.result : undefined
                     } as SystemBlock]
                 };
                 activeReactAgenticState.messages.push(toolResultMsg);
-                
+
                 // Add to conversation history
                 await conversationManager!.addSystemMessage(result.result);
-                
+
                 // Update UI after tool execution
                 updateReactAgenticEmbeddedUI(
                     reactAgenticUIRoot,
@@ -1038,14 +1039,14 @@ async function runReactAgentLoop() {
                     handleViewEvolutions
                 );
                 await forceReactAgenticUIRender();
-                
+
                 // Check if complete
                 if (result.isComplete) {
                     activeReactAgenticState.isComplete = true;
                     break;
                 }
             }
-            
+
             activeReactAgenticState.isProcessing = false;
             updateReactAgenticEmbeddedUI(
                 reactAgenticUIRoot,
@@ -1057,11 +1058,11 @@ async function runReactAgentLoop() {
                 handleViewEvolutions
             );
             await forceReactAgenticUIRender();
-            
+
         } catch (error) {
             console.error('React agent loop error:', error);
             activeReactAgenticState.isProcessing = false;
-            
+
             // Add error message with detailed info
             const errorMsg = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack || ''}` : String(error);
             activeReactAgenticState.messages.push({
@@ -1072,7 +1073,7 @@ async function runReactAgentLoop() {
                 status: 'error',
                 blocks: [{ kind: 'error', message: errorMsg } as SystemBlock]
             });
-            
+
             const handleDownload = async () => {
                 if (activeReactAgenticState && activeReactAgenticState.currentContent) {
                     if (typeof (window as any).createAndDownloadReactProjectZip === 'function') {
@@ -1080,17 +1081,17 @@ async function runReactAgentLoop() {
                     }
                 }
             };
-            
+
             const handleViewEvolutions = async () => {
                 if (activeReactAgenticState && activeReactAgenticState.contentHistory && activeReactAgenticState.contentHistory.length > 0) {
-                    const { openEvolutionViewerFromHistory } = await import('../Components/DiffModal');
+                    const { openEvolutionViewerFromHistory } = await import('../Components/DiffModal/EvolutionViewer');
                     const sessionId = `react-agentic-${activeReactAgenticState.activeReactPipeline?.id || 'session'}`;
                     openEvolutionViewerFromHistory(activeReactAgenticState.contentHistory, sessionId);
                 } else {
                     alert('No content evolution history available yet.');
                 }
             };
-            
+
             updateReactAgenticEmbeddedUI(
                 reactAgenticUIRoot,
                 activeReactAgenticState,
@@ -1109,7 +1110,7 @@ async function runReactAgentLoop() {
                 handleViewEvolutions
             );
             await forceReactAgenticUIRender();
-            
+
             // Don't break immediately - let the user see the error
             // Only break if we get another error in the next iteration
             if (lastLoopError && lastLoopError.message === errorMsg) {
@@ -1118,7 +1119,7 @@ async function runReactAgentLoop() {
             lastLoopError = error instanceof Error ? error : new Error(errorMsg);
         }
     }
-    
+
     // Cleanup
     isReactAgenticRunning = false;
     updateControlsState();
@@ -1131,8 +1132,16 @@ async function runReactAgentLoop() {
  * Re-hydrate UI in a container (reuses existing root if same container)
  */
 export function rehydrateReactAgenticUI(container: HTMLElement) {
-    if (!activeReactAgenticState) return;
-    
+    console.log('[ReactAgentic] rehydrateReactAgenticUI called', {
+        hasState: !!activeReactAgenticState,
+        hasContainer: !!container,
+        containerId: container?.id
+    });
+    if (!activeReactAgenticState) {
+        console.warn('[ReactAgentic] No active state, skipping rehydration');
+        return;
+    }
+
     // Create download handler
     const handleDownload = async () => {
         if (activeReactAgenticState && activeReactAgenticState.currentContent) {
@@ -1141,18 +1150,18 @@ export function rehydrateReactAgenticUI(container: HTMLElement) {
             }
         }
     };
-    
+
     // Create view evolutions handler
     const handleViewEvolutions = async () => {
         if (activeReactAgenticState && activeReactAgenticState.contentHistory && activeReactAgenticState.contentHistory.length > 0) {
-            const { openEvolutionViewerFromHistory } = await import('../Components/DiffModal');
+            const { openEvolutionViewerFromHistory } = await import('../Components/DiffModal/EvolutionViewer');
             const sessionId = `react-agentic-${activeReactAgenticState.activeReactPipeline?.id || 'session'}`;
             openEvolutionViewerFromHistory(activeReactAgenticState.contentHistory, sessionId);
         } else {
             alert('No content evolution history available yet.');
         }
     };
-    
+
     // If we already have a root for this container, just update it
     if (reactAgenticUIRoot && reactAgenticUIContainer === container) {
         updateReactAgenticEmbeddedUI(
@@ -1197,4 +1206,32 @@ export function rehydrateReactAgenticUI(container: HTMLElement) {
             handleViewEvolutions
         );
     }
+}
+
+/**
+ * Set active state for import
+ */
+export function setActiveReactAgenticStateForImport(state: ReactAgenticState) {
+    console.log('[ReactAgentic] setActiveReactAgenticStateForImport called', {
+        hasMessages: !!state.messages,
+        messageCount: state.messages?.length,
+        hasCurrentContent: !!state.currentContent
+    });
+    activeReactAgenticState = state;
+    // Re-initialize conversation manager with imported messages
+    if (state.messages) {
+        conversationManager = new AgenticConversationManager(
+            state.originalContent || state.currentContent || '',
+            REACT_AGENTIC_SYSTEM_PROMPT
+        );
+        // We might need to manually restore messages if the manager doesn't accept them in constructor
+        // But for now, just ensuring the state variable is set is the critical part
+    }
+}
+
+/**
+ * Get active state for export
+ */
+export function getActiveReactAgenticState(): ReactAgenticState | null {
+    return activeReactAgenticState;
 }

@@ -3,330 +3,267 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* Container styles */
+/* --- Base Variables (Easy Theming) --- */
+:root {
+    /* Dark Mode Defaults */
+    --ps-bg: transparent;
+    --ps-text: inherit;
+    --ps-caret: auto;
+
+    --ps-scroll-track: rgba(255, 255, 255, 0.05);
+    --ps-scroll-thumb: rgba(255, 255, 255, 0.2);
+
+    --ps-code-bg: rgba(var(--card-bg-base-rgb), 0.25);
+    --ps-code-border: var(--border-color);
+    --ps-marker: #5c5966;
+    --ps-heading: #e0dfe7;
+    --ps-heading-border: #2a2731;
+    --ps-crit: #ffc269;
+    --ps-crit-shadow: rgba(255, 194, 105, 0.3);
+
+    --ps-t-code: #ff8080;
+    --ps-t-code-bg: rgba(255, 128, 128, 0.1);
+
+    --ps-t-list: #8a7ff8;
+    --ps-t-var: #aea5ff;
+    --ps-t-var-bg: #2a254f;
+    --ps-t-var-bd: #4d4398;
+
+    --ps-t-tag: #ff8562;
+    --ps-t-tag-bg: rgba(255, 133, 98, 0.1);
+
+    --ps-t-inst: #ff69b4;
+    --ps-t-inst-bg: rgba(255, 105, 180, 0.1);
+
+    --ps-t-str: #8a7ff8;
+    --ps-t-pos: #55d49a;
+    --ps-t-neg: #ff6969;
+
+    /* HLJS Defaults */
+    --hljs-base: #abb2bf;
+    --hljs-comment: #5c6370;
+    --hljs-key: #c678dd;
+    --hljs-str: #98c379;
+    --hljs-func: #61aeee;
+}
+
+/* Light Mode Overrides */
+body.light-mode {
+    --ps-text: var(--text-color);
+    --ps-scroll-track: rgba(0, 0, 0, 0.03);
+    --ps-scroll-thumb: rgba(0, 0, 0, 0.15);
+
+    --ps-code-bg: rgba(0, 0, 0, 0.03);
+    --ps-code-border: rgba(0, 0, 0, 0.06);
+    --ps-marker: #9CA3AF;
+    --ps-heading: var(--text-color);
+    --ps-heading-border: rgba(0, 0, 0, 0.1);
+    --ps-crit: #D97706;
+    --ps-crit-shadow: transparent;
+
+    --ps-t-code: #DC2626;
+    --ps-t-code-bg: rgba(220, 38, 38, 0.08);
+
+    --ps-t-list: #7C3AED;
+    --ps-t-var: #4F46E5;
+    --ps-t-var-bg: rgba(79, 70, 229, 0.08);
+    --ps-t-var-bd: rgba(79, 70, 229, 0.15);
+
+    --ps-t-tag: #EA580C;
+    --ps-t-tag-bg: rgba(234, 88, 12, 0.08);
+
+    --ps-t-inst: #DB2777;
+    --ps-t-inst-bg: rgba(219, 39, 119, 0.08);
+
+    --ps-t-str: #7C3AED;
+    --ps-t-pos: #059669;
+    --ps-t-neg: #DC2626;
+
+    --hljs-base: #374151;
+    --hljs-comment: #6B7280;
+    --hljs-key: #9333EA;
+    --hljs-str: #16A34A;
+    --hljs-func: #2563EB;
+}
+
+/* --- Container & Editor --- */
+
 .prompt-styling-container {
     position: relative;
     width: 100%;
+    height: 100%;
     display: flex;
     flex-direction: column;
-    height: 100%;
-    min-height: 0; /* allow children to shrink inside flex */
+    /* Optimization: Limits browser layout recalculations to this box */
+    contain: size layout;
 }
 
-/* Editor styles - contenteditable div */
 .prompt-styling-editor {
+    flex: 1 1 auto;
     min-height: 120px;
     height: 100%;
-    padding: 12px 12px 20px; /* extra bottom padding so last line is fully visible */
-    font-family: 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-    font-size: 22px;
-    line-height: 1.8;
-    color: inherit;
-    background: transparent;
+    padding: var(--card-padding-xs) var(--card-padding-xs) var(--card-padding-md);
+
+    font-family: 'SF Pro Rounded', system-ui, sans-serif;
+    font-size: var(--font-size-lg);
+    line-height: var(--line-height-relaxed);
+    color: var(--ps-text);
+    background: var(--ps-bg);
+
     border: none;
     outline: none;
     white-space: pre-wrap;
     word-wrap: break-word;
-    overflow-wrap: break-word;
     overflow-y: auto;
     overflow-x: hidden;
-    cursor: text;
     resize: vertical;
-    flex: 1 1 auto;
 }
 
-/* Scrollbar styling */
-.prompt-styling-editor::-webkit-scrollbar {
+/* Scrollbars */
+.prompt-styling-editor::-webkit-scrollbar,
+.prompt-styling-editor pre::-webkit-scrollbar {
     width: 8px;
+    height: 8px;
 }
 
-.prompt-styling-editor::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 12px;
+.prompt-styling-editor::-webkit-scrollbar-track,
+.prompt-styling-editor pre::-webkit-scrollbar-track {
+    background: var(--ps-scroll-track);
+    border-radius: 4px;
 }
 
-.prompt-styling-editor::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 12px;
+.prompt-styling-editor::-webkit-scrollbar-thumb,
+.prompt-styling-editor pre::-webkit-scrollbar-thumb {
+    background: var(--ps-scroll-thumb);
+    border-radius: 4px;
 }
 
-.prompt-styling-editor::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.3);
-}
+/* --- Block Elements --- */
 
-/* Code block styles */
 .prompt-styling-editor pre {
-    background: rgba(var(--card-bg-base-rgb), 0.25); /* match system card theme */
-    border: 1px solid var(--border-color);
-    border-radius: 20px;
-    padding: 1rem;
-    margin: 0.5rem 0;
+    background: var(--ps-code-bg);
+    border: 1px solid var(--ps-code-border);
+    border-radius: 12px;
+    padding: 12px;
+    margin: 12px 0;
     overflow-x: auto;
-    white-space: pre; /* Preserve whitespace and newlines exactly like prototype */
+    white-space: pre;
+    /* Performance: don't render off-screen code blocks */
+    content-visibility: auto;
 }
 
 .prompt-styling-editor code.hljs {
     background: transparent;
-    font-family: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace;
-    font-size: 14px;
-    line-height: 1.6;
+    font-family: var(--font-family-mono);
+    font-size: 0.9em;
     padding: 0;
 }
 
-/* Code block markers */
 .token-code-marker {
-    color: #5c5966;
-    font-family: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace;
-    font-size: 13px;
+    color: var(--ps-marker);
+    font-family: var(--font-family-mono);
+    font-size: 0.8em;
     opacity: 0.7;
+    user-select: none;
 }
 
-/* Heading styles */
+/* --- Inline Tokens --- */
+
 .token-heading {
-    font-weight: 700;
-    color: #e0dfe7;
     display: inline-block;
     width: 100%;
-    margin: 0.5em 0;
+    font-weight: 700;
+    color: var(--ps-heading);
+    margin: 8px 0;
 }
 
 .token-heading1 {
     font-size: 1.4em;
-    border-bottom: 1px solid #2a2731;
-    padding-bottom: 0.3em;
+    border-bottom: 1px solid var(--ps-heading-border);
+    padding-bottom: 4px;
 }
 
 .token-heading2 {
     font-size: 1.2em;
 }
 
-.token-heading3 {
-    font-size: 1.1em;
-}
-
-/* Critical text */
 .token-critical {
-    color: #ffc269;
+    color: var(--ps-crit);
     font-weight: 700;
-    text-shadow: 0 0 8px rgba(255, 194, 105, 0.3);
+    text-shadow: 0 0 8px var(--ps-crit-shadow);
 }
 
-/* Inline code */
-.token-code {
-    color: #ff8080;
-    background: rgba(255, 128, 128, 0.1);
-    border: 1px solid rgba(255, 128, 128, 0.2);
-    border-radius: 12px;
-    padding: 2px 6px;
-    font-family: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace;
+.token-code-inline {
+    color: var(--ps-t-code);
+    background: var(--ps-t-code-bg);
+    border-radius: 6px;
+    padding: 2px 5px;
+    font-family: monospace;
     font-size: 0.9em;
 }
 
-/* List markers */
 .token-list-marker {
-    color: #8a7ff8;
+    color: var(--ps-t-list);
     font-weight: 700;
 }
 
-/* Variables */
 .token-variable {
-    color: #aea5ff;
-    background: #2a254f;
-    border: 1px solid #4d4398;
-    border-radius: 26px;
-    padding: 2px 8px;
-    font-size: 0.95em;
-    transition: all 0.2s ease;
+    color: var(--ps-t-var);
+    background: var(--ps-t-var-bg);
+    border: 1px solid var(--ps-t-var-bd);
+    border-radius: 16px;
+    padding: 1px 6px;
+    font-size: 0.9em;
 }
 
-.token-variable:hover {
-    background: #332d5a;
-    border-color: #5d53a8;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(138, 127, 248, 0.2);
-}
-
-/* Tags */
 .token-tag {
-    color: #ff8562;
-    background: rgba(255, 133, 98, 0.1);
-    border: 1px solid rgba(255, 133, 98, 0.3);
-    border-radius: 12px;
+    color: var(--ps-t-tag);
+    background: var(--ps-t-tag-bg);
+    border-radius: 6px;
     padding: 1px 4px;
-    font-size: 0.95em;
 }
 
-/* Instructions - system accent pink */
 .token-instruction {
-    color: #ff69b4;
-    background: rgba(255, 105, 180, 0.1);
-    border: 1px solid rgba(255, 105, 180, 0.3);
-    border-radius: 12px;
+    color: var(--ps-t-inst);
+    background: var(--ps-t-inst-bg);
+    border-radius: 6px;
     padding: 1px 4px;
-    font-size: 0.95em;
 }
 
-/* Strings */
 .token-string {
-    color: #8a7ff8; /* accent purple */
-    text-shadow: 0 0 12px rgba(138, 127, 248, 0.75);
+    color: var(--ps-t-str);
 }
 
-/* Positive keywords */
 .token-keyword-positive {
-    color: #55d49a;
+    color: var(--ps-t-pos);
     font-weight: 700;
-    border-bottom: 2px solid rgba(85, 212, 154, 0.4);
-    text-shadow: 0 0 12px rgba(85, 212, 154, 0.75);
+    border-bottom: 2px solid rgba(85, 212, 154, 0.3);
 }
 
-/* Negative keywords */
 .token-keyword-negative {
-    color: #ff6969;
+    color: var(--ps-t-neg);
     font-weight: 700;
-    text-shadow: 0 0 12px rgba(255, 105, 105, 0.8);
 }
 
-@keyframes pulse-red {
-    0%, 100% {
-        text-shadow: 0 0 4px rgba(255, 105, 105, 0.4);
-    }
-    50% {
-        text-shadow: 0 0 12px rgba(255, 105, 105, 0.8);
-    }
-}
-
-@keyframes pulse-purple {
-    0%, 100% {
-        text-shadow: 0 0 4px rgba(138, 127, 248, 0.35);
-    }
-    50% {
-        text-shadow: 0 0 12px rgba(138, 127, 248, 0.75);
-    }
-}
-
-@keyframes pulse-green {
-    0%, 100% {
-        text-shadow: 0 0 4px rgba(85, 212, 154, 0.35);
-    }
-    50% {
-        text-shadow: 0 0 12px rgba(85, 212, 154, 0.75);
-    }
-}
-
-/* Override default highlight.js atom-one-dark theme for better integration */
+/* --- HLJS Syntax Colors --- */
 .prompt-styling-editor .hljs {
-    color: #abb2bf;
-    background: transparent;
+    color: var(--hljs-base);
 }
 
-.prompt-styling-editor .hljs-comment,
-.prompt-styling-editor .hljs-quote {
-    color: #5c6370;
+.prompt-styling-editor .hljs-comment {
+    color: var(--hljs-comment);
     font-style: italic;
 }
 
-.prompt-styling-editor .hljs-doctag,
-.prompt-styling-editor .hljs-keyword,
-.prompt-styling-editor .hljs-formula {
-    color: #c678dd;
+.prompt-styling-editor .hljs-keyword {
+    color: var(--hljs-key);
 }
 
-.prompt-styling-editor .hljs-section,
-.prompt-styling-editor .hljs-name,
-.prompt-styling-editor .hljs-selector-tag,
-.prompt-styling-editor .hljs-deletion,
-.prompt-styling-editor .hljs-subst {
-    color: #e06c75;
+.prompt-styling-editor .hljs-string {
+    color: var(--hljs-str);
 }
 
-.prompt-styling-editor .hljs-literal {
-    color: #56b6c2;
-}
-
-.prompt-styling-editor .hljs-string,
-.prompt-styling-editor .hljs-regexp,
-.prompt-styling-editor .hljs-addition,
-.prompt-styling-editor .hljs-attribute,
-.prompt-styling-editor .hljs-meta-string {
-    color: #98c379;
-}
-
-.prompt-styling-editor .hljs-built_in,
-.prompt-styling-editor .hljs-class .hljs-title {
-    color: #e6c07b;
-}
-
-.prompt-styling-editor .hljs-attr,
-.prompt-styling-editor .hljs-variable,
-.prompt-styling-editor .hljs-template-variable,
-.prompt-styling-editor .hljs-type,
-.prompt-styling-editor .hljs-selector-class,
-.prompt-styling-editor .hljs-selector-attr,
-.prompt-styling-editor .hljs-selector-pseudo,
-.prompt-styling-editor .hljs-number {
-    color: #d19a66;
-}
-
-.prompt-styling-editor .hljs-symbol,
-.prompt-styling-editor .hljs-bullet,
-.prompt-styling-editor .hljs-link,
-.prompt-styling-editor .hljs-meta,
-.prompt-styling-editor .hljs-selector-id,
-.prompt-styling-editor .hljs-title {
-    color: #61aeee;
-}
-
-.prompt-styling-editor .hljs-emphasis {
-    font-style: italic;
-}
-
-.prompt-styling-editor .hljs-strong {
-    font-weight: bold;
-}
-
-.prompt-styling-editor .hljs-link {
-    text-decoration: underline;
-}
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
-    .prompt-styling-container {
-        font-size: 14px;
-    }
-    
-    .prompt-styling-display,
-    .prompt-styling-textarea {
-        padding: 12px;
-        font-size: 14px;
-    }
-}
-
-/* Dark mode adjustments (already optimized for dark theme) */
-
-/* Scrollbar styling for code blocks */
-.prompt-styling-editor pre::-webkit-scrollbar {
-    height: 8px;
-    width: 8px;
-}
-
-.prompt-styling-editor pre::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 12px;
-}
-
-.prompt-styling-editor pre::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 12px;
-}
-
-.prompt-styling-editor pre::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.3);
-}
-
-/* Line breaks styling */
-.prompt-styling-editor br {
-    display: block;
-    content: "";
-    margin: 0;
+.prompt-styling-editor .hljs-title,
+.prompt-styling-editor .hljs-function {
+    color: var(--hljs-func);
 }

@@ -31,6 +31,7 @@ export type {
     DeepthinkSubStrategyData,
     DeepthinkHypothesisData,
     DeepthinkRedTeamData,
+    DeepthinkPostQualityFilterData,
     DeepthinkMainStrategyData,
     DeepthinkPipelineState
 } from './Deepthink';
@@ -48,3 +49,8 @@ export {
     setActiveDeepthinkPipelineForImport,
     renderActiveDeepthinkPipeline
 } from './Deepthink';
+
+// Export config panel
+export {
+    renderDeepthinkConfigPanel
+} from './DeepthinkConfigPanel';

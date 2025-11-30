@@ -25,7 +25,7 @@ function ContextualUI({ state, onStop }: ContextualUIProps) {
     // Update evolution viewer when content history changes
     React.useEffect(() => {
         const updateViewer = async () => {
-            const { updateEvolutionViewerIfOpen } = await import('../Components/DiffModal');
+            const { updateEvolutionViewerIfOpen } = await import('../Components/DiffModal/EvolutionViewer');
             updateEvolutionViewerIfOpen(state.id, state.contentHistory);
         };
         updateViewer();
@@ -148,7 +148,7 @@ const CurrentBestGenerationPanel: React.FC<{ content: string; originalContent: s
                     <button
                         className="action-btn"
                         onClick={async () => {
-                            const { openEvolutionViewerFromHistory } = await import('../Components/DiffModal');
+                            const { openEvolutionViewerFromHistory } = await import('../Components/DiffModal/EvolutionViewer');
                             openEvolutionViewerFromHistory(state.contentHistory, state.id);
                         }}
                         title="View content evolution timeline (updates live)"

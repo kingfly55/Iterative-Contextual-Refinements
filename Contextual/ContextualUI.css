@@ -13,14 +13,14 @@
 
 /* Add padding when embedded in Deepthink modal (no #contextual-container wrapper in Deepthink) */
 .contextual-mode-container > .contextual-ui-container {
-    padding: 1.5rem !important;
+    padding: var(--spacing-section-sm) !important;  /* 24px */
     box-sizing: border-box !important;
 }
 
 /* Main container - two panel layout */
 .contextual-ui-container {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--gap-sm);  /* 12px */
     height: 100%;
     width: 100%;
     overflow: hidden;
@@ -43,7 +43,8 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.5rem 0.75rem;
+    padding: var(--space-3) var(--space-4);  /* 12px 16px */
+    min-height: var(--button-height-lg);  /* 44px */
     margin: 0;
     border-bottom: 1px solid var(--border-color);
     background: rgba(var(--bg-color-rgb), 0.5);
@@ -51,17 +52,18 @@
 
 .text-panel-header h3 {
     margin: 0 !important;
-    font-size: 1.1rem;
+    font-size: var(--font-size-md);  /* 18px */
     color: var(--text-color);
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-tight) !important;
+    letter-spacing: var(--letter-spacing-tight);
     display: flex !important;
     align-items: center !important;
-    line-height: 1 !important;
 }
 
 .text-panel-actions {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--gap-xs);  /* 8px */
     align-items: center;
     flex-wrap: wrap;
 }
@@ -82,13 +84,14 @@
 }
 
 .empty-icon {
-    font-size: 3rem;
-    margin-bottom: 1rem;
+    font-size: var(--icon-size-2xl);  /* 48px */
+    margin-bottom: var(--space-4);  /* 16px */
     opacity: 0.5;
 }
 
 .empty-state p {
-    font-size: 1rem;
+    font-size: var(--font-size-base);  /* 16px */
+    line-height: var(--line-height-normal);
     margin: 0;
 }
 
@@ -96,7 +99,10 @@
 
 .agent-panel-header h3 {
     margin: 0;
-    font-size: 1.1rem;
+    font-size: var(--font-size-md);  /* 18px */
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-tight);
+    letter-spacing: var(--letter-spacing-tight);
     color: var(--text-color);
     font-weight: 600;
 }

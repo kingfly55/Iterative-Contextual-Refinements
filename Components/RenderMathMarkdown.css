@@ -1,101 +1,33 @@
 /* Highlight.js themes are loaded dynamically via JavaScript based on light/dark mode */
 
-/* Math and LaTeX content wrapper styles */
+/* --- Variables & Base --- */
+:root {
+    /* Base Font Sizes & Spacing */
+    --font-size-xl: 24px;
+    --font-size-2xl: 30px;
+    --font-size-lg: 20px;
+    --line-height-loose: 1.6;
+    --line-height-heading: 1.4;
+
+    /* Colors - Dark Mode (Default) */
+    --accent-purple: #8a7ff8;
+    --accent-purple-light: #aea5ff;
+    --accent-purple-lighter: #c2bfff;
+    --accent-gold: #ffc269;
+    --text-primary: #EAEBF5;
+    --bg-glass: rgba(18, 18, 20, 0.6);
+}
+
+/* --- Main Wrapper --- */
 .latex-content-wrapper,
 .render-math-markdown .latex-content-wrapper {
-    font-size: 1.6rem;
-    line-height: 2.6;
+    font-size: var(--font-size-xl);
+    line-height: var(--line-height-loose);
     position: relative;
     animation: contentFadeIn 0.6s ease-out;
+    color: var(--text-primary);
 }
 
-/* Reusable token styles from PromptStyling.css */
-/* String/Quote detection styling */
-.latex-content-wrapper .token-string,
-.render-math-markdown .token-string {
-    color: #aea5ff !important;
-    /* system accent purple, brighter */
-    text-shadow: 0 0 4px rgba(0, 0, 0, 0.9), 0 0 10px rgba(138, 127, 248, 0.6) !important;
-}
-
-/* Critical/Bold text styling - Override markdown defaults */
-.latex-content-wrapper .token-critical,
-.render-math-markdown .token-critical,
-.latex-content-wrapper strong,
-.render-math-markdown strong,
-.latex-content-wrapper b,
-.render-math-markdown b {
-    color: #ffc269 !important;
-    /* system accent gold */
-    font-weight: 700 !important;
-    text-shadow: 0 0 8px rgba(255, 194, 105, 0.3) !important;
-}
-
-/* Light mode: make bold text darker and remove glow */
-body.light-mode .latex-content-wrapper strong,
-body.light-mode .render-math-markdown strong,
-body.light-mode .latex-content-wrapper b,
-body.light-mode .render-math-markdown b {
-    color: #3a3a3a !important;
-    text-shadow: none !important;
-}
-
-body.light-mode .latex-content-wrapper .token-critical,
-body.light-mode .render-math-markdown .token-critical {
-    color: #d48b2c !important;
-    /* darker amber */
-    text-shadow: none !important;
-}
-
-/* Heading styling - Override markdown defaults */
-.latex-content-wrapper .token-heading,
-.render-math-markdown .token-heading,
-.latex-content-wrapper h1,
-.render-math-markdown h1,
-.latex-content-wrapper h2,
-.render-math-markdown h2,
-.latex-content-wrapper h3,
-.render-math-markdown h3,
-.latex-content-wrapper h4,
-.render-math-markdown h4,
-.latex-content-wrapper h5,
-.render-math-markdown h5,
-.latex-content-wrapper h6,
-.render-math-markdown h6 {
-    color: #8a7ff8 !important;
-    /* system accent purple */
-    text-shadow: 0 0 6px rgba(138, 127, 248, 0.4) !important;
-}
-
-/* Hierarchical heading colors */
-.latex-content-wrapper .token-heading1,
-.render-math-markdown .token-heading1,
-.latex-content-wrapper h1,
-.render-math-markdown h1 {
-    color: #8a7ff8 !important;
-    /* full accent purple */
-    font-size: 1.8rem !important;
-}
-
-.latex-content-wrapper .token-heading2,
-.render-math-markdown .token-heading2,
-.latex-content-wrapper h2,
-.render-math-markdown h2 {
-    color: #a094fa !important;
-    /* slightly lighter */
-    font-size: 1.6rem !important;
-}
-
-.latex-content-wrapper .token-heading3,
-.render-math-markdown .token-heading3,
-.latex-content-wrapper h3,
-.render-math-markdown h3 {
-    color: #b6a8fc !important;
-    /* lighter */
-    font-size: 1.4rem !important;
-}
-
-/* Content fade-in animation */
 @keyframes contentFadeIn {
     from {
         opacity: 0;
@@ -108,46 +40,93 @@ body.light-mode .render-math-markdown .token-critical {
     }
 }
 
-/* Natural text selection - removed custom styling */
+/* --- Token & Text Styling --- */
 
+/* Quotes / Strings */
+.latex-content-wrapper .token-string,
+.render-math-markdown .token-string,
+.latex-content-wrapper [data-quoted="true"] {
+    color: var(--accent-purple-light) !important;
+    text-shadow: 0 0 4px rgba(0, 0, 0, 0.9), 0 0 10px rgba(138, 127, 248, 0.6) !important;
+}
+
+/* Critical / Bold */
+.latex-content-wrapper .token-critical,
+.render-math-markdown .token-critical,
+.latex-content-wrapper strong,
+.render-math-markdown strong,
+.latex-content-wrapper b,
+.render-math-markdown b {
+    color: var(--accent-gold) !important;
+    font-weight: 700 !important;
+    text-shadow: 0 0 8px rgba(255, 194, 105, 0.3) !important;
+}
+
+/* Italics */
+.latex-content-wrapper em,
+.latex-content-wrapper i {
+    font-style: italic;
+    color: var(--accent-purple);
+}
+
+/* Links */
+.latex-content-wrapper a {
+    color: var(--accent-purple);
+    text-decoration: none;
+    position: relative;
+    transition: all 0.3s ease;
+    border-bottom: 1px solid transparent;
+}
+
+.latex-content-wrapper a:hover {
+    color: var(--accent-purple-light);
+    text-shadow: 0 0 8px rgba(138, 127, 248, 0.5);
+    border-bottom-color: rgba(138, 127, 248, 0.5);
+}
+
+.latex-content-wrapper a::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 1px;
+    bottom: -1px;
+    left: 0;
+    background: linear-gradient(90deg, var(--accent-purple), var(--accent-purple-light));
+    transition: width 0.3s ease;
+}
+
+.latex-content-wrapper a:hover::after {
+    width: 100%;
+}
+
+/* --- Headings --- */
+
+.latex-content-wrapper .token-heading,
+.render-math-markdown .token-heading,
 .latex-content-wrapper h1,
 .latex-content-wrapper h2,
 .latex-content-wrapper h3,
 .latex-content-wrapper h4,
 .latex-content-wrapper h5,
 .latex-content-wrapper h6 {
+    color: var(--accent-purple) !important;
+    text-shadow: 0 0 6px rgba(138, 127, 248, 0.4) !important;
     margin: 1.5rem 0 1rem 0;
-    /* reduced margins for better density */
     font-weight: 700;
-    line-height: 1.4;
+    line-height: var(--line-height-heading);
     position: relative;
     transition: all 0.3s ease;
 }
 
-/* Removed hover glow effects */
-
-@keyframes gradientShift {
-
-    0%,
-    100% {
-        background-position: 0% 50%;
-    }
-
-    50% {
-        background-position: 100% 50%;
-    }
-}
-
-/* Individual heading sizes with enhanced styling - reduced sizes for better hierarchy */
+/* Level 1 */
+.latex-content-wrapper .token-heading1,
 .latex-content-wrapper h1 {
-    font-size: 1.6em;
-    /* reduced from 2.2em */
+    color: var(--accent-purple) !important;
+    font-size: 1.6em !important;
+    margin-top: var(--space-8, 2rem) !important;
+    margin-bottom: var(--space-4, 1rem) !important;
     border-bottom: 2px solid rgba(138, 127, 248, 0.3);
-    /* system accent purple */
     padding-bottom: 0.5rem;
-    position: relative;
-    color: #8a7ff8;
-    /* system accent purple */
 }
 
 .latex-content-wrapper h1::after {
@@ -157,8 +136,7 @@ body.light-mode .render-math-markdown .token-critical {
     left: 0;
     width: 0;
     height: 2px;
-    background: linear-gradient(90deg, #8a7ff8, #aea5ff);
-    /* system accent gradient */
+    background: linear-gradient(90deg, var(--accent-purple), var(--accent-purple-light));
     transition: width 0.6s ease;
 }
 
@@ -166,127 +144,51 @@ body.light-mode .render-math-markdown .token-critical {
     width: 100%;
 }
 
+/* Level 2 */
+.latex-content-wrapper .token-heading2,
 .latex-content-wrapper h2 {
-    font-size: 1.4em;
-    /* reduced from 1.8em */
-    color: #aea5ff;
-    /* lighter system accent */
+    color: #a094fa !important;
+    font-size: 1.4em !important;
+    margin-top: var(--space-6, 1.5rem) !important;
+    margin-bottom: var(--space-3, 0.75rem) !important;
 }
 
+/* Level 3 */
+.latex-content-wrapper .token-heading3,
 .latex-content-wrapper h3 {
-    font-size: 1.25em;
-    /* reduced from 1.5em */
-    color: #c2bfff;
-    /* even lighter system accent */
+    color: var(--accent-purple-lighter) !important;
+    font-size: 1.25em !important;
+    margin-top: var(--space-5, 1.25rem) !important;
+    margin-bottom: var(--space-3, 0.75rem) !important;
 }
 
+/* Level 4-6 */
 .latex-content-wrapper h4 {
     font-size: 1.15em;
-    /* reduced from 1.3em */
-    color: #d1cfff;
-    /* progressively lighter */
+    color: #d1cfff !important;
 }
 
 .latex-content-wrapper h5 {
     font-size: 1.1em;
-    /* reduced from 1.2em */
-    color: #e0deff;
-    /* very light system accent */
+    color: #e0deff !important;
 }
 
 .latex-content-wrapper h6 {
     font-size: 1.05em;
-    /* reduced from 1.1em */
-    color: #edeaff;
-    /* lightest system accent */
+    color: #edeaff !important;
 }
 
-.latex-content-wrapper em,
-.latex-content-wrapper i {
-    font-style: italic;
-    color: #8a7ff8;
-    /* system accent purple */
-}
 
-/* Bold text styling - reuse token-critical pattern */
-.latex-content-wrapper strong,
-.latex-content-wrapper b {
-    font-weight: 700;
-    color: #ffc269;
-    /* system accent gold */
-    text-shadow: 0 0 8px rgba(255, 194, 105, 0.3);
-}
-
-/* Quote and string styling - detect text in quotes */
-.latex-content-wrapper *:has-text('"'),
-.latex-content-wrapper *:has-text("'"),
-.latex-content-wrapper [data-quoted="true"],
-.latex-content-wrapper .quoted-text {
-    color: #8a7ff8;
-    /* system accent purple */
-    text-shadow: 0 0 12px rgba(138, 127, 248, 0.75);
-}
-
-/* Enhanced quote detection using CSS attribute selectors and pseudo-elements */
-.latex-content-wrapper [data-content*='"'],
-.latex-content-wrapper [data-content*="'"] {
-    color: #8a7ff8;
-    /* system accent purple */
-    text-shadow: 0 0 12px rgba(138, 127, 248, 0.75);
-}
-
-/* JavaScript will add .token-string class to detected quoted text */
-.latex-content-wrapper .token-string:not(code):not(pre) {
-    color: #8a7ff8;
-    text-shadow: 0 0 12px rgba(138, 127, 248, 0.75);
-}
-
-/*
- * To use these styles with quote detection, add this JavaScript to your component:
- * 
- * function applyQuoteDetection(element) {
- *     const textNodes = getTextNodes(element);
- *     textNodes.forEach(node => {
- *         const text = node.textContent;
- *         const quotedRegex = /(["'])((?:(?!\1)[^\\]|\\.)*)(\1)/g;
- *         if (quotedRegex.test(text)) {
- *             const newHTML = text.replace(quotedRegex, '<span class="token-string">$1$2$3</span>');
- *             const wrapper = document.createElement('span');
- *             wrapper.innerHTML = newHTML;
- *             node.parentNode.replaceChild(wrapper, node);
- *         }
- *     });
- * }
- * 
- * function getTextNodes(element) {
- *     const textNodes = [];
- *     const walker = document.createTreeWalker(
- *         element,
- *         NodeFilter.SHOW_TEXT,
- *         node => node.parentNode.tagName !== 'CODE' && node.parentNode.tagName !== 'PRE'
- *             ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
- *     );
- *     let node;
- *     while (node = walker.nextNode()) {
- *         textNodes.push(node);
- *     }
- *     return textNodes;
- * }
- */
+/* --- Block Elements --- */
 
 .latex-content-wrapper p {
     margin: 1.5rem 0;
     line-height: 1.9;
-    color: var(--text-color, #EAEBF5);
+    color: var(--text-primary);
     transition: all 0.3s ease;
-    position: relative;
 }
 
-.latex-content-wrapper p:hover {
-    color: inherit;
-    text-shadow: none;
-}
-
+/* Lists */
 .latex-content-wrapper ul,
 .latex-content-wrapper ol {
     margin: 1.5rem 0;
@@ -303,55 +205,38 @@ body.light-mode .render-math-markdown .token-critical {
     bottom: 0;
     width: 2px;
     background: linear-gradient(180deg, transparent, rgba(138, 127, 248, 0.3), transparent);
-    /* system accent purple */
     border-radius: 8px;
 }
 
 .latex-content-wrapper li {
     margin: 0.8rem 0;
     line-height: 1.7;
-    color: var(--text-color, #EAEBF5);
-    position: relative;
-    transition: all 0.2s ease;
+    color: var(--text-primary);
     padding-left: 0.5rem;
 }
 
-body.light-mode .latex-content-wrapper .token-string,
-body.light-mode .render-math-markdown .token-string {
-    color: #6b5bb8 !important;
-    text-shadow: 0 0 2px rgba(107, 91, 184, 0.3) !important;
-}
-
-.latex-content-wrapper li:hover {
-    color: inherit;
-}
-
 .latex-content-wrapper ul li::marker {
-    color: #8a7ff8;
-    /* system accent purple */
+    color: var(--accent-purple);
     font-size: 1.2em;
 }
 
 .latex-content-wrapper ol li::marker {
-    color: #aea5ff;
-    /* lighter system accent */
+    color: var(--accent-purple-light);
     font-weight: 600;
 }
 
+/* Blockquote */
 .latex-content-wrapper blockquote {
     margin: 2rem 0;
     padding: 1.5rem 2rem;
     position: relative;
     background: linear-gradient(135deg, rgba(138, 127, 248, 0.08), rgba(174, 165, 255, 0.05));
-    /* system accent purple */
     border: 1px solid rgba(138, 127, 248, 0.2);
     border-radius: 26px;
-    color: var(--text-color, #EAEBF5);
+    color: var(--text-primary);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    box-shadow:
-        0 4px 20px rgba(138, 127, 248, 0.1),
-        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 20px rgba(138, 127, 248, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1);
     transition: all 0.3s ease;
     overflow: hidden;
 }
@@ -363,8 +248,7 @@ body.light-mode .render-math-markdown .token-string {
     top: 0;
     bottom: 0;
     width: 4px;
-    background: linear-gradient(180deg, #8a7ff8, #aea5ff);
-    /* system accent gradient */
+    background: linear-gradient(180deg, var(--accent-purple), var(--accent-purple-light));
     border-radius: 0 2px 2px 0;
 }
 
@@ -376,81 +260,79 @@ body.light-mode .render-math-markdown .token-string {
     right: 0;
     height: 1px;
     background: linear-gradient(90deg, transparent, rgba(138, 127, 248, 0.3), transparent);
-    /* system accent purple */
 }
 
 .latex-content-wrapper blockquote:hover {
-    box-shadow:
-        0 8px 30px rgba(138, 127, 248, 0.15),
-        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    box-shadow: 0 8px 30px rgba(138, 127, 248, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.15);
     border-color: rgba(138, 127, 248, 0.3);
-    /* system accent purple */
 }
 
 .latex-content-wrapper blockquote p {
     margin: 0;
     font-style: italic;
-    position: relative;
     z-index: 1;
 }
 
-.latex-content-wrapper blockquote p:first-child::before {
-    content: '"';
-    font-size: 3em;
-    color: rgba(138, 127, 248, 0.15);
-    /* system accent purple - reduced opacity */
-    position: absolute;
-    left: -0.5em;
-    top: -0.2em;
-    line-height: 1;
-    font-family: serif;
-}
-
+.latex-content-wrapper blockquote p:first-child::before,
 .latex-content-wrapper blockquote p:last-child::after {
     content: '"';
     font-size: 3em;
     color: rgba(138, 127, 248, 0.15);
-    /* system accent purple - reduced opacity */
     position: absolute;
-    right: -0.2em;
-    bottom: -0.8em;
     line-height: 1;
     font-family: serif;
 }
 
-.latex-content-wrapper pre:not(.code-block-container *) {
+.latex-content-wrapper blockquote p:first-child::before {
+    left: -0.5em;
+    top: -0.2em;
+}
+
+.latex-content-wrapper blockquote p:last-child::after {
+    right: -0.2em;
+    bottom: -0.8em;
+}
+
+/* Tables */
+.latex-content-wrapper table {
+    border-collapse: collapse;
+    width: 100%;
     margin: 2rem 0;
-    padding: 1.5rem;
-    background: linear-gradient(135deg, rgba(15, 17, 32, 0.8), rgba(20, 22, 40, 0.6));
-    border: 1px solid var(--border-color, rgba(100, 110, 220, 0.2));
+    background: linear-gradient(135deg, rgba(15, 17, 32, 0.4), rgba(25, 27, 45, 0.2));
+    border: 1px solid rgba(138, 127, 248, 0.2);
     border-radius: 26px;
-    overflow-x: auto;
-    position: relative;
+    overflow: hidden;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    box-shadow:
-        0 4px 20px rgba(15, 17, 32, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    transition: all 0.3s ease;
+    box-shadow: 0 4px 20px rgba(15, 17, 32, 0.2);
 }
 
-.latex-content-wrapper pre::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(138, 127, 248, 0.3), transparent);
+.latex-content-wrapper th,
+.latex-content-wrapper td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(138, 127, 248, 0.1);
+    transition: all 0.2s ease;
 }
 
-.latex-content-wrapper pre:hover {
-    border-color: rgba(138, 127, 248, 0.3);
-    box-shadow:
-        0 6px 25px rgba(15, 17, 32, 0.4),
-        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+.latex-content-wrapper th {
+    background: rgba(138, 127, 248, 0.1);
+    color: var(--accent-purple);
+    font-weight: 600;
+    text-shadow: 0 0 8px rgba(138, 127, 248, 0.3);
 }
 
+.latex-content-wrapper tr:hover {
+    background: rgba(138, 127, 248, 0.05);
+}
+
+.latex-content-wrapper tr:hover td {
+    color: rgba(234, 235, 245, 0.95);
+}
+
+/* --- Code & Math --- */
+
+/* Inline Code */
 .latex-content-wrapper code {
     padding: 0.3rem 0.6rem;
     background: linear-gradient(135deg, rgba(255, 128, 128, 0.1), rgba(255, 128, 128, 0.05));
@@ -470,65 +352,41 @@ body.light-mode .render-math-markdown .token-string {
     text-shadow: 0 0 12px rgba(255, 128, 128, 0.4);
 }
 
-/* Premium Code Block Container - Theme Consistent Design */
+/* Standalone Pre (not code blocks) */
+.latex-content-wrapper pre:not(.code-block-container *) {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background: linear-gradient(135deg, rgba(15, 17, 32, 0.8), rgba(20, 22, 40, 0.6));
+    border: 1px solid var(--border-color, rgba(100, 110, 220, 0.2));
+    border-radius: 26px;
+    overflow-x: auto;
+    position: relative;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 4px 20px rgba(15, 17, 32, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.latex-content-wrapper pre::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(138, 127, 248, 0.3), transparent);
+}
+
+/* Code Block Containers */
 .code-block-container {
     margin: 1.5rem 0;
-    background: rgba(18, 18, 20, 0.6);
-    backdrop-filter: var(--card-blur-effect);
-    -webkit-backdrop-filter: var(--card-blur-effect);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-md);
-    box-shadow: var(--shadow-lg);
+    background: var(--bg-glass);
+    backdrop-filter: var(--card-blur-effect, blur(10px));
+    -webkit-backdrop-filter: var(--card-blur-effect, blur(10px));
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1));
     overflow: hidden;
     position: relative;
-}
-
-.code-block-container pre {
-    background: transparent !important;
-}
-
-.code-block-container .hljs {
-    background: transparent !important;
-}
-
-/* Light mode code block container theme */
-body.light-mode .code-block-container {
-    background: #f6f8fa;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
-}
-
-body.light-mode .code-block-container pre {
-    background: transparent !important;
-}
-
-/* Light mode uses github light theme - imported dynamically via JS */
-
-body.light-mode .code-block-container .code-block-header {
-    background: #f6f8fa !important;
-    border-bottom: none !important;
-    border: none !important;
-}
-
-body.light-mode .code-block-container .code-block-content,
-body.light-mode .code-block-container .code-block-content pre,
-body.light-mode .code-block-container .code-block-content code,
-body.light-mode .code-block-container .code-block-content .hljs,
-body.light-mode .code-block-container .code-block-content pre.hljs {
-    background: #f6f8fa !important;
-    background-color: #f6f8fa !important;
-    border: none !important;
-    box-shadow: none !important;
-}
-
-body.light-mode .code-block-container .code-block-content code:hover {
-    background: #f6f8fa !important;
-    background-color: #f6f8fa !important;
-}
-
-body.light-mode .code-block-container::before {
-    background: none !important;
-    display: none !important;
 }
 
 .code-block-container::before {
@@ -542,30 +400,12 @@ body.light-mode .code-block-container::before {
     pointer-events: none;
 }
 
-
-.code-block-container.collapsed {
-    background: var(--sub-panel-bg-color);
-    backdrop-filter: blur(15px);
-    -webkit-backdrop-filter: blur(15px);
-    box-shadow: var(--shadow-sm);
-}
-
-.code-block-container.collapsed .code-block-header {
-    border-bottom: none !important;
-    background: transparent;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    border-radius: var(--border-radius-lg, 18px);
-}
-
 .code-block-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
     background: transparent;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
     cursor: pointer;
     min-height: 48px;
     border-bottom: 1px solid transparent;
@@ -582,41 +422,20 @@ body.light-mode .code-block-container::before {
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
 }
 
-/* Intentionally no hover style for .code-block-header to keep tone stable */
-
-.code-block-container.expanded .code-block-header {
-    border-bottom: 1px solid transparent;
-    border-radius: var(--border-radius-md) var(--border-radius-md) 0 0;
-}
-
-.code-block-container.collapsed .code-block-header {
-    border-bottom: none !important;
-    background: transparent;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    border-radius: var(--border-radius-md);
-}
-
 .code-block-title {
     font-size: 13px;
     font-weight: 500;
-    color: var(--text-secondary-color);
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    letter-spacing: 0.5px;
+    color: var(--text-secondary-color, #a1a1aa);
     text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .code-copy-icon {
     background: transparent;
     border: none;
-    color: var(--text-secondary-color);
+    color: var(--text-secondary-color, #a1a1aa);
     cursor: pointer;
     padding: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     border-radius: 16px;
     transition: all 0.2s ease;
     opacity: 0.8;
@@ -624,43 +443,19 @@ body.light-mode .code-block-container::before {
 
 .code-copy-icon:hover {
     opacity: 1;
-    background: rgba(var(--border-color-rgb), 0.15);
-    color: var(--text-color);
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-color, #fff);
     transform: scale(1.05);
-}
-
-.code-copy-icon:active {
-    transform: scale(0.95);
-}
-
-.code-copy-icon svg {
-    width: 18px;
-    height: 18px;
 }
 
 .code-block-content {
     margin: 0 !important;
-    border-radius: 0 !important;
-    border: none !important;
+    padding: 0 !important;
     background: transparent !important;
-    overflow: hidden;
     transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
-
-/* Override generic pre styles for code blocks */
-.code-block-container .latex-content-wrapper pre,
-.code-block-content pre {
-    margin: 0 !important;
-    background: transparent !important;
-    border: none !important;
-    border-radius: 0 !important;
-    padding: 0 !important;
-    box-shadow: none !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-}
-
+/* Overrides for code content */
 .code-block-content code {
     display: block;
     padding: 20px !important;
@@ -670,15 +465,37 @@ body.light-mode .code-block-container::before {
     font-family: 'SF Pro Rounded Medium', sans-serif !important;
     font-size: 20px !important;
     line-height: 1.7 !important;
-    color: var(--text-color) !important;
+    color: var(--text-color, #EAEBF5) !important;
     white-space: pre-wrap !important;
     word-wrap: break-word !important;
-    overflow-wrap: break-word !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
     font-weight: 400 !important;
 }
 
+.code-block-content pre {
+    margin: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+}
 
-/* KaTeX math rendering styles */
+/* Expansion States */
+.code-block-container.expanded .code-block-header {
+    border-bottom: 1px solid transparent;
+    border-radius: 12px 12px 0 0;
+}
+
+.code-block-container.collapsed {
+    box-shadow: var(--shadow-sm);
+}
+
+.code-block-container.collapsed .code-block-content {
+    display: none;
+}
+
+/* KaTeX Math */
 .katex {
     font-size: 1.1em !important;
 }
@@ -688,9 +505,8 @@ body.light-mode .code-block-container::before {
     text-align: center;
 }
 
-/* Ensure proper spacing for math elements */
 .latex-content-wrapper .katex {
-    color: var(--text-color, #EAEBF5) !important;
+    color: var(--text-primary) !important;
 }
 
 .latex-content-wrapper .katex-display {
@@ -700,9 +516,7 @@ body.light-mode .code-block-container::before {
     border: 1px solid rgba(138, 127, 248, 0.2);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    box-shadow:
-        0 4px 20px rgba(15, 17, 32, 0.2),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    box-shadow: 0 4px 20px rgba(15, 17, 32, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05);
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
@@ -720,12 +534,10 @@ body.light-mode .code-block-container::before {
 
 .latex-content-wrapper .katex-display:hover {
     border-color: rgba(138, 127, 248, 0.3);
-    box-shadow:
-        0 6px 25px rgba(15, 17, 32, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    box-shadow: 0 6px 25px rgba(15, 17, 32, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-/* Enhanced scrollbar styling */
+/* Scrollbars */
 .latex-content-wrapper::-webkit-scrollbar,
 .latex-content-wrapper *::-webkit-scrollbar {
     width: 8px;
@@ -741,130 +553,62 @@ body.light-mode .code-block-container::before {
 .latex-content-wrapper::-webkit-scrollbar-thumb,
 .latex-content-wrapper *::-webkit-scrollbar-thumb {
     background: linear-gradient(135deg, rgba(138, 127, 248, 0.3), rgba(174, 165, 255, 0.3));
-    /* system accent gradient */
     border-radius: 12px;
     transition: background 0.3s ease;
 }
 
-.latex-content-wrapper::-webkit-scrollbar-thumb:hover,
-.latex-content-wrapper *::-webkit-scrollbar-thumb:hover {
+.latex-content-wrapper::-webkit-scrollbar-thumb:hover {
     background: linear-gradient(135deg, rgba(138, 127, 248, 0.5), rgba(174, 165, 255, 0.5));
-    /* system accent gradient */
 }
 
-/* Additional animations for content elements */
-@keyframes subtleGlow {
-
-    0%,
-    100% {
-        text-shadow: 0 0 8px rgba(138, 127, 248, 0.2);
-        /* system accent purple */
-    }
-
-    50% {
-        text-shadow: 0 0 12px rgba(138, 127, 248, 0.4);
-        /* system accent purple */
-    }
-}
-
-@keyframes floatUp {
-    0% {
-        transform: translateY(0px);
-    }
-
-    50% {
-        transform: translateY(-2px);
-    }
-
-    100% {
-        transform: translateY(0px);
-    }
-}
-
-/* Removed subtle pulsing effect */
-
-/* Enhanced focus states */
+/* Focus */
 .latex-content-wrapper *:focus {
     outline: 2px solid rgba(138, 127, 248, 0.5);
-    /* system accent purple */
     outline-offset: 2px;
     border-radius: 12px;
 }
 
-/* Beautiful link styling */
-.latex-content-wrapper a {
-    color: #8a7ff8;
-    /* system accent purple */
-    text-decoration: none;
-    position: relative;
-    transition: all 0.3s ease;
-    border-bottom: 1px solid transparent;
+/* --- Light Mode Overrides --- */
+
+body.light-mode .latex-content-wrapper strong,
+body.light-mode .render-math-markdown strong,
+body.light-mode .latex-content-wrapper b {
+    color: #3a3a3a !important;
+    text-shadow: none !important;
 }
 
-.latex-content-wrapper a:hover {
-    color: #aea5ff;
-    /* lighter system accent */
-    text-shadow: 0 0 8px rgba(138, 127, 248, 0.5);
-    border-bottom-color: rgba(138, 127, 248, 0.5);
+body.light-mode .latex-content-wrapper .token-critical {
+    color: #d48b2c !important;
+    text-shadow: none !important;
 }
 
-.latex-content-wrapper a::after {
-    content: '';
-    position: absolute;
-    width: 0;
-    height: 1px;
-    bottom: -1px;
-    left: 0;
-    background: linear-gradient(90deg, #8a7ff8, #aea5ff);
-    /* system accent gradient */
-    transition: width 0.3s ease;
+body.light-mode .latex-content-wrapper .token-string {
+    color: #6b5bb8 !important;
+    text-shadow: 0 0 2px rgba(107, 91, 184, 0.3) !important;
 }
 
-.latex-content-wrapper a:hover::after {
-    width: 100%;
+body.light-mode .latex-content-wrapper h1 {
+    color: #6b5bb8 !important;
+    text-shadow: none !important;
+    border-bottom-color: rgba(107, 91, 184, 0.2);
 }
 
-/* Table styling enhancements */
-.latex-content-wrapper table {
-    border-collapse: collapse;
-    width: 100%;
-    margin: 2rem 0;
-    background: linear-gradient(135deg, rgba(15, 17, 32, 0.4), rgba(25, 27, 45, 0.2));
-    border: 1px solid rgba(138, 127, 248, 0.2);
-    /* system accent purple */
-    border-radius: 26px;
-    overflow: hidden;
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    box-shadow: 0 4px 20px rgba(15, 17, 32, 0.2);
+body.light-mode .latex-content-wrapper h2 {
+    color: #7d6dc5 !important;
+    text-shadow: none !important;
 }
 
-.latex-content-wrapper th,
-.latex-content-wrapper td {
-    padding: 1rem;
-    text-align: left;
-    border-bottom: 1px solid rgba(138, 127, 248, 0.1);
-    transition: all 0.2s ease;
+body.light-mode .latex-content-wrapper h3 {
+    color: #8f7fd2 !important;
+    text-shadow: none !important;
 }
 
-.latex-content-wrapper th {
-    background: rgba(138, 127, 248, 0.1);
-    /* system accent purple */
-    color: #8a7ff8;
-    font-weight: 600;
-    text-shadow: 0 0 8px rgba(138, 127, 248, 0.3);
+body.light-mode .latex-content-wrapper h1::after,
+body.light-mode .latex-content-wrapper h2::after,
+body.light-mode .latex-content-wrapper h3::after {
+    background: linear-gradient(90deg, #6b5bb8, rgba(107, 91, 184, 0.1));
 }
 
-.latex-content-wrapper tr:hover {
-    background: rgba(138, 127, 248, 0.05);
-    /* system accent purple */
-}
-
-.latex-content-wrapper tr:hover td {
-    color: rgba(234, 235, 245, 0.95);
-}
-
-/* Light mode overrides - Anthropic-inspired minimal aesthetic */
 body.light-mode .latex-content-wrapper blockquote {
     background: linear-gradient(135deg, rgba(157, 141, 184, 0.03), rgba(157, 141, 184, 0.01));
     border: 1px solid rgba(0, 0, 0, 0.06);
@@ -874,15 +618,6 @@ body.light-mode .latex-content-wrapper blockquote {
 
 body.light-mode .latex-content-wrapper blockquote::before {
     background: linear-gradient(180deg, #9d8db8, #b5a8ca);
-}
-
-body.light-mode .latex-content-wrapper blockquote::after {
-    background: linear-gradient(90deg, transparent, rgba(157, 141, 184, 0.12), transparent);
-}
-
-body.light-mode .latex-content-wrapper blockquote:hover {
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.7);
-    border-color: rgba(157, 141, 184, 0.12);
 }
 
 body.light-mode .latex-content-wrapper blockquote p:first-child::before,
@@ -897,60 +632,11 @@ body.light-mode .latex-content-wrapper pre:not(.code-block-container *) {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
-body.light-mode .latex-content-wrapper pre::before {
-    background: linear-gradient(90deg, transparent, rgba(157, 141, 184, 0.12), transparent);
-}
-
-body.light-mode .latex-content-wrapper pre:hover {
-    border-color: rgba(157, 141, 184, 0.12);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.7);
-}
-
 body.light-mode .latex-content-wrapper code {
     background: rgba(0, 0, 0, 0.04) !important;
     color: inherit !important;
     border: 1px solid rgba(0, 0, 0, 0.08) !important;
     text-shadow: none !important;
-}
-
-body.light-mode .latex-content-wrapper code:hover {
-    background: rgba(0, 0, 0, 0.06) !important;
-    border-color: rgba(0, 0, 0, 0.12) !important;
-}
-
-body.light-mode .latex-content-wrapper h1,
-body.light-mode .render-math-markdown h1 {
-    color: #6b5bb8 !important;
-    text-shadow: none !important;
-    border-bottom-color: rgba(107, 91, 184, 0.2);
-}
-
-body.light-mode .latex-content-wrapper h2,
-body.light-mode .render-math-markdown h2 {
-    color: #7d6dc5 !important;
-    text-shadow: none !important;
-}
-
-body.light-mode .latex-content-wrapper h3,
-body.light-mode .render-math-markdown h3 {
-    color: #8f7fd2 !important;
-    text-shadow: none !important;
-}
-
-body.light-mode .latex-content-wrapper h1::after,
-body.light-mode .latex-content-wrapper h2::after,
-body.light-mode .latex-content-wrapper h3::after {
-    background: linear-gradient(90deg, #6b5bb8, rgba(107, 91, 184, 0.1));
-}
-
-body.light-mode .latex-content-wrapper ol li::before,
-body.light-mode .latex-content-wrapper ul li::before {
-    background: linear-gradient(180deg, rgba(157, 141, 184, 0.12), transparent);
-}
-
-body.light-mode .latex-content-wrapper ol li::marker,
-body.light-mode .latex-content-wrapper ul li::marker {
-    color: #9d8db8;
 }
 
 body.light-mode .latex-content-wrapper table {
@@ -959,21 +645,64 @@ body.light-mode .latex-content-wrapper table {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
-body.light-mode .latex-content-wrapper th,
-body.light-mode .latex-content-wrapper td {
-    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-}
-
 body.light-mode .latex-content-wrapper th {
     background: rgba(157, 141, 184, 0.05);
     color: #8273a5;
     text-shadow: none;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 
-body.light-mode .latex-content-wrapper tr:hover {
-    background: rgba(157, 141, 184, 0.02);
+body.light-mode .latex-content-wrapper td {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 
-body.light-mode .latex-content-wrapper tr:hover td {
-    color: inherit;
+/* Light Mode Code Blocks */
+body.light-mode .code-block-container {
+    background: #f6f8fa;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+body.light-mode .code-block-container .code-block-header {
+    background: #f6f8fa !important;
+    border: none !important;
+}
+
+body.light-mode .code-block-content code,
+body.light-mode .code-block-content code:hover {
+    background: #f6f8fa !important;
+    color: #24292e !important;
+}
+
+body.light-mode .code-block-container::before {
+    display: none !important;
+}
+
+/* --- Light Mode Text Visibility Overrides --- */
+
+body.light-mode .latex-content-wrapper,
+body.light-mode .render-math-markdown .latex-content-wrapper {
+    color: #3a3a3a !important;
+}
+
+body.light-mode .latex-content-wrapper p,
+body.light-mode .latex-content-wrapper li {
+    color: #3a3a3a !important;
+}
+
+body.light-mode .latex-content-wrapper .katex {
+    color: #3a3a3a !important;
+}
+
+body.light-mode .latex-content-wrapper a {
+    color: #6b5bb8;
+}
+
+body.light-mode .latex-content-wrapper a:hover {
+    color: #5b4ba8;
+    border-bottom-color: rgba(107, 91, 184, 0.5);
+}
+
+body.light-mode .latex-content-wrapper a::after {
+    background: linear-gradient(90deg, #6b5bb8, rgba(107, 91, 184, 0.5));
 }

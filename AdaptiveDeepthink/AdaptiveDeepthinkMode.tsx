@@ -21,13 +21,14 @@ import {
 } from './AdaptiveDeepthinkCore';
 import { CustomizablePromptsAdaptiveDeepthink } from './AdaptiveDeepthinkPrompt';
 import { AgentExecutionContext } from '../Deepthink/DeepthinkAgents';
-import { 
-    callAI, 
-    getSelectedModel, 
-    getSelectedTemperature, 
+import {
+    callAI,
+    getSelectedModel,
+    getSelectedTemperature,
     getSelectedTopP
 } from '../Routing';
-import { updateControlsState } from '../index';
+import { updateControlsState } from '../UI/Controls';
+import { globalState } from '../Core/State';
 import type {
     DeepthinkPipelineState,
     DeepthinkMainStrategyData,
@@ -49,12 +50,12 @@ const rootMap = new WeakMap<HTMLElement, any>();
 // Retry configuration
 const MAX_RETRIES = 3;
 const INITIAL_DELAY_MS = 20000;
-const BACKOFF_FACTOR = 4;
+const BACKOFF_FACTOR = 2;
 
 // Global state for Adaptive Deepthink mode
 let activeAdaptiveDeepthinkState: AdaptiveDeepthinkUIState | null = null;
 let adaptiveDeepthinkUIRoot: any = null;
-let isAdaptiveDeepthinkRunning = false;
+// isAdaptiveDeepthinkRunning is now in globalState
 let abortController: AbortController | null = null;
 
 // UI State that wraps the core state with display-friendly structure
@@ -143,12 +144,12 @@ interface ResponseSegment {
 // Note: narrative is already cleaned by the backend parser
 function parseIntoSegments(narrative: string, toolCalls: AdaptiveDeepthinkToolCall[]): ResponseSegment[] {
     const segments: ResponseSegment[] = [];
-    
+
     // Add narrative as text segment if not empty
     if (narrative && narrative.trim()) {
         segments.push({ kind: 'text', text: narrative.trim() });
     }
-    
+
     // Add tool call as a segment (only first tool call, as per orchestrator rules)
     if (toolCalls.length > 0) {
         segments.push({
@@ -159,7 +160,7 @@ function parseIntoSegments(narrative: string, toolCalls: AdaptiveDeepthinkToolCa
             }
         });
     }
-    
+
     return segments;
 }
 
@@ -172,7 +173,7 @@ const DeepthinkEmbeddedPanel: React.FC<{ state: AdaptiveDeepthinkUIState }> = ({
 
     const pipelineState = state.deepthinkPipelineState;
     const currentTab = state.navigationState.currentTab;
-    
+
     // Force update when state changes externally
     React.useEffect(() => {
         setUpdateTrigger(prev => prev + 1);
@@ -230,10 +231,10 @@ const DeepthinkEmbeddedPanel: React.FC<{ state: AdaptiveDeepthinkUIState }> = ({
             }
         });
         tabsRef.current!.appendChild(sidebarButton);
-        
+
         tabs.forEach(tab => {
             const tabButton = document.createElement('button');
-            
+
             // Determine status class based on pipeline state (REAL logic from Deepthink)
             let statusClass = '';
             if (tab.id === 'strategic-solver' && pipelineState.initialStrategies.length > 0) {
@@ -265,47 +266,42 @@ const DeepthinkEmbeddedPanel: React.FC<{ state: AdaptiveDeepthinkUIState }> = ({
                     statusClass = 'status-deepthink-processing';
                 }
             }
-            
+
             tabButton.className = `tab-button deepthink-mode-tab ${pipelineState.activeTabId === tab.id ? 'active' : ''} ${statusClass} ${tab.hasPinkGlow ? 'red-team-pink-glow' : ''} ${tab.alignRight ? 'align-right' : ''}`;
             tabButton.innerHTML = `<span class="material-symbols-outlined">${tab.icon}</span>${tab.label}`;
             tabButton.dataset.tab = tab.id;
-            
+
             // Allow user to click tabs
             tabButton.addEventListener('click', () => {
                 state.navigationState.currentTab = tab.id;
                 state.deepthinkPipelineState.activeTabId = tab.id;
                 setUpdateTrigger(prev => prev + 1);
             });
-            
+
             tabsRef.current!.appendChild(tabButton);
         });
 
-        // Render content using REAL Deepthink functions
-        const contentDiv = document.createElement('div');
-        contentDiv.className = 'tab-content deepthink-tab-content';
-        
+        // Render content directly without wrapper using REAL Deepthink functions
         switch (currentTab) {
             case 'strategic-solver':
-                contentDiv.innerHTML = renderStrategicSolverContent(pipelineState);
+                containerRef.current.innerHTML = renderStrategicSolverContent(pipelineState);
                 break;
             case 'hypothesis-explorer':
-                contentDiv.innerHTML = renderHypothesisExplorerContent(pipelineState);
+                containerRef.current.innerHTML = renderHypothesisExplorerContent(pipelineState);
                 break;
             case 'dissected-observations':
-                contentDiv.innerHTML = renderDissectedObservationsContent(pipelineState);
+                containerRef.current.innerHTML = renderDissectedObservationsContent(pipelineState);
                 break;
             case 'red-team':
-                contentDiv.innerHTML = renderRedTeamContent(pipelineState);
+                containerRef.current.innerHTML = renderRedTeamContent(pipelineState);
                 break;
             case 'final-result':
-                contentDiv.innerHTML = renderFinalResultContent(pipelineState);
+                containerRef.current.innerHTML = renderFinalResultContent(pipelineState);
                 break;
         }
 
-        containerRef.current.appendChild(contentDiv);
-
         // Attach event handlers for interactive elements
-        attachEmbeddedDeepthinkEventHandlers(contentDiv, pipelineState);
+        attachEmbeddedDeepthinkEventHandlers(containerRef.current, pipelineState);
     }, [
         updateTrigger,
         pipelineState.initialStrategies.length,
@@ -367,15 +363,15 @@ function attachEmbeddedDeepthinkEventHandlers(container: HTMLElement, pipelineSt
         button.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            
+
             const strategyIndex = parseInt((button as HTMLElement).getAttribute('data-strategy-index') || '0');
             pipelineState.activeStrategyTab = strategyIndex;
-            
+
             // Update active state
             subTabButtons.forEach((btn, idx) => {
                 btn.classList.toggle('active', idx === strategyIndex);
             });
-            
+
             // Re-render the content
             if (activeAdaptiveDeepthinkState) {
                 updateAdaptiveDeepthinkUI(
@@ -386,19 +382,19 @@ function attachEmbeddedDeepthinkEventHandlers(container: HTMLElement, pipelineSt
             }
         });
     });
-    
+
     // Handle show more/less buttons
     const showMoreButtons = container.querySelectorAll('.show-more-btn');
     showMoreButtons.forEach((button) => {
         button.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            
+
             const btn = button as HTMLElement;
             const targetType = btn.getAttribute('data-target');
             let textDiv: HTMLElement | null = null;
             let textContainer: HTMLElement | null = null;
-            
+
             // Find the correct text div based on target type
             if (targetType === 'sub-strategy') {
                 textContainer = btn.closest('.sub-strategy-content-wrapper');
@@ -410,7 +406,7 @@ function attachEmbeddedDeepthinkEventHandlers(container: HTMLElement, pipelineSt
                 textContainer = btn.closest('.strategy-text-container');
                 textDiv = textContainer?.querySelector('.strategy-text') as HTMLElement;
             }
-            
+
             if (textDiv && textContainer) {
                 const fullText = textDiv.getAttribute('data-full-text');
                 if (fullText) {
@@ -418,11 +414,11 @@ function attachEmbeddedDeepthinkEventHandlers(container: HTMLElement, pipelineSt
                     if (targetType === 'sub-strategy' || targetType === 'hypothesis') {
                         truncateLength = 150;
                     }
-                    
+
                     if (btn.textContent === 'Show More') {
                         textDiv.innerHTML = renderMathContent(fullText);
                         btn.textContent = 'Show Less';
-                        
+
                         // For sub-strategies, expand the container
                         if (targetType === 'sub-strategy') {
                             const subTextContainer = textContainer.querySelector('.sub-strategy-text-container') as HTMLElement;
@@ -434,7 +430,7 @@ function attachEmbeddedDeepthinkEventHandlers(container: HTMLElement, pipelineSt
                                 card.classList.add('expanded');
                             }
                         }
-                        
+
                         // For hypotheses, expand the container
                         if (targetType === 'hypothesis') {
                             const hypothesisCard = btn.closest('.hypothesis-card') as HTMLElement;
@@ -442,7 +438,7 @@ function attachEmbeddedDeepthinkEventHandlers(container: HTMLElement, pipelineSt
                                 hypothesisCard.classList.add('expanded');
                             }
                         }
-                        
+
                         // For strategies, expand container
                         if (targetType === 'strategy') {
                             const strategyContent = textContainer.querySelector('.strategy-content') as HTMLElement;
@@ -455,7 +451,7 @@ function attachEmbeddedDeepthinkEventHandlers(container: HTMLElement, pipelineSt
                         const truncatedText = fullText.substring(0, truncateLength) + '...';
                         textDiv.innerHTML = renderMathContent(truncatedText);
                         btn.textContent = 'Show More';
-                        
+
                         // Collapse containers
                         if (targetType === 'sub-strategy') {
                             const subTextContainer = textContainer.querySelector('.sub-strategy-text-container') as HTMLElement;
@@ -467,14 +463,14 @@ function attachEmbeddedDeepthinkEventHandlers(container: HTMLElement, pipelineSt
                                 card.classList.remove('expanded');
                             }
                         }
-                        
+
                         if (targetType === 'hypothesis') {
                             const hypothesisCard = btn.closest('.hypothesis-card') as HTMLElement;
                             if (hypothesisCard) {
                                 hypothesisCard.classList.remove('expanded');
                             }
                         }
-                        
+
                         if (targetType === 'strategy') {
                             const strategyContent = textContainer.querySelector('.strategy-content') as HTMLElement;
                             if (strategyContent) {
@@ -523,7 +519,7 @@ export function renderAdaptiveDeepthinkUI(container: HTMLElement, state: Adaptiv
         root = ReactDOM.createRoot(container);
         rootMap.set(container, root);
     }
-    
+
     root.render(<AdaptiveDeepthinkUI state={state} onStop={onStop} />);
     return root;
 }
@@ -553,11 +549,14 @@ function createInitialDeepthinkPipelineState(question: string): DeepthinkPipelin
         challenge: question,
         status: 'processing',
         activeTabId: 'strategic-solver',
+        challengeText: '',
         activeStrategyTab: 0,
         initialStrategies: [],
         hypotheses: [],
         solutionCritiques: [],
         redTeamAgents: [],
+        postQualityFilterAgents: [],
+        structuredSolutionPoolAgents: [],
         strategicSolverComplete: false,
         hypothesisExplorerComplete: false,
         redTeamComplete: false,
@@ -582,7 +581,7 @@ function parseToolResultAndUpdateState(toolCall: AdaptiveDeepthinkToolCall, tool
         case 'GenerateStrategies': {
             // Clear existing strategies to prevent duplication if agent calls this tool twice
             state.initialStrategies = [];
-            
+
             // Parse strategies from tool result
             const strategyMatches = toolResult.matchAll(/<Strategy ID: (strategy-\d+-\d+)>\s*([\s\S]*?)\s*<\/Strategy ID: \1>/g);
             let idx = 0;
@@ -606,7 +605,7 @@ function parseToolResultAndUpdateState(toolCall: AdaptiveDeepthinkToolCall, tool
         case 'GenerateHypotheses': {
             // Clear existing hypotheses to prevent duplication if agent calls this tool twice
             state.hypotheses = [];
-            
+
             // Parse hypotheses from tool result
             const hypothesisMatches = toolResult.matchAll(/<Hypothesis ID: (hypothesis-\d+-\d+)>\s*([\s\S]*?)\s*<\/Hypothesis ID: \1>/g);
             for (const match of hypothesisMatches) {
@@ -637,7 +636,7 @@ function parseToolResultAndUpdateState(toolCall: AdaptiveDeepthinkToolCall, tool
                     hypothesis.testerStatus = 'completed';
                 }
             }
-            
+
             // Build knowledge packet
             if (state.hypotheses.length > 0) {
                 let knowledgePacket = '<Full Information Packet>\n\n';
@@ -661,13 +660,13 @@ function parseToolResultAndUpdateState(toolCall: AdaptiveDeepthinkToolCall, tool
                     sub.refinedSolution = undefined;
                 });
             });
-            
+
             // Parse strategy executions
             const executionMatches = toolResult.matchAll(/<Execution ID: (execution-strategy-\d+-\d+)>\s*([\s\S]*?)\s*<\/Execution ID: \1>/g);
             for (const match of executionMatches) {
                 const executionId = match[1];
                 const execution = match[2].trim();
-                
+
                 // Find the corresponding strategy and add as sub-strategy with solution
                 const strategyIdMatch = executionId.match(/execution-(strategy-\d+-\d+)/);
                 if (strategyIdMatch) {
@@ -701,7 +700,7 @@ function parseToolResultAndUpdateState(toolCall: AdaptiveDeepthinkToolCall, tool
                 state.dissectedObservationsSynthesis = critiqueContent;
                 state.dissectedSynthesisStatus = 'completed';
                 state.solutionCritiquesStatus = 'completed';
-                
+
                 // Clear and rebuild critique cards to prevent duplication
                 state.solutionCritiques = [];
                 state.initialStrategies.forEach((strategy) => {
@@ -730,13 +729,13 @@ function parseToolResultAndUpdateState(toolCall: AdaptiveDeepthinkToolCall, tool
                     sub.selfImprovementStatus = undefined;
                 });
             });
-            
+
             // Parse corrected solutions
             const correctedMatches = toolResult.matchAll(/<(execution-strategy-\d+-\d+):Corrected>\s*([\s\S]*?)\s*<\/\1:Corrected>/g);
             for (const match of correctedMatches) {
                 const executionId = match[1];
                 const correctedSolution = match[2].trim();
-                
+
                 // Find corresponding sub-strategy
                 const strategyIdMatch = executionId.match(/execution-(strategy-\d+-\d+)/);
                 if (strategyIdMatch) {
@@ -756,7 +755,7 @@ function parseToolResultAndUpdateState(toolCall: AdaptiveDeepthinkToolCall, tool
             const solutionMatch = toolResult.match(/<Best Solution Selected>\s*([\s\S]*?)\s*<\/Best Solution Selected>/);
             if (solutionMatch) {
                 let selectedText = solutionMatch[1].trim();
-                
+
                 // Remove any remaining XML-like tags or metadata that might be in the solution
                 // Keep only the actual solution reasoning and answer
                 selectedText = selectedText.replace(/<Solution \d+ ID:.*?>/g, '');
@@ -764,12 +763,12 @@ function parseToolResultAndUpdateState(toolCall: AdaptiveDeepthinkToolCall, tool
                 selectedText = selectedText.replace(/Strategy:.*?\n\n/g, '');
                 selectedText = selectedText.replace(/Corrected Solution:/g, '');
                 selectedText = selectedText.trim();
-                
+
                 state.finalJudgedBestSolution = selectedText;
                 state.finalJudgingStatus = 'completed';
                 state.finalJudgingResponseText = selectedText;
                 state.status = 'completed';
-                
+
                 // Try to identify which strategy was selected
                 const strategyIdMatch = toolResult.match(/strategy-(\d+-\d+)/);
                 if (strategyIdMatch) {
@@ -803,7 +802,7 @@ export function renderAdaptiveDeepthinkMode() {
     container.style.height = '100%';
     container.style.overflow = 'hidden'; // Override default auto
     container.style.padding = '0'; // Remove padding for full height
-    
+
     // Create container
     const adaptiveDeepthinkContainer = document.createElement('div');
     adaptiveDeepthinkContainer.id = 'adaptive-deepthink-container';
@@ -842,7 +841,7 @@ export async function startAdaptiveDeepthinkProcess(
     imageBase64?: string | null,
     imageMimeType?: string | null
 ) {
-    if (!question || isAdaptiveDeepthinkRunning) return;
+    if (!question || globalState.isAdaptiveDeepthinkRunning) return;
 
     // Create state
     const coreState: AdaptiveDeepthinkState = {
@@ -875,7 +874,7 @@ export async function startAdaptiveDeepthinkProcess(
         }
     };
 
-    isAdaptiveDeepthinkRunning = true;
+    globalState.isAdaptiveDeepthinkRunning = true;
     updateControlsState();
     abortController = new AbortController();
 
@@ -892,7 +891,7 @@ async function runAdaptiveDeepthinkLoop(
     imageBase64?: string | null,
     imageMimeType?: string | null
 ) {
-    if (!activeAdaptiveDeepthinkState || !isAdaptiveDeepthinkRunning) return;
+    if (!activeAdaptiveDeepthinkState || !globalState.isAdaptiveDeepthinkRunning) return;
 
     const flushUI = async () => {
         await forceAdaptiveDeepthinkUIRender();
@@ -931,7 +930,7 @@ async function runAdaptiveDeepthinkLoop(
         getSelectedTopP
     };
 
-    while (isAdaptiveDeepthinkRunning && !activeAdaptiveDeepthinkState.isComplete) {
+    while (globalState.isAdaptiveDeepthinkRunning && !activeAdaptiveDeepthinkState.isComplete) {
         try {
             activeAdaptiveDeepthinkState.isProcessing = true;
             updateAdaptiveDeepthinkUI(
@@ -1113,7 +1112,7 @@ async function runAdaptiveDeepthinkLoop(
 
             // Parse tool result and update Deepthink state IMMEDIATELY
             parseToolResultAndUpdateState(toolCall, toolResult);
-            
+
             // Force UI update RIGHT NOW
             updateAdaptiveDeepthinkUI(
                 adaptiveDeepthinkUIRoot,
@@ -1143,7 +1142,7 @@ async function runAdaptiveDeepthinkLoop(
             await activeAdaptiveDeepthinkState.conversationManager.addSystemMessage(toolResult);
 
             activeAdaptiveDeepthinkState.isProcessing = false;
-            
+
             // Update UI with tool result
             updateAdaptiveDeepthinkUI(
                 adaptiveDeepthinkUIRoot,
@@ -1181,13 +1180,13 @@ async function runAdaptiveDeepthinkLoop(
         if (abortController?.signal.aborted) break;
     }
 
-    isAdaptiveDeepthinkRunning = false;
+    globalState.isAdaptiveDeepthinkRunning = false;
     updateControlsState();
 }
 
 // Stop process
 export function stopAdaptiveDeepthinkProcess() {
-    isAdaptiveDeepthinkRunning = false;
+    globalState.isAdaptiveDeepthinkRunning = false;
     if (abortController) {
         abortController.abort();
         abortController = null;
@@ -1210,14 +1209,14 @@ export function cleanupAdaptiveDeepthinkMode() {
     stopAdaptiveDeepthinkProcess();
     activeAdaptiveDeepthinkState = null;
     adaptiveDeepthinkUIRoot = null;
-    
+
     // Cleanup the mutation observer
     const observer = (window as any).__adaptiveDeepthinkTabsObserver;
     if (observer) {
         observer.disconnect();
         (window as any).__adaptiveDeepthinkTabsObserver = null;
     }
-    
+
     // Show tabs container again
     const tabsContainer = document.getElementById('tabs-nav-container');
     if (tabsContainer) {
@@ -1236,7 +1235,7 @@ export function setAdaptiveDeepthinkStateForImport(state: AdaptiveDeepthinkUISta
         // Reset processing flags
         state.isProcessing = false;
         activeAdaptiveDeepthinkState = state;
-        isAdaptiveDeepthinkRunning = false;
+        globalState.isAdaptiveDeepthinkRunning = false;
         adaptiveDeepthinkUIRoot = null;
     } else {
         activeAdaptiveDeepthinkState = null;

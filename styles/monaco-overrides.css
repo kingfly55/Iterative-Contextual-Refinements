@@ -1,0 +1,132 @@
+/* Monaco editor - Override all red CSS variables with system theme colors */
+.monaco-editor,
+.monaco-diff-editor,
+.monaco-component {
+    /* Scrollbar - Purple theme */
+    --vscode-scrollbar-shadow: rgba(0, 0, 0, 0.2) !important;
+    --vscode-scrollbarSlider-background: rgba(124, 74, 240, 0.4) !important;
+    --vscode-scrollbarSlider-hoverBackground: rgba(124, 74, 240, 0.55) !important;
+    --vscode-scrollbarSlider-activeBackground: rgba(124, 74, 240, 0.7) !important;
+    --vscode-focusBorder: transparent !important;
+
+    /* Remove all error/warning red colors - use transparent or purple */
+    --vscode-editorError-foreground: transparent !important;
+    --vscode-editorError-border: transparent !important;
+    --vscode-editorWarning-foreground: transparent !important;
+    --vscode-editorWarning-border: transparent !important;
+    --vscode-editorInfo-foreground: rgba(124, 74, 240, 0.3) !important;
+    --vscode-editorHint-foreground: rgba(124, 74, 240, 0.2) !important;
+
+    /* Editor highlights - remove red */
+    --vscode-editor-selectionBackground: rgba(124, 74, 240, 0.25) !important;
+    --vscode-editor-inactiveSelectionBackground: rgba(124, 74, 240, 0.12) !important;
+    --vscode-editor-lineHighlightBackground: rgba(124, 74, 240, 0.08) !important;
+    --vscode-editor-foldBackground: rgba(124, 74, 240, 0.15) !important;
+    --vscode-editor-linkedEditingBackground: rgba(124, 74, 240, 0.2) !important;
+
+    /* Overview ruler - remove red error bars */
+    --vscode-editorOverviewRuler-border: rgba(124, 74, 240, 0.1) !important;
+    --vscode-editorOverviewRuler-background: transparent !important;
+    --vscode-editorOverviewRuler-errorForeground: transparent !important;
+    --vscode-editorOverviewRuler-warningForeground: transparent !important;
+    --vscode-editorOverviewRuler-infoForeground: rgba(124, 74, 240, 0.2) !important;
+
+    /* Minimap - remove red */
+    --vscode-minimap-errorHighlight: transparent !important;
+    --vscode-minimap-warningHighlight: transparent !important;
+    --vscode-minimap-infoHighlight: rgba(124, 74, 240, 0.3) !important;
+    --vscode-minimapSlider-background: rgba(124, 74, 240, 0.2) !important;
+    --vscode-minimapSlider-hoverBackground: rgba(124, 74, 240, 0.35) !important;
+    --vscode-minimapSlider-activeBackground: rgba(124, 74, 240, 0.5) !important;
+
+    /* Problem icons - remove red */
+    --vscode-problemsErrorIcon-foreground: rgba(124, 74, 240, 0.6) !important;
+    --vscode-problemsWarningIcon-foreground: rgba(124, 74, 240, 0.5) !important;
+    --vscode-problemsInfoIcon-foreground: rgba(124, 74, 240, 0.4) !important;
+
+    /* Charts - remove red */
+    --vscode-charts-red: rgba(124, 74, 240, 0.6) !important;
+    --vscode-charts-blue: rgba(100, 150, 255, 0.6) !important;
+    --vscode-charts-yellow: rgba(255, 200, 100, 0.6) !important;
+
+    /* Peek view - remove red */
+    --vscode-peekView-border: rgba(124, 74, 240, 0.5) !important;
+
+    /* Editor marker navigation - remove red */
+    --vscode-editorMarkerNavigationError-background: rgba(124, 74, 240, 0.2) !important;
+    --vscode-editorMarkerNavigationError-headerBackground: rgba(124, 74, 240, 0.1) !important;
+    --vscode-editorMarkerNavigationWarning-background: rgba(124, 74, 240, 0.2) !important;
+    --vscode-editorMarkerNavigationWarning-headerBackground: rgba(124, 74, 240, 0.1) !important;
+    --vscode-editorMarkerNavigationInfo-background: rgba(124, 74, 240, 0.2) !important;
+    --vscode-editorMarkerNavigationInfo-headerBackground: rgba(124, 74, 240, 0.1) !important;
+
+    /* Unicode highlight - remove red */
+    --vscode-editorUnicodeHighlight-border: rgba(124, 74, 240, 0.5) !important;
+
+    /* Sticky scroll shadow - remove red */
+    --vscode-editorStickyScroll-shadow: rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Monaco editor scrollbar - Comprehensive targeting */
+.monaco-editor .monaco-scrollable-element>.scrollbar,
+.monaco-editor .monaco-scrollable-element>.scrollbar.vertical,
+.monaco-editor .monaco-scrollable-element>.scrollbar.horizontal,
+.monaco-editor .decorationsOverviewRuler,
+.monaco-editor .decorationsOverviewRuler>canvas {
+    background: transparent !important;
+}
+
+/* Override red box-shadow on overview ruler */
+.monaco-editor .decorationsOverviewRuler {
+    box-shadow: none !important;
+}
+
+/* Target the specific scrollbar container that has red background */
+.monaco-editor .monaco-scrollable-element.editor-scrollable.vs-dark,
+.monaco-editor .monaco-scrollable-element.editor-scrollable.vs,
+.monaco-editor .monaco-scrollable-element {
+    background: transparent !important;
+}
+
+/* Override any inline background styles on scrollbar track */
+.monaco-editor .scrollbar.vertical,
+.monaco-editor .scrollbar.horizontal {
+    background: transparent !important;
+}
+
+/* Force transparent background on overview ruler zones (where red appears) */
+.monaco-editor .overview-ruler,
+.monaco-editor .margin-view-overlays {
+    background: transparent !important;
+}
+
+.monaco-editor:focus,
+.monaco-editor:focus-visible,
+.monaco-editor:focus-within,
+.monaco-editor .monaco-scrollable-element:focus,
+.monaco-editor .monaco-scrollable-element:focus-visible,
+.monaco-editor .monaco-scrollable-element:focus-within {
+    outline: none !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.monaco-editor .monaco-scrollable-element>.scrollbar>.slider,
+.monaco-editor .monaco-scrollable-element>.scrollbar.vertical>.slider,
+.monaco-editor .monaco-scrollable-element>.scrollbar.horizontal>.slider {
+    background: rgba(var(--accent-purple-rgb), 0.4) !important;
+    border-radius: 10px !important;
+    transition: background-color var(--transition-speed-fast) ease !important;
+}
+
+.monaco-editor .monaco-scrollable-element>.scrollbar>.slider:hover,
+.monaco-editor .monaco-scrollable-element>.scrollbar.vertical>.slider:hover,
+.monaco-editor .monaco-scrollable-element>.scrollbar.horizontal>.slider:hover {
+    background: rgba(var(--accent-purple-rgb), 0.55) !important;
+}
+
+.monaco-editor .monaco-scrollable-element>.scrollbar>.slider.active,
+.monaco-editor .monaco-scrollable-element>.scrollbar.vertical>.slider.active,
+.monaco-editor .monaco-scrollable-element>.scrollbar.horizontal>.slider.active {
+    background: rgba(var(--accent-purple-rgb), 0.7) !important;
+}

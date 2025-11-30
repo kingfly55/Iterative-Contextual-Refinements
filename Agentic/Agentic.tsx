@@ -22,18 +22,19 @@ import type { AgenticPrompts } from './AgenticPromptsManager';
 import { AgenticPromptsManager } from './AgenticPromptsManager';
 import { renderAgenticUI, updateAgenticUI, forceUIRender } from './AgenticUI';
 import { callAI, getSelectedModel, getSelectedTemperature, getSelectedTopP } from '../Routing';
+import { globalState } from '../Core/State';
 
-import { updateControlsState } from '../index.tsx';
+import { updateControlsState } from '../UI/Controls';
 
 // Constants for retry logic (matching index.tsx pattern)
 const MAX_RETRIES = 3;
 const INITIAL_DELAY_MS = 20000; // 20 seconds
-const BACKOFF_FACTOR = 4;
+const BACKOFF_FACTOR = 2;
 
 // Global state for Agentic mode
 let activeAgenticState: (AgenticState & { conversationManager?: AgenticConversationManager }) | null = null;
 let agenticUIRoot: any = null;
-let isAgenticRunning = false;
+// isAgenticRunning is now in globalState
 let abortController: AbortController | null = null;
 let agenticPromptsManager: AgenticPromptsManager | null = null;
 let onContentUpdated: ((content: string, isComplete?: boolean) => void) | null = null;
@@ -100,7 +101,11 @@ export function renderAgenticMode() {
 
 // Start Agentic process
 export async function startAgenticProcess(initialContent: string) {
-    if (!initialContent || isAgenticRunning) return;
+    console.log('[Agentic] startAgenticProcess called', { initialContentLength: initialContent?.length, isAgenticRunning: globalState.isAgenticRunning });
+    if (!initialContent || globalState.isAgenticRunning) {
+        console.warn('[Agentic] startAgenticProcess aborted: missing content or already running');
+        return;
+    }
 
     // Get system prompt
     let systemPrompt = AGENTIC_SYSTEM_PROMPT;
@@ -125,7 +130,8 @@ export async function startAgenticProcess(initialContent: string) {
     if (onContentUpdated) {
         try { onContentUpdated(activeAgenticState.currentContent); } catch { /* no-op */ }
     }
-    isAgenticRunning = true;
+    globalState.isAgenticRunning = true;
+    globalState.isGenerating = true; // Fix: Ensure UI knows we are generating
     updateControlsState();
     abortController = new AbortController();
 
@@ -138,7 +144,7 @@ export async function startAgenticProcess(initialContent: string) {
 
 // Start Agentic process inside a provided container (embedded usage in other modes)
 export async function startAgenticProcessInContainer(container: HTMLElement, initialContent: string, promptsOverride?: AgenticPrompts) {
-    if (!initialContent || isAgenticRunning) return;
+    if (!initialContent || globalState.isAgenticRunning) return;
 
     // Always reinitialize prompts manager for embedded mode to ensure correct parsing
     agenticPromptsManager = new AgenticPromptsManager({
@@ -166,7 +172,7 @@ export async function startAgenticProcessInContainer(container: HTMLElement, ini
     if (onContentUpdated) {
         try { onContentUpdated(activeAgenticState.currentContent); } catch { /* no-op */ }
     }
-    isAgenticRunning = true;
+    globalState.isAgenticRunning = true;
     updateControlsState();
     abortController = new AbortController();
 
@@ -184,7 +190,7 @@ export function rehydrateAgenticUIInContainer(container: HTMLElement) {
 
 // Run the agent loop
 async function runAgentLoop() {
-    if (!activeAgenticState || !isAgenticRunning) return;
+    if (!activeAgenticState || !globalState.isAgenticRunning) return;
 
     // No artificial iteration limits - let the agent work
     let iterations = 0;
@@ -198,7 +204,7 @@ async function runAgentLoop() {
         await forceUIRender();
     };
 
-    while (isAgenticRunning && !(activeAgenticState as AgenticState).isComplete) {
+    while (globalState.isAgenticRunning && !(activeAgenticState as AgenticState).isComplete) {
         iterations++;
 
         try {
@@ -711,7 +717,8 @@ async function runAgentLoop() {
     }
     // No iteration limit to check
 
-    isAgenticRunning = false;
+    globalState.isAgenticRunning = false;
+    globalState.isGenerating = false; // Fix: Reset generating state
     updateControlsState();
 }
 
@@ -719,7 +726,9 @@ async function runAgentLoop() {
 
 // Stop the Agentic process
 export function stopAgenticProcess() {
-    isAgenticRunning = false;
+    console.log('[Agentic] stopAgenticProcess called');
+    globalState.isAgenticRunning = false;
+    globalState.isGenerating = false; // Fix: Reset generating state
     if (abortController) {
         abortController.abort();
         abortController = null;
@@ -751,7 +760,7 @@ export function getActiveAgenticState(): AgenticState | null {
 
 // Check if Agentic mode is active
 export function isAgenticModeActive(): boolean {
-    return isAgenticRunning;
+    return globalState.isAgenticRunning;
 }
 
 // Set the prompts manager
