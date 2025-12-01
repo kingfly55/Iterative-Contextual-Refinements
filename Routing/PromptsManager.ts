@@ -197,11 +197,14 @@ export class PromptsManager {
         for (const [key, elementId] of Object.entries(textareaMap)) {
             const textarea = document.getElementById(elementId) as HTMLTextAreaElement;
             if (textarea) {
+                if (textarea.dataset.hasListener) return;
+
                 const promptKey = key as keyof CustomizablePromptsWebsite;
                 textarea.value = this.websitePromptsRef.current[promptKey] || '';
                 textarea.addEventListener('input', (e) => {
                     this.websitePromptsRef.current[promptKey] = (e.target as HTMLTextAreaElement).value;
                 });
+                textarea.dataset.hasListener = 'true';
             }
         }
     }
@@ -251,11 +254,14 @@ export class PromptsManager {
 
             const textarea = document.getElementById(elementId) as HTMLTextAreaElement;
             if (textarea) {
+                if (textarea.dataset.hasListener) return;
+
                 const promptKey = key as keyof CustomizablePromptsDeepthink;
                 textarea.value = this.deepthinkPromptsRef.current[promptKey] || '';
                 textarea.addEventListener('input', (e) => {
                     this.deepthinkPromptsRef.current[promptKey] = (e.target as HTMLTextAreaElement).value;
                 });
+                textarea.dataset.hasListener = 'true';
             }
         }
     }
@@ -279,13 +285,17 @@ export class PromptsManager {
         } as any;
 
         for (const [key, elementId] of Object.entries(textareaMap)) {
+            if (!elementId) continue;
             const textarea = document.getElementById(elementId) as HTMLTextAreaElement;
             if (textarea) {
+                if (textarea.dataset.hasListener) return;
+
                 const promptKey = key as keyof CustomizablePromptsReact;
                 textarea.value = this.reactPromptsRef.current[promptKey] || '';
                 textarea.addEventListener('input', (e) => {
                     this.reactPromptsRef.current[promptKey] = (e.target as HTMLTextAreaElement).value;
                 });
+                textarea.dataset.hasListener = 'true';
             }
         }
     }

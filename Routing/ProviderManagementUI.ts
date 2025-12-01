@@ -31,50 +31,55 @@ export class ProviderManagementUI {
     }
 
     private initializeElements(): void {
-        this.createTriggerButton();
         this.createModal();
-        this.updateTriggerState();
+
+        // Try to mount buttons if container exists (for initial load)
+        const container = document.getElementById('provider-buttons-mount-point');
+        if (container) {
+            this.mountButtons(container);
+        }
     }
 
-    private createTriggerButton(): void {
-        // Find the existing API key status container and replace it
-        const apiKeyStatusContainer = document.querySelector('.api-key-status-container');
-        if (apiKeyStatusContainer) {
-            // Create container for both buttons
-            const buttonsContainer = document.createElement('div');
-            buttonsContainer.className = 'provider-buttons-container';
-            
-            // Create Add Providers button
-            const triggerButton = document.createElement('button');
-            triggerButton.id = 'add-providers-trigger';
-            triggerButton.className = 'add-providers-button';
-            triggerButton.innerHTML = `
-                <span class="material-symbols-outlined">key</span>
-                <span>Providers</span>
-            `;
-            
-            // Create Prompts button
-            const promptsButton = document.createElement('button');
-            promptsButton.id = 'prompts-trigger';
-            promptsButton.className = 'prompts-button';
-            promptsButton.innerHTML = `
-                <span class="material-symbols-outlined">edit</span>
-                <span>Prompts</span>
-            `;
-            
-            buttonsContainer.appendChild(triggerButton);
-            buttonsContainer.appendChild(promptsButton);
-            
-            // Replace the entire API key status container
-            apiKeyStatusContainer.replaceWith(buttonsContainer);
-            this.elements.trigger = triggerButton;
-            this.elements.promptsButton = promptsButton;
-            
-            triggerButton.addEventListener('click', () => this.show());
-            promptsButton.addEventListener('click', () => {
-                this.openPromptsModal();
-            });
-        }
+    public mountButtons(container: HTMLElement): void {
+        // Clear container first to prevent duplicates
+        container.innerHTML = '';
+
+        // Create container for both buttons
+        const buttonsContainer = document.createElement('div');
+        buttonsContainer.className = 'provider-buttons-container';
+
+        // Create Add Providers button
+        const triggerButton = document.createElement('button');
+        triggerButton.id = 'add-providers-trigger';
+        triggerButton.className = 'add-providers-button';
+        triggerButton.innerHTML = `
+            <span class="material-symbols-outlined">key</span>
+            <span>Providers</span>
+        `;
+
+        // Create Prompts button
+        const promptsButton = document.createElement('button');
+        promptsButton.id = 'prompts-trigger';
+        promptsButton.className = 'prompts-button';
+        promptsButton.innerHTML = `
+            <span class="material-symbols-outlined">edit</span>
+            <span>Prompts</span>
+        `;
+
+        buttonsContainer.appendChild(triggerButton);
+        buttonsContainer.appendChild(promptsButton);
+
+        container.appendChild(buttonsContainer);
+
+        this.elements.trigger = triggerButton;
+        this.elements.promptsButton = promptsButton;
+
+        triggerButton.addEventListener('click', () => this.show());
+        promptsButton.addEventListener('click', () => {
+            this.openPromptsModal();
+        });
+
+        this.updateTriggerState();
     }
 
     private createModal(): void {
@@ -83,7 +88,7 @@ export class ProviderManagementUI {
         overlay.id = 'provider-management-overlay';
         overlay.className = 'modal-overlay';
         overlay.style.display = 'none';
-        
+
         overlay.innerHTML = `
             <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="provider-management-title">
                 <header class="modal-header">
@@ -152,7 +157,7 @@ export class ProviderManagementUI {
         if (!this.elements.content) return;
 
         const providers = this.providerManager.getAllProviders();
-        
+
         this.elements.content.innerHTML = `
             <div class="provider-cards-grid">
                 ${providers.map(provider => this.renderProviderCard(provider)).join('')}
@@ -168,7 +173,7 @@ export class ProviderManagementUI {
     private renderProviderCard(provider: ProviderConfig): string {
         const isConfigured = provider.isConfigured;
         const isEnvironmentKey = this.isEnvironmentKey(provider.name);
-        
+
         return `
             <div class="provider-card" data-provider="${provider.name}">
                 <div class="provider-card-header">
@@ -277,7 +282,7 @@ export class ProviderManagementUI {
                 </div>
             `;
         }
-        
+
         // Standard UI for other providers
         return `
             <div class="not-configured-content">
@@ -355,29 +360,29 @@ export class ProviderManagementUI {
         const modelIdsInput = card.querySelector('.model-ids-input') as HTMLInputElement;
 
         const apiKey = apiKeyInput.value.trim();
-        
+
         // For local models, validate endpoint URL and require model IDs
         if (providerName === 'local') {
             if (!apiKey) {
                 this.showError(card, 'Please enter an endpoint URL');
                 return;
             }
-            
+
             const customModels = modelIdsInput.value
                 .split(',')
                 .map(m => m.trim())
                 .filter(m => m.length > 0);
-            
+
             if (customModels.length === 0) {
                 this.showError(card, 'Please enter at least one model ID');
                 return;
             }
-            
+
             const success = this.providerManager.configureProvider(providerName, apiKey, customModels);
             if (success) {
                 this.updateTriggerState();
                 this.renderProviderCards(); // Re-render to show configured state
-                
+
                 // Notify the routing manager to refresh models
                 this.notifyModelsChanged();
             } else {
@@ -399,7 +404,7 @@ export class ProviderManagementUI {
             if (success) {
                 this.updateTriggerState();
                 this.renderProviderCards(); // Re-render to show configured state
-                
+
                 // Notify the routing manager to refresh models
                 this.notifyModelsChanged();
             } else {
@@ -413,7 +418,7 @@ export class ProviderManagementUI {
             this.providerManager.removeProvider(providerName);
             this.updateTriggerState();
             this.renderProviderCards();
-            
+
             // Notify the routing manager to refresh models
             this.notifyModelsChanged();
         }
@@ -435,7 +440,7 @@ export class ProviderManagementUI {
         if (success) {
             input.value = '';
             this.renderProviderCards();
-            
+
             // Notify the routing manager to refresh models
             this.notifyModelsChanged();
         } else {
@@ -446,7 +451,7 @@ export class ProviderManagementUI {
     private handleRemoveModel(providerName: string, modelId: string): void {
         this.providerManager.removeCustomModel(providerName, modelId);
         this.renderProviderCards();
-        
+
         // Notify the routing manager to refresh models
         this.notifyModelsChanged();
     }
@@ -513,7 +518,7 @@ export class ProviderManagementUI {
         if (!this.elements.trigger) return;
 
         const hasConfiguredProviders = this.providerManager.hasAnyConfiguredProvider();
-        
+
         if (hasConfiguredProviders) {
             this.elements.trigger.classList.add('configured');
         } else {
@@ -535,7 +540,7 @@ export class ProviderManagementUI {
         }
     }
 
-    private openPromptsModal(): void {
+    public openPromptsModal(): void {
         if (this.promptsModal) {
             console.log('Opening prompts modal');
             this.promptsModal.show();

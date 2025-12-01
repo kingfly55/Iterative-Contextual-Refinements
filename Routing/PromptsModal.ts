@@ -23,14 +23,35 @@ export class PromptsModal {
 
     constructor() {
         this.elements = {
-            overlay: document.getElementById('prompts-modal-overlay') as HTMLElement,
-            closeButton: document.getElementById('prompts-modal-close-button') as HTMLButtonElement,
-            trigger: null, // Will be set externally by ProviderManagementUI
-            nav: document.getElementById('prompts-modal-nav') as HTMLElement,
-            content: document.getElementById('prompts-modal-content') as HTMLElement
+            overlay: null,
+            closeButton: null,
+            trigger: null,
+            nav: null,
+            content: null
         };
 
-        this.initializeEventListeners();
+        // We can't initialize elements here because the DOM might not be ready
+        // Elements will be initialized lazily in show() or ensureElements()
+    }
+
+    private listenersInitialized: boolean = false;
+
+    private ensureElements(): boolean {
+        if (this.elements.overlay) return true;
+
+        this.elements.overlay = document.getElementById('prompts-modal-overlay');
+        this.elements.closeButton = document.getElementById('prompts-modal-close-button') as HTMLButtonElement;
+        this.elements.nav = document.getElementById('prompts-modal-nav');
+        this.elements.content = document.getElementById('prompts-modal-content');
+
+        if (this.elements.overlay) {
+            if (!this.listenersInitialized) {
+                this.initializeEventListeners();
+                this.listenersInitialized = true;
+            }
+            return true;
+        }
+        return false;
     }
 
     private initializeEventListeners(): void {
@@ -57,6 +78,11 @@ export class PromptsModal {
     }
 
     public show(): void {
+        if (!this.ensureElements()) {
+            console.error('Prompts modal elements not found in DOM');
+            return;
+        }
+
         if (this.elements.overlay) {
             this.initializeModal(); // Re-initialize on open to reflect current mode
             this.elements.overlay.style.display = 'flex';
@@ -68,11 +94,20 @@ export class PromptsModal {
                 setTimeout(() => updatePromptContent(), 60);
                 // Safety: run once more after layout settles
                 setTimeout(() => updatePromptContent(), 200);
+
+                // Ensure textareas are populated with latest state
+                if (this.promptsManager) {
+                    this.promptsManager.initializeTextareas(); // Re-bind listeners if needed
+                    this.promptsManager.updateTextareasFromState();
+                }
             }, 10);
         }
     }
 
     public hide(): void {
+        // Try to ensure elements exist, but don't fail if they don't (modal might not be open)
+        this.ensureElements();
+
         if (this.elements.overlay) {
             this.elements.overlay.classList.remove('is-visible');
             this.elements.overlay.addEventListener('transitionend', () => {
