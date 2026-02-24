@@ -9,7 +9,7 @@ import {
     openSolutionPoolModal,
     openSolutionPoolEvolution,
     openCurrentSolutionPool,
-    downloadSolutionPoolAsXML
+    downloadSolutionPoolAsJSON
 } from './SolutionPool';
 import { parseJsonSafe } from "../Core/JsonParser";
 import { parseJsonSuggestions } from "../Core/SuggestionParser";
@@ -170,7 +170,7 @@ function createBaseModal(options: ModalOptions) {
     const isEmbedded = options.isEmbedded || false;
     const overlayClass = isEmbedded ? 'embedded-modal-overlay' : 'modal-overlay';
     const contentClass = isEmbedded ? 'embedded-modal-content' : 'modal-content';
-    
+
     // Create Overlay
     const overlay = document.createElement('div');
     overlay.className = overlayClass + (options.className ? ` ${options.className}` : '');
@@ -194,11 +194,11 @@ function createBaseModal(options: ModalOptions) {
     // Header
     const header = document.createElement('div'); // Using div for embedded, header for main to match legacy styles if needed
     header.className = 'modal-header';
-    
+
     if (!isEmbedded) {
-         // Main modal specific header styling override if needed
-         if (options.padding) header.style.padding = options.padding;
-         if (options.height) header.style.minHeight = options.height;
+        // Main modal specific header styling override if needed
+        if (options.padding) header.style.padding = options.padding;
+        if (options.height) header.style.minHeight = options.height;
     }
 
     if (options.title) {
@@ -221,7 +221,7 @@ function createBaseModal(options: ModalOptions) {
     body.className = 'modal-body';
     if (options.isEmbedded) body.classList.add('custom-scrollbar');
     if (options.noPadding) body.style.padding = '0';
-    
+
     content.appendChild(body);
     overlay.appendChild(content);
     document.body.appendChild(overlay);
@@ -231,11 +231,11 @@ function createBaseModal(options: ModalOptions) {
         if (options.onClose) options.onClose();
         document.removeEventListener('keydown', handleKeyDown);
         overlay.remove();
-        
+
         // Specific cleanup for main solution modal
         if (!isEmbedded) {
-             activeSolutionModalSubStrategyId = null;
-             if (cleanupIterativeCorrectionsRoot) cleanupIterativeCorrectionsRoot();
+            activeSolutionModalSubStrategyId = null;
+            if (cleanupIterativeCorrectionsRoot) cleanupIterativeCorrectionsRoot();
         }
     };
 
@@ -262,7 +262,7 @@ function createBaseModal(options: ModalOptions) {
     if (!isEmbedded) {
         // Expose cleanup for external calls
         (overlay as any).cleanup = () => {
-             document.removeEventListener('keydown', handleKeyDown);
+            document.removeEventListener('keydown', handleKeyDown);
         };
         setTimeout(() => overlay.classList.add('is-visible'), 10);
     }
@@ -291,7 +291,7 @@ export async function openDeepthinkSolutionModal(subStrategyId: string) {
         body.style.height = 'calc(100vh - 80px)';
         body.style.overflow = 'hidden';
         body.classList.add('contextual-mode-container');
-        
+
         activeSolutionModalSubStrategyId = subStrategyId;
         await updateSolutionModalContent(body, subStrategyId);
     } else {
@@ -327,15 +327,15 @@ export async function openSubStrategySolutionModal(subStrategyId: string) {
         title: 'Sub-Strategy Solution',
         height: 'auto',
         padding: '0.5rem 1.5rem',
-        onClose: () => {} // Cleanup handled by base
+        onClose: () => { } // Cleanup handled by base
     });
-    
+
     // Override base class specificities for this specific modal type to match exact legacy styles
     const content = body.parentElement as HTMLElement;
     content.className = 'modal-content fullscreen-content';
 
     renderLegacySubStrategyComparison(body, subStrategy);
-    
+
     // Bind copy/download buttons
     import('../Styles/Components/ActionButton.js').then(module => {
         module.bindCopyDownloadButtons(content);
@@ -405,7 +405,7 @@ function renderSimpleEmbeddedModal(title: string, contentMarkdown: string, conte
 // Red Team Reasoning Modal
 export function openRedTeamReasoningModal(agent: any) {
     if (document.querySelector('.embedded-modal-overlay')) return;
-    
+
     let reasoningData: any = {};
     try {
         reasoningData = typeof agent.reasoning === 'string' ? JSON.parse(agent.reasoning) : agent.reasoning;
@@ -447,10 +447,10 @@ function renderDefaultSolutionUI(container: HTMLElement, subStrategy: any) {
     container.innerHTML = `
         <div style="display: grid; grid-template-columns: ${currentRefinementEnabled ? '1fr 1fr' : '1fr'}; gap: 20px; height: 100%;">
             ${renderSolutionPanel(
-                'psychology', 
-                currentRefinementEnabled ? 'Attempted Solution' : 'Solution', 
-                subStrategy.solutionAttempt || 'Solution not available'
-            )}
+        'psychology',
+        currentRefinementEnabled ? 'Attempted Solution' : 'Solution',
+        subStrategy.solutionAttempt || 'Solution not available'
+    )}
             
             <div style="display: flex; flex-direction: column; border: 1px solid #333; border-radius: 8px; overflow: hidden; ${!refinementWasPerformed ? 'position: relative;' : ''} ${!refinementWasPerformed ? 'class="disabled-pane"' : ''}">
                 <div style="padding: 12px 16px; background: rgba(15, 17, 32, 0.4); border-bottom: 1px solid #333;">
@@ -460,9 +460,9 @@ function renderDefaultSolutionUI(container: HTMLElement, subStrategy: any) {
                      </h4>
                 </div>
                 <div style="flex: 1; overflow: auto; padding: 16px; position: relative;">
-                    ${renderMathContent(currentRefinementEnabled 
-                        ? (subStrategy.refinedSolution || 'Refined solution not available') 
-                        : (subStrategy.refinedSolution || subStrategy.solutionAttempt || 'Solution refinement is disabled'))}
+                    ${renderMathContent(currentRefinementEnabled
+        ? (subStrategy.refinedSolution || 'Refined solution not available')
+        : (subStrategy.refinedSolution || subStrategy.solutionAttempt || 'Solution refinement is disabled'))}
                     ${!refinementWasPerformed ? '<div class="disabled-overlay">Refinement Disabled</div>' : ''}
                 </div>
             </div>
@@ -488,7 +488,7 @@ function renderLegacySubStrategyComparison(container: HTMLElement, subStrategy: 
     const currentRefinementEnabled = moduleState.getRefinementEnabled();
     const refinedIcon = currentRefinementEnabled ? 'verified' : 'auto_fix_off';
     const refinedTitle = currentRefinementEnabled ? 'Refined Solution' : 'Refined Solution (Disabled)';
-    
+
     container.innerHTML = `
         <div class="side-by-side-comparison">
             <div class="comparison-side">
@@ -603,7 +603,7 @@ function bindLegacyActionButtons(container: HTMLElement) {
     container.querySelectorAll('.copy-solution-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
             const content = btn.getAttribute('data-content') || '';
-            try { await navigator.clipboard.writeText(content); } catch (e) {}
+            try { await navigator.clipboard.writeText(content); } catch (e) { }
         });
     });
 
@@ -629,13 +629,13 @@ export function renderStrategicSolverContent(process: DeepthinkPipelineState): s
     if (process.status === 'error' && process.error) {
         return `<div class="status-message error"><pre>${moduleState.escapeHtml(process.error)}</pre></div>`;
     }
-    
+
     if (!process.initialStrategies || process.initialStrategies.length === 0) {
         return '<div class="loading">Generating strategic approaches...</div>';
     }
 
     const activeIndex = process.activeStrategyTab || 0;
-    
+
     // Generate Navigation
     const navButtons = process.initialStrategies.map((s, idx) => {
         const isActive = idx === activeIndex;
@@ -694,12 +694,12 @@ function renderSubStrategiesGrid(subStrategies: any[]): string {
 
     return `<div class="red-team-agents-grid">
         ${subStrategies.map((sub, index) => {
-            const hasContent = sub.solutionAttempt || sub.refinedSolution;
-            const fullText = sub.subStrategyText || 'No sub-strategy text available';
-            const isLong = fullText.length > 150;
-            const displayText = isLong ? fullText.substring(0, 150) + '...' : fullText;
-            
-            return `
+        const hasContent = sub.solutionAttempt || sub.refinedSolution;
+        const fullText = sub.subStrategyText || 'No sub-strategy text available';
+        const isLong = fullText.length > 150;
+        const displayText = isLong ? fullText.substring(0, 150) + '...' : fullText;
+
+        return `
             <div class="red-team-agent-card ${sub.isKilledByRedTeam ? 'killed-sub-strategy' : ''}">
                 <div class="red-team-agent-header">
                     <h4 class="red-team-agent-title">Sub-Strategy ${index + 1}</h4>
@@ -726,7 +726,7 @@ function renderSubStrategiesGrid(subStrategies: any[]): string {
                     ${sub.isKilledByRedTeam ? `<div class="elimination-reason">${moduleState.escapeHtml(sub.redTeamReason || 'Eliminated by Red Team')}</div>` : ''}
                 </div>
             </div>`;
-        }).join('')}
+    }).join('')}
     </div>`;
 }
 
@@ -773,7 +773,7 @@ export function renderHypothesisExplorerContent(process: DeepthinkPipelineState)
 
 function renderKnowledgePacket(packetContent: string): string {
     let packetBody = '';
-    
+
     if (packetContent.includes('<Full Information Packet>')) {
         const hypothesisRegex = /<Hypothesis (\d+)>\s*Hypothesis:\s*(.*?)\s*Hypothesis Testing:\s*(.*?)\s*<\/Hypothesis \d+>/gs;
         let match;
@@ -824,7 +824,7 @@ export function renderDissectedObservationsContent(process: DeepthinkPipelineSta
     const refinementEnabled = moduleState.getRefinementEnabled();
     const iterativeCorrectionsEnabled = moduleState.getIterativeCorrectionsEnabled();
     const hasExistingCritique = process.solutionCritiques && process.solutionCritiques.length > 0;
-    const hasSubStrategyCritiques = iterativeCorrectionsEnabled && process.initialStrategies.some(s => 
+    const hasSubStrategyCritiques = iterativeCorrectionsEnabled && process.initialStrategies.some(s =>
         s.subStrategies.some(sub => sub.solutionCritique?.length > 0)
     );
 
@@ -892,7 +892,7 @@ export function renderDissectedObservationsContent(process: DeepthinkPipelineSta
             </div>`;
         }).join('');
     }
-    
+
     html += '</div>'; // close grid
 
     // Synthesis Section
@@ -925,8 +925,8 @@ export function renderRedTeamContent(process: DeepthinkPipelineState): string {
     if (hasRedTeam) {
         html += `<div class="red-team-agents-grid">
             ${process.redTeamEvaluations.map((agent, i) => {
-                const killedCount = (agent.killedStrategyIds?.length || 0) + (agent.killedSubStrategyIds?.length || 0);
-                return `
+            const killedCount = (agent.killedStrategyIds?.length || 0) + (agent.killedSubStrategyIds?.length || 0);
+            return `
                 <div class="red-team-agent-card">
                     <div class="red-team-agent-header">
                         <h4 class="red-team-agent-title">${process.redTeamEvaluations.length === 1 ? "Red Team Evaluation" : `Red Team Agent ${i + 1}`}</h4>
@@ -952,7 +952,7 @@ export function renderRedTeamContent(process: DeepthinkPipelineState): string {
                         </div>` : ''}
                     </div>
                 </div>`;
-            }).join('')}
+        }).join('')}
         </div>`;
     }
 
@@ -998,7 +998,7 @@ export function renderRedTeamContent(process: DeepthinkPipelineState): string {
 
 export function renderFinalResultContent(process: DeepthinkPipelineState): string {
     let html = '<div class="deepthink-final-result">';
-    
+
     if (process.finalJudgingStatus === 'completed' && process.finalJudgedBestSolution) {
         html += `<div class="judged-solution-container final-judged-solution">${renderMathContent(process.finalJudgedBestSolution)}</div>`;
     } else if (process.finalJudgingStatus === 'processing') {
@@ -1023,7 +1023,7 @@ export function activateDeepthinkStrategyTab(strategyIndex: number) {
     const pipeline = getActiveDeepthinkPipeline();
     if (!pipeline) return;
     pipeline.activeStrategyTab = strategyIndex;
-    
+
     document.querySelectorAll('.sub-tab-button').forEach((b, i) => b.classList.toggle('active', i === strategyIndex));
     document.querySelectorAll('.sub-tab-content').forEach((c, i) => c.classList.toggle('active', i === strategyIndex));
 }
@@ -1135,7 +1135,7 @@ function deepthinkClickHandler(event: Event) {
     if (closest('solution-pool-download-button')) {
         event.preventDefault(); event.stopPropagation();
         const pid = closest('solution-pool-download-button').getAttribute('data-pipeline-id');
-        if (pid) downloadSolutionPoolAsXML(pid);
+        if (pid) downloadSolutionPoolAsJSON(pid);
         return;
     }
 
@@ -1175,7 +1175,7 @@ function handleShowMore(button: HTMLElement) {
         if (!isExpanded) {
             textDiv.innerHTML = renderMathContent(fullText);
             button.textContent = 'Show Less';
-            
+
             // Expand classes
             if (targetType === 'sub-strategy') {
                 container.querySelector('.sub-strategy-text-container')?.classList.add('expanded');
@@ -1190,7 +1190,7 @@ function handleShowMore(button: HTMLElement) {
             button.textContent = 'Show More';
 
             // Collapse classes
-             if (targetType === 'sub-strategy') {
+            if (targetType === 'sub-strategy') {
                 container.querySelector('.sub-strategy-text-container')?.classList.remove('expanded');
                 button.closest('.red-team-agent-card')?.classList.remove('expanded');
             } else if (targetType === 'hypothesis') {
@@ -1230,12 +1230,12 @@ export function renderActiveDeepthinkPipeline() {
         sidebarBtn.style.opacity = '';
         sidebarBtn.style.cursor = '';
     }
-    
+
     const header = document.querySelector('.main-header-content') as HTMLElement;
     if (header) header.style.display = '';
     moduleState.tabsNavContainer!.style.display = '';
 
-    updateActiveSolutionModal().catch(() => {});
+    updateActiveSolutionModal().catch(() => { });
 
     // Clear Previous
     moduleState.tabsNavContainer!.innerHTML = '';
@@ -1264,7 +1264,7 @@ export function renderActiveDeepthinkPipeline() {
     tabs.forEach(tab => {
         const btn = document.createElement('button');
         const statusClass = getTabStatusClass(tab.id, deepthinkProcess);
-        
+
         btn.className = `tab-button deepthink-mode-tab ${deepthinkProcess.activeTabId === tab.id ? 'active' : ''} ${statusClass} ${tab.hasPinkGlow ? 'red-team-pink-glow' : ''} ${tab.alignRight ? 'align-right' : ''}`;
         btn.innerHTML = `<span class="material-symbols-outlined">${tab.icon}</span>${tab.label}`;
         btn.addEventListener('click', () => {

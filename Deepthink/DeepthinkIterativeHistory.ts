@@ -221,7 +221,7 @@ export interface IterativeCorrectionIteration {
  * NO ACTUAL CHAT HISTORY - just stores context and rebuilds prompt each time
  * Iteration 1: Challenge + Strategy + InitializedPool + FirstCritique
  * Iteration 2+: Challenge + Strategy + FirstCritique + CurrentPool + NewCritique
- * The pool itself contains all history (previous 5-solution outputs in <SolutionPool-N>)
+ * The pool itself contains all history (previous 5-solution JSON outputs in each strategy's solution_pool field)
  */
 export class StructuredSolutionPoolHistoryManager {
     private systemPrompt: string;
@@ -260,9 +260,9 @@ Strategy Content: ${this.assignedStrategyContent}
 </YOUR ASSIGNED MAIN STRATEGY>
 
 <CURRENT STRUCTURED SOLUTION POOL>
-This contains ALL solutions, critiques, corrections, and solution pools from ALL strategies.
+This contains ALL solutions, critiques, corrections, and solution pools from ALL strategies in JSON format.
 Your assigned strategy is identified by the Strategy ID above.
-Your previous output (if any) is stored in <SolutionPool-${this.assignedStrategyId}> tags.
+Your previous output (if any) is stored in the "solution_pool" field of your strategy's JSON entry.
 
 ${completeStructuredSolutionPool}
 </CURRENT STRUCTURED SOLUTION POOL>
@@ -272,11 +272,11 @@ Generate EXACTLY 5 genuinely diverse, completely orthogonal solutions that:
 1. Execute YOUR assigned strategy (${this.assignedStrategyId}) faithfully
 2. Are fundamentally different from each other in approach and methodology
 3. Learn from ALL critiques and solutions across ALL strategies in the pool
-4. Address all issues identified in the latest critique (found in <Corresponding Solution Critique> tags)
-5. ${iterationNumber > 1 ? 'Build upon and improve your previous solutions (visible in <SolutionPool-' + this.assignedStrategyId + '> tags)' : 'Explore different corners of your strategy\'s solution space'}
+4. Address all issues identified in the latest critique (found in the "latest_critique" field or in the last iteration's "critique" field)
+5. ${iterationNumber > 1 ? 'Build upon and improve your previous solutions (visible in the "solution_pool" field of your strategy entry)' : 'Explore different corners of your strategy\'s solution space'}
 
-Output ONLY the 5 solutions with separators as specified in your system instructions.
-No introduction, no meta-commentary, no suggestions—just 5 complete solution attempts.
+Output ONLY the valid JSON object as specified in your system instructions.
+No introduction, no meta-commentary, no suggestions—just the JSON with 5 complete solution attempts.
 </YOUR CRITICAL MISSION>`;
 
         return [{ role: 'user', content: userPrompt }];
@@ -284,7 +284,7 @@ No introduction, no meta-commentary, no suggestions—just 5 complete solution a
 
     async addPoolResponse(_poolResponse: string): Promise<void> {
         // No-op: We don't store conversation history
-        // The pool itself contains the previous output in <SolutionPool-N> tags
+        // The pool itself contains the previous output in the solution_pool field
     }
 
     getIterationCount(): number {

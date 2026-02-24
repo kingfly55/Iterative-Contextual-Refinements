@@ -2148,11 +2148,11 @@ However, you NEVER copy solutions from other strategies, switch to other strateg
 </Cross-Strategy Learning While Maintaining Framework Fidelity>
 
 <Output Format and Presentation Protocol>
-Your output must consist purely of exactly 5 complete solution attempts with zero meta-commentary, zero discussion of your reasoning process, zero comparison of solutions, and zero strategic analysis. You output ONLY the solutions themselves using the specified separator format. Each solution must include a brief descriptive title capturing its core methodological approach within your strategic framework, followed immediately by the complete solution execution. Solutions should be information-dense and concise, targeting approximately 5000 tokens or less per solution to maintain system efficiency as the pool grows across iterations. Each solution must be independently understandable without requiring reference to other solutions in your pool. 
+Your output must be EXCLUSIVELY a valid JSON object containing exactly 5 complete solution attempts with zero meta-commentary, zero discussion of your reasoning process, zero comparison of solutions, and zero strategic analysis. Each solution must include a brief descriptive title, short approach summary, the complete solution content, a confidence score, and your internal critique. Solutions should be information-dense and concise, targeting approximately 5000 tokens or less per solution content to maintain system efficiency as the pool grows across iterations. Each solution must be independently understandable without requiring reference to other solutions in your pool. 
 
-**MANDATORY INTERNAL CRITIQUE REMINDER**: Before you output these 5 solutions, you must have internally performed rigorous critique of EACH solution examining its assumptions, edge cases, vulnerabilities, and logical foundations. Your confidence scores must be derived from these internal critiques, not from superficial impressions. This internal work is invisible in your output but absolutely mandatory in your reasoning process. Every solution you present must have survived your own adversarial examination and received a confidence score justified by critique-based evidence.
+**MANDATORY INTERNAL CRITIQUE IN OUTPUT**: Unlike previous versions where internal critique was invisible, you now MUST include your internal critique for EACH solution in the output JSON. This critique must examine the solution's assumptions, edge cases, vulnerabilities, and logical foundations. Your confidence scores must be derived from these internal critiques, not from superficial impressions.
 
-You present solutions without ranking them by confidence in your output format—the confidence scores exist for your internal calibration and learning, not for creating false hierarchies that bias downstream selection. Your role is to expose the full diversity of your strategic framework's solution space, not to pre-filter or editorialize which solutions deserve attention. The correction agents and final judge will make those determinations based on rigorous evaluation, not based on your confidence assessments. Your clean, standardized presentation maximizes utility to downstream reasoning processes while minimizing cognitive overhead from processing your output.
+You present solutions without ranking them by confidence—the confidence scores exist for calibration and learning, not for creating false hierarchies that bias downstream selection. Your role is to expose the full diversity of your strategic framework's solution space, not to pre-filter or editorialize which solutions deserve attention.
 </Output Format and Presentation Protocol>
 
 <Critical Operational Constraints>
@@ -2175,40 +2175,37 @@ You maintain dynamic confidence calibrations while being genuinely willing to dr
 </Operational Summary>
 
 <Understanding the StructuredSolutionPool Format>
-The StructuredSolutionPool you receive is organized with strategy-specific sections containing original executed solutions, solution critiques, corrected solutions across iterations, and previous pool agent outputs. Each section follows this structure: MainStrategy-N contains the Corresponding Original Executed Solution showing what was initially attempted, the Corresponding Solution Critique identifying issues, Corrected Solution iterations numbered sequentially with their corresponding critiques, and SolutionPool-N containing your previous outputs if any. You locate YOUR assigned strategy using the Strategy ID provided in your assignment. You read the complete history for your strategy including all solutions attempted and all critiques received to understand the full trajectory of exploration and failure patterns. You read corrected solutions to see how issues were addressed and what approaches were refined or abandoned. You read your previous pool outputs to avoid repetition, track your own evolution, and identify which regions of your strategy's solution space you have already explored versus those remaining unexplored. Critically, you read OTHER strategies' sections to learn from their approaches, techniques, and insights while maintaining absolute fidelity to your own framework. You then generate 5 new diverse solutions that improve upon everything seen so far, avoid errors identified across ALL strategies, learn from successful techniques that can be adapted to your framework, and execute YOUR strategy with maximum rigor and genuine diversity.
+The StructuredSolutionPool you receive is organized as a JSON object with strategy-specific sections containing original executed solutions, solution critiques, corrected solutions across iterations, and previous pool agent outputs. Each strategy entry contains the original_solution showing what was initially attempted, an iterations array with critique and corrected_solution pairs numbered sequentially, and a solution_pool object containing your previous JSON outputs if any. You locate YOUR assigned strategy using the Strategy ID provided in your assignment. You read the complete history for your strategy including all solutions attempted and all critiques received to understand the full trajectory of exploration and failure patterns. You read corrected solutions to see how issues were addressed and what approaches were refined or abandoned. You read your previous pool outputs to avoid repetition, track your own evolution, and identify which regions of your strategy's solution space you have already explored versus those remaining unexplored. Critically, you read OTHER strategies' sections to learn from their approaches, techniques, and insights while maintaining absolute fidelity to your own framework. You then generate 5 new diverse solutions that improve upon everything seen so far, avoid errors identified across ALL strategies, learn from successful techniques that can be adapted to your framework, and execute YOUR strategy with maximum rigor and genuine diversity.
 </Understanding the StructuredSolutionPool Format>
 
 <Output Format Requirements>
-Your response must contain EXACTLY 5 complete solution attempts, clearly separated and labeled using the specified format. Each solution begins with a separator line followed by a brief descriptive title that captures the core methodological approach within your strategic framework, then another separator line, and finally the complete solution execution. Use this exact format:
+Your response must be EXCLUSIVELY a valid JSON object. No additional text, commentary, markdown fences, or explanation before or after the JSON is permitted. This is an absolute system requirement for programmatic parsing. Any deviation will result in a fatal error. The JSON must adhere with perfect precision to the following structure:
 
-════════════════════════════════════════════════════════════════════════════════
+\`\`\`json
+{
+  "strategy_id": "[Your assigned strategy ID, e.g. main-1]",
+  "solutions": [
+    {
+      "title": "[Brief descriptive title of the methodological approach within your strategic framework]",
+      "approach_summary": "[1-2 sentence summary of what makes this approach distinct and how it executes the strategy]",
+      "content": "[Complete solution attempt — the full, rigorous solution execution. Must be independently understandable. Target ~5000 tokens max.]",
+      "confidence": 0.0,
+      "internal_critique": "[Your rigorous internal critique of this solution: assumptions it depends on, edge cases, vulnerabilities, counterexamples, logical foundations, and why the confidence score is what it is]"
+    }
+  ]
+}
+\`\`\`
 
-### SOLUTION 1: [Brief descriptive title of approach]
-[Complete solution attempt using first orthogonal approach]
-
-════════════════════════════════════════════════════════════════════════════════
-
-### SOLUTION 2: [Brief descriptive title of approach]
-[Complete solution attempt using second orthogonal approach]
-
-════════════════════════════════════════════════════════════════════════════════
-
-### SOLUTION 3: [Brief descriptive title of approach]
-[Complete solution attempt using third orthogonal approach]
-
-════════════════════════════════════════════════════════════════════════════════
-
-### SOLUTION 4: [Brief descriptive title of approach]
-[Complete solution attempt using fourth orthogonal approach]
-
-════════════════════════════════════════════════════════════════════════════════
-
-### SOLUTION 5: [Brief descriptive title of approach]
-[Complete solution attempt using fifth orthogonal approach]
-
-════════════════════════════════════════════════════════════════════════════════
-
-Your output must contain ONLY these 5 solutions with separators and nothing else. No introduction, no conclusion, no meta-commentary about your reasoning process, no discussion of why you chose these particular approaches, no ranking or comparison of the solutions, no suggestions for improvements, and no analysis of the system or other strategies. Just 5 complete, rigorous, diverse solution attempts that execute your assigned strategy from genuinely orthogonal methodological perspectives. Each solution should be information-dense and concise, targeting approximately 5000 tokens or less to maintain system efficiency as the pool grows across iterations.
+**CRITICAL JSON REQUIREMENTS:**
+- The "solutions" array must contain EXACTLY 5 solution objects — no more, no fewer
+- Each solution must have a different final answer, conclusion, or numerical value
+- The "confidence" field must be a float between 0.0 and 1.0, derived from your internal critique
+- The "content" field contains the complete solution text — this is the core deliverable
+- The "internal_critique" field is mandatory and must be thorough, not perfunctory
+- All string values must use proper JSON escaping (newlines as \\n, quotes as \\", etc.)
+- NO markdown code fences around the JSON — output raw JSON only
+- Ensure valid JSON syntax — proper commas, brackets, and quote characters
+- Use double quotes for all strings and keys
 </Output Format Requirements>
 
 <Critical Reminders and Absolute Requirements>
@@ -2228,8 +2225,9 @@ Strategy Content: {{assignedStrategyContent}}
 </YOUR ASSIGNED MAIN STRATEGY>
 
 <COMPLETE STRUCTURED SOLUTION POOL>
-This contains ALL solutions, critiques, corrections, and solution pools from ALL strategies.
+This contains ALL solutions, critiques, corrections, and solution pools from ALL strategies in JSON format.
 Your assigned strategy is identified by the Strategy ID above.
+Your previous output (if any) is stored in the "solution_pool" field of your strategy's JSON entry.
 
 {{completeStructuredSolutionPool}}
 </COMPLETE STRUCTURED SOLUTION POOL>
@@ -2246,8 +2244,8 @@ Generate EXACTLY 5 genuinely diverse, completely orthogonal solutions that:
 4. Address all issues identified in the current critique
 5. Explore different corners of your strategy's solution space
 
-Output ONLY the 5 solutions with separators as specified in your system instructions.
-No introduction, no meta-commentary, no suggestions—just 5 complete solution attempts.
+Output ONLY the valid JSON object as specified in your system instructions.
+No introduction, no meta-commentary, no suggestions—just the JSON with 5 complete solution attempts.
 </YOUR CRITICAL MISSION>`,
   };
 }

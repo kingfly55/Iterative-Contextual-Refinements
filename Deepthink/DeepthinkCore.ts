@@ -28,11 +28,25 @@ export interface DeepthinkSolutionCritiqueData {
     isDetailsOpen?: boolean;
 }
 
+export interface SolutionPoolParsedSolution {
+    title: string;
+    approach_summary: string;
+    content: string;
+    confidence: number;
+    internal_critique: string;
+}
+
+export interface SolutionPoolParsedResponse {
+    strategy_id: string;
+    solutions: SolutionPoolParsedSolution[];
+}
+
 export interface DeepthinkStructuredSolutionPoolAgentData {
     id: string;
     mainStrategyId: string;
     requestPrompt?: string;
     poolResponse?: string;
+    parsedPoolResponse?: SolutionPoolParsedResponse;
     status: 'pending' | 'processing' | 'retrying' | 'completed' | 'error' | 'cancelled';
     error?: string;
     retryAttempt?: number;
@@ -1498,52 +1512,61 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                     } else {
                         // Helper function to build StructuredSolutionPool string
                         const buildStructuredSolutionPool = (): string => {
-                            const singleSeparator = '\n\n════════════════════════════════════════════════════════════════════════════════\n\n';
-                            const doubleSeparator = '\n\n\n════════════════════════════════════════════════════════════════════════════════\n════════════════════════════════════════════════════════════════════════════════\n\n\n';
-
-                            let poolString = '```xml\n';
+                            const poolData: {
+                                strategies: Array<{
+                                    strategy_id: string;
+                                    strategy_text: string;
+                                    original_solution: string;
+                                    iterations: Array<{
+                                        iteration_number: number;
+                                        critique: string;
+                                        corrected_solution: string;
+                                    }>;
+                                    latest_critique?: string;
+                                    solution_pool?: any;
+                                }>;
+                            } = { strategies: [] };
 
                             activeMainStrategies.forEach((mainStrategy) => {
-                                const directSub = mainStrategy.subStrategies[0]; // There's only one "direct" sub-strategy
+                                const directSub = mainStrategy.subStrategies[0];
                                 if (!directSub || directSub.isKilledByRedTeam || !directSub.solutionAttempt) return;
 
-                                poolString += `<${mainStrategy.id}>\n`;
-                                poolString += `<Corresponding Original Executed Solution>\n${directSub.solutionAttempt}\n</Corresponding Original Executed Solution>${singleSeparator}`;
+                                const strategyEntry: any = {
+                                    strategy_id: mainStrategy.id,
+                                    strategy_text: mainStrategy.strategyText,
+                                    original_solution: directSub.solutionAttempt,
+                                    iterations: []
+                                };
 
                                 // Add critiques and corrected solutions from COMPLETED iterations
                                 const iterations = (directSub as any).iterativeCorrections?.iterations || [];
                                 iterations.forEach((iter: any, idx: number) => {
-                                    poolString += `<Corresponding Solution Critique>\n${iter.critique}\n</Corresponding Solution Critique>${singleSeparator}`;
-                                    poolString += `<Corrected Solution - ${idx + 1}>\n${iter.correctedSolution}\n</Corrected Solution - ${idx + 1}>${singleSeparator}`;
+                                    strategyEntry.iterations.push({
+                                        iteration_number: idx + 1,
+                                        critique: iter.critique,
+                                        corrected_solution: iter.correctedSolution
+                                    });
                                 });
 
                                 // CRITICAL FIX: Add the LATEST critique if it exists but isn't in the iterations array yet
-                                // This happens during the current iteration (after Phase 1, before Phase 3 completes)
                                 if (directSub.solutionCritique && directSub.solutionCritiqueStatus === 'completed') {
-                                    // Check if this critique is already in the last iteration
                                     const lastIter = iterations.length > 0 ? iterations[iterations.length - 1] : null;
                                     if (!lastIter || lastIter.critique !== directSub.solutionCritique) {
-                                        poolString += `<Corresponding Solution Critique>\n${directSub.solutionCritique}\n</Corresponding Solution Critique>${singleSeparator}`;
+                                        strategyEntry.latest_critique = directSub.solutionCritique;
                                     }
                                 }
 
                                 // Add solution pool output if exists
                                 const poolAgent = currentProcess.structuredSolutionPoolAgents.find(a => a.mainStrategyId === mainStrategy.id);
                                 if (poolAgent && poolAgent.poolResponse) {
-                                    poolString += `<SolutionPool-${mainStrategy.id}>\n${poolAgent.poolResponse}\n</SolutionPool-${mainStrategy.id}>${singleSeparator}`;
+                                    // Try to use parsed pool response if available, otherwise include raw
+                                    strategyEntry.solution_pool = poolAgent.parsedPoolResponse || poolAgent.poolResponse;
                                 }
 
-                                // Remove the last single separator if it was added, to avoid double separators or trailing separators before closing tag
-                                if (poolString.endsWith(singleSeparator)) {
-                                    poolString = poolString.substring(0, poolString.length - singleSeparator.length);
-                                    poolString += '\n';
-                                }
-
-                                poolString += `</${mainStrategy.id}>${doubleSeparator}`;
+                                poolData.strategies.push(strategyEntry);
                             });
 
-                            poolString += '```';
-                            return poolString;
+                            return JSON.stringify(poolData, null, 2);
                         };
 
                         // Helper function to make API call with timeout
@@ -1755,7 +1778,7 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                                     const poolResponse = await makeDeepthinkApiCallWithTimeout(
                                         parts.concat([{ text: poolPrompt }]),
                                         customPromptsDeepthinkState.sys_deepthink_structuredSolutionPool,
-                                        false,
+                                        true,
                                         `StructuredSolutionPool Agent for ${mainStrategy.id} Iteration ${iterNum}`,
                                         poolAgent,
                                         'retryAttempt'
@@ -1765,6 +1788,26 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                                     await poolHistoryManager.addPoolResponse(poolResponse);
 
                                     poolAgent.poolResponse = poolResponse;
+
+                                    // Parse JSON response for UI consumption
+                                    try {
+                                        const parsed = parseJsonSafe(poolResponse, `SolutionPool-${mainStrategy.id}`);
+                                        if (parsed && Array.isArray(parsed.solutions)) {
+                                            poolAgent.parsedPoolResponse = {
+                                                strategy_id: parsed.strategy_id || mainStrategy.id,
+                                                solutions: parsed.solutions.map((s: any) => ({
+                                                    title: s.title || 'Untitled Solution',
+                                                    approach_summary: s.approach_summary || '',
+                                                    content: s.content || '',
+                                                    confidence: typeof s.confidence === 'number' ? s.confidence : 0.5,
+                                                    internal_critique: s.internal_critique || ''
+                                                }))
+                                            };
+                                        }
+                                    } catch (parseError: any) {
+                                        console.warn(`[Deepthink] Failed to parse pool JSON for ${mainStrategy.id}, raw text will be used:`, parseError.message);
+                                    }
+
                                     poolAgent.status = 'completed';
                                     if (renderActiveDeepthinkPipeline) renderActiveDeepthinkPipeline();
 
