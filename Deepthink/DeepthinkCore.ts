@@ -34,6 +34,7 @@ export interface SolutionPoolParsedSolution {
     content: string;
     confidence: number;
     internal_critique: string;
+    atomic_reconstruction?: string;
 }
 
 export interface SolutionPoolParsedResponse {

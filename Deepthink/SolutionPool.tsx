@@ -167,6 +167,33 @@ function createSolutionCard(solution: SolutionPoolParsedSolution, index: number)
     contentWrapper.appendChild(contentEl);
     card.appendChild(contentWrapper);
 
+    // Atomic reconstruction — collapsible
+    if (solution.atomic_reconstruction) {
+        const atomicToggle = document.createElement('button');
+        atomicToggle.className = 'sp-critique-toggle sp-atomic-toggle';
+        atomicToggle.innerHTML = `
+            <span class="material-symbols-outlined">fingerprint</span>
+            Atomic Reconstruction
+            <span class="material-symbols-outlined sp-critique-chevron">expand_more</span>
+        `;
+
+        const atomicBody = document.createElement('div');
+        atomicBody.className = 'sp-critique-body sp-atomic-body sp-collapsed';
+        atomicBody.innerHTML = renderMathContent(solution.atomic_reconstruction);
+
+        atomicToggle.addEventListener('click', () => {
+            const isCollapsed = atomicBody.classList.contains('sp-collapsed');
+            atomicBody.classList.toggle('sp-collapsed');
+            const chevron = atomicToggle.querySelector('.sp-critique-chevron');
+            if (chevron) {
+                chevron.textContent = isCollapsed ? 'expand_less' : 'expand_more';
+            }
+        });
+
+        card.appendChild(atomicToggle);
+        card.appendChild(atomicBody);
+    }
+
     // Internal critique — collapsible
     if (solution.internal_critique) {
         const critiqueToggle = document.createElement('button');
@@ -327,7 +354,7 @@ export function openCurrentSolutionPool(pipelineId: string) {
 
                 section.appendChild(sectionHeader);
 
-                // Original executed solution
+                // 1. Original executed solution
                 if (strategy.original_solution) {
                     const origLabel = document.createElement('div');
                     origLabel.className = 'sp-pool-label sp-original-label';
@@ -343,94 +370,201 @@ export function openCurrentSolutionPool(pipelineId: string) {
                     section.appendChild(origContent);
                 }
 
-                // Latest critique (the most recent critique for this strategy)
-                if (strategy.latest_critique) {
+                // 2. First critique (from the earliest iteration)
+                const firstCritique = strategy.iterations?.[0]?.critique;
+                if (firstCritique) {
                     const critiqueLabel = document.createElement('div');
                     critiqueLabel.className = 'sp-pool-label sp-critique-label';
-                    critiqueLabel.innerHTML = '<span class="material-symbols-outlined">rate_review</span> Latest Critique';
+                    critiqueLabel.innerHTML = '<span class="material-symbols-outlined">rate_review</span> Initial Critique';
                     section.appendChild(critiqueLabel);
 
                     const critiqueContent = document.createElement('div');
                     critiqueContent.className = 'sp-timeline-section sp-timeline-critique';
                     const critiqueBody = document.createElement('div');
                     critiqueBody.className = 'sp-timeline-section-content';
-                    critiqueBody.innerHTML = renderMathContent(strategy.latest_critique);
+                    critiqueBody.innerHTML = renderMathContent(firstCritique);
                     critiqueContent.appendChild(critiqueBody);
                     section.appendChild(critiqueContent);
                 }
 
-                // Solution pool cards for this strategy
-                if (strategy.solution_pool) {
-                    const poolLabel = document.createElement('div');
-                    poolLabel.className = 'sp-pool-label';
-                    poolLabel.innerHTML = '<span class="material-symbols-outlined">auto_awesome</span> Solution Pool Output';
-                    section.appendChild(poolLabel);
+                // 3. Atomic Reconstructions grouped by iteration/pool
+                const parsedPool: SolutionPoolParsedResponse | null =
+                    strategy.solution_pool && typeof strategy.solution_pool === 'object' && strategy.solution_pool.solutions
+                        ? strategy.solution_pool
+                        : null;
 
-                    const parsedPool: SolutionPoolParsedResponse | null =
-                        typeof strategy.solution_pool === 'object' && strategy.solution_pool.solutions
-                            ? strategy.solution_pool
-                            : null;
+                // Collect atomics from pool version history (grouped by iteration)
+                const sessionId = `solution-pool-${pipelineId}`;
+                const allVersions = solutionPoolVersions.get(sessionId);
 
-                    if (parsedPool && Array.isArray(parsedPool.solutions)) {
-                        const grid = document.createElement('div');
-                        grid.className = 'sp-cards-grid';
+                type AtomicGroup = {
+                    iterationTitle: string;
+                    atomics: Array<{ title: string; reconstruction: string; confidence: number }>;
+                };
+                const iterationGroups: AtomicGroup[] = [];
 
-                        parsedPool.solutions.forEach((solution: SolutionPoolParsedSolution, idx: number) => {
-                            grid.appendChild(createSolutionCard(solution, idx));
-                        });
+                if (allVersions && allVersions.length > 1) {
+                    // Filter to only whole-number iterations (skip "Iteration 0", "Iteration 1.5", etc.)
+                    const wholeIterVersions = allVersions.filter(v => {
+                        const match = v.title.match(/Iteration\s+([\d.]+)/);
+                        if (!match) return false;
+                        const num = parseFloat(match[1]);
+                        return num >= 1 && Number.isInteger(num);
+                    });
 
-                        section.appendChild(grid);
-                    } else if (typeof strategy.solution_pool === 'string') {
-                        section.appendChild(createRawTextFallback(strategy.solution_pool));
+                    // Exclude the last whole iteration — it's the current pool shown below
+                    const pastVersions = wholeIterVersions.slice(0, Math.max(0, wholeIterVersions.length - 1));
+
+                    pastVersions.forEach((version, vIdx) => {
+                        try {
+                            const versionData = JSON.parse(version.content);
+                            const strat = versionData.strategies?.find(
+                                (s: any) => s.strategy_id === strategy.strategy_id
+                            );
+                            if (strat?.solution_pool?.solutions) {
+                                const atomics = strat.solution_pool.solutions
+                                    .filter((s: any) => s.atomic_reconstruction)
+                                    .map((s: any, idx: number) => ({
+                                        title: s.title || `Solution ${idx + 1}`,
+                                        reconstruction: s.atomic_reconstruction,
+                                        confidence: typeof s.confidence === 'number' ? s.confidence : 0.5
+                                    }));
+                                if (atomics.length > 0) {
+                                    iterationGroups.push({
+                                        iterationTitle: version.title || `Pool ${vIdx + 1}`,
+                                        atomics
+                                    });
+                                }
+                            }
+                        } catch { /* skip unparseable versions */ }
+                    });
+                } else if (parsedPool && Array.isArray(parsedPool.solutions)) {
+                    // Fallback: only latest pool available
+                    const atomics = parsedPool.solutions
+                        .filter((s: SolutionPoolParsedSolution) => s.atomic_reconstruction)
+                        .map((s: SolutionPoolParsedSolution, idx: number) => ({
+                            title: s.title || `Solution ${idx + 1}`,
+                            reconstruction: s.atomic_reconstruction!,
+                            confidence: s.confidence
+                        }));
+                    if (atomics.length > 0) {
+                        iterationGroups.push({ iterationTitle: 'Latest Pool', atomics });
                     }
                 }
 
-                // Show iteration history (critiques & corrections) as a timeline
-                if (strategy.iterations && strategy.iterations.length > 0) {
-                    const timelineLabel = document.createElement('div');
-                    timelineLabel.className = 'sp-pool-label sp-timeline-label';
-                    timelineLabel.innerHTML = '<span class="material-symbols-outlined">timeline</span> Iteration History';
-                    section.appendChild(timelineLabel);
+                if (iterationGroups.length > 0) {
+                    const atomicLabel = document.createElement('div');
+                    atomicLabel.className = 'sp-pool-label sp-atomic-label';
+                    atomicLabel.innerHTML = '<span class="material-symbols-outlined">fingerprint</span> Atomic Reconstructions';
+                    section.appendChild(atomicLabel);
 
-                    const timeline = document.createElement('div');
-                    timeline.className = 'sp-iteration-timeline';
+                    const atomicList = document.createElement('div');
+                    atomicList.className = 'sp-atomic-list';
 
-                    strategy.iterations.forEach((iter: any) => {
-                        const iterEl = document.createElement('div');
-                        iterEl.className = 'sp-timeline-item';
+                    iterationGroups.forEach((group: AtomicGroup) => {
+                        const groupEl = document.createElement('div');
+                        groupEl.className = 'sp-atomic-iteration-group';
 
-                        const iterHeader = document.createElement('div');
-                        iterHeader.className = 'sp-timeline-item-header';
-                        iterHeader.textContent = `Iteration ${iter.iteration_number}`;
+                        const groupTitle = document.createElement('div');
+                        groupTitle.className = 'sp-atomic-iteration-title';
+                        groupTitle.textContent = group.iterationTitle;
+                        groupEl.appendChild(groupTitle);
 
-                        iterEl.appendChild(iterHeader);
+                        group.atomics.forEach((item) => {
+                            const entry = document.createElement('div');
+                            entry.className = 'sp-atomic-entry';
 
-                        if (iter.critique) {
-                            const critiqueEl = document.createElement('div');
-                            critiqueEl.className = 'sp-timeline-section sp-timeline-critique';
-                            critiqueEl.innerHTML = `<div class="sp-timeline-section-label"><span class="material-symbols-outlined">rate_review</span> Critique</div>`;
-                            const critiqueContent = document.createElement('div');
-                            critiqueContent.className = 'sp-timeline-section-content';
-                            critiqueContent.innerHTML = renderMathContent(iter.critique);
-                            critiqueEl.appendChild(critiqueContent);
-                            iterEl.appendChild(critiqueEl);
-                        }
+                            const entryHeader = document.createElement('div');
+                            entryHeader.className = 'sp-atomic-entry-header';
 
-                        if (iter.corrected_solution) {
-                            const correctedEl = document.createElement('div');
-                            correctedEl.className = 'sp-timeline-section sp-timeline-corrected';
-                            correctedEl.innerHTML = `<div class="sp-timeline-section-label"><span class="material-symbols-outlined">auto_fix_high</span> Corrected Solution</div>`;
-                            const correctedContent = document.createElement('div');
-                            correctedContent.className = 'sp-timeline-section-content';
-                            correctedContent.innerHTML = renderMathContent(iter.corrected_solution);
-                            correctedEl.appendChild(correctedContent);
-                            iterEl.appendChild(correctedEl);
-                        }
+                            const entryTitle = document.createElement('span');
+                            entryTitle.className = 'sp-atomic-entry-title';
+                            entryTitle.textContent = item.title;
 
-                        timeline.appendChild(iterEl);
+                            const entryConf = document.createElement('span');
+                            entryConf.className = `sp-confidence-badge ${item.confidence >= 0.7 ? 'high' : item.confidence >= 0.4 ? 'medium' : 'low'}`;
+                            entryConf.textContent = `${(item.confidence * 100).toFixed(0)}%`;
+
+                            entryHeader.appendChild(entryTitle);
+                            entryHeader.appendChild(entryConf);
+
+                            const entryText = document.createElement('div');
+                            entryText.className = 'sp-atomic-entry-text';
+                            entryText.innerHTML = renderMathContent(item.reconstruction);
+
+                            entry.appendChild(entryHeader);
+                            entry.appendChild(entryText);
+                            groupEl.appendChild(entry);
+                        });
+
+                        atomicList.appendChild(groupEl);
                     });
 
-                    section.appendChild(timeline);
+                    section.appendChild(atomicList);
+                }
+
+                // 4. Compressed iterations banner
+                if (strategy.compressed_iterations_note) {
+                    const compressedBanner = document.createElement('div');
+                    compressedBanner.className = 'sp-compressed-banner';
+                    compressedBanner.innerHTML = `
+                        <span class="material-symbols-outlined">compress</span>
+                        <span>${strategy.compressed_iterations_note}</span>
+                    `;
+                    section.appendChild(compressedBanner);
+                }
+
+                // 5. Latest correction (from the last iteration)
+                const lastIteration = strategy.iterations?.[strategy.iterations.length - 1];
+                if (lastIteration?.corrected_solution) {
+                    const corrLabel = document.createElement('div');
+                    corrLabel.className = 'sp-pool-label sp-corrected-label';
+                    corrLabel.innerHTML = '<span class="material-symbols-outlined">auto_fix_high</span> Latest Correction';
+                    section.appendChild(corrLabel);
+
+                    const corrContent = document.createElement('div');
+                    corrContent.className = 'sp-timeline-section sp-timeline-corrected';
+                    const corrBody = document.createElement('div');
+                    corrBody.className = 'sp-timeline-section-content';
+                    corrBody.innerHTML = renderMathContent(lastIteration.corrected_solution);
+                    corrContent.appendChild(corrBody);
+                    section.appendChild(corrContent);
+                }
+
+                // 6. Latest critique
+                const latestCritique = strategy.latest_critique || lastIteration?.critique;
+                if (latestCritique && latestCritique !== firstCritique) {
+                    const lcLabel = document.createElement('div');
+                    lcLabel.className = 'sp-pool-label sp-critique-label';
+                    lcLabel.innerHTML = '<span class="material-symbols-outlined">rate_review</span> Latest Critique';
+                    section.appendChild(lcLabel);
+
+                    const lcContent = document.createElement('div');
+                    lcContent.className = 'sp-timeline-section sp-timeline-critique';
+                    const lcBody = document.createElement('div');
+                    lcBody.className = 'sp-timeline-section-content';
+                    lcBody.innerHTML = renderMathContent(latestCritique);
+                    lcContent.appendChild(lcBody);
+                    section.appendChild(lcContent);
+                }
+
+                // 7. Full Solution Pool (card grid)
+                if (parsedPool && Array.isArray(parsedPool.solutions)) {
+                    const poolLabel = document.createElement('div');
+                    poolLabel.className = 'sp-pool-label';
+                    poolLabel.innerHTML = '<span class="material-symbols-outlined">auto_awesome</span> Solution Pool';
+                    section.appendChild(poolLabel);
+
+                    const grid = document.createElement('div');
+                    grid.className = 'sp-cards-grid';
+
+                    parsedPool.solutions.forEach((solution: SolutionPoolParsedSolution, idx: number) => {
+                        grid.appendChild(createSolutionCard(solution, idx));
+                    });
+
+                    section.appendChild(grid);
+                } else if (strategy.solution_pool && typeof strategy.solution_pool === 'string') {
+                    section.appendChild(createRawTextFallback(strategy.solution_pool));
                 }
 
                 body.appendChild(section);
@@ -568,8 +702,17 @@ export function renderSolutionPoolContent(deepthinkProcess: DeepthinkPipelineSta
     // Content wrapper for consistent paddings/scroll behavior
     html += `<div class="solution-pool-content-wrapper">`;
 
-    // Render 3 iteration rows based on pool agent status
-    for (let iteration = 1; iteration <= 3; iteration++) {
+    // Determine actual iteration count from completed critiques
+    const maxIterations = survivingStrategies.reduce((max, strategy) => {
+        const critiques = deepthinkProcess.solutionCritiques.filter(
+            c => c.mainStrategyId === strategy.id
+        ).length;
+        return Math.max(max, critiques);
+    }, 0);
+    const iterationCount = Math.max(maxIterations, 1); // At least show 1 row
+
+    // Render dynamic iteration rows based on pool agent status
+    for (let iteration = 1; iteration <= iterationCount; iteration++) {
         html += `
             <div class="pool-iteration-container">
                 <div class="pool-iteration-header">

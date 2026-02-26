@@ -963,26 +963,28 @@ body.light-mode .sp-approach-summary {
     background: rgba(var(--accent-purple-rgb), 0.3);
 }
 
-/* Internal Critique — Collapsible */
+/* Internal Critique / Atomic Reconstruction — Collapsible Toggles */
 .sp-critique-toggle {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    width: 100%;
-    padding: 0.625rem 1.125rem;
-    border: none;
-    border-top: 1px solid rgba(var(--border-color-rgb, 128, 128, 128), 0.2);
+    width: fit-content;
+    margin: 0.5rem 0.75rem 0.25rem;
+    padding: 0.5rem 1rem;
+    border: 1px solid rgba(var(--border-color-rgb, 128, 128, 128), 0.25);
     background: rgba(245, 158, 11, 0.04);
     color: #f59e0b;
     font-size: 0.8125rem;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.2s ease;
+    transition: all 0.2s ease;
     text-align: left;
+    border-radius: 999px;
 }
 
 .sp-critique-toggle:hover {
     background: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.3);
 }
 
 .sp-critique-toggle .material-symbols-outlined {
@@ -991,20 +993,22 @@ body.light-mode .sp-approach-summary {
 }
 
 .sp-critique-chevron {
-    margin-left: auto;
+    margin-left: 0.25rem;
     transition: transform 0.2s ease;
 }
 
 .sp-critique-body {
-    padding: 0.875rem 1.125rem;
+    padding: 0.75rem 1rem;
+    margin: 0 0.75rem 0.5rem;
     font-size: 0.8125rem;
     line-height: 1.6;
     color: var(--text-secondary);
-    border-top: 1px solid rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.12);
     background: rgba(245, 158, 11, 0.02);
     max-height: 300px;
     overflow-y: auto;
     transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
+    border-radius: 12px;
 }
 
 .sp-critique-body.sp-collapsed {
@@ -1013,6 +1017,128 @@ body.light-mode .sp-approach-summary {
     opacity: 0;
     overflow: hidden;
     border-top: none;
+}
+
+/* Atomic Reconstruction — Collapsible (teal accent) */
+.sp-atomic-toggle {
+    background: rgba(20, 184, 166, 0.04);
+    color: #14b8a6;
+    border-color: rgba(20, 184, 166, 0.2);
+}
+
+.sp-atomic-toggle:hover {
+    background: rgba(20, 184, 166, 0.08);
+    border-color: rgba(20, 184, 166, 0.4);
+}
+
+.sp-atomic-body {
+    border-color: rgba(20, 184, 166, 0.12);
+    background: rgba(20, 184, 166, 0.02);
+}
+
+/* Compressed Iterations Banner */
+.sp-compressed-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.75rem 1.25rem;
+    margin: 0.75rem 1.25rem;
+    background: rgba(var(--accent-blue-rgb), 0.06);
+    border: 1px solid rgba(var(--accent-blue-rgb), 0.15);
+    border-radius: 8px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--accent-blue);
+    line-height: 1.5;
+}
+
+.sp-compressed-banner .material-symbols-outlined {
+    font-size: 1.125rem;
+    opacity: 0.8;
+    flex-shrink: 0;
+}
+
+body.light-mode .sp-compressed-banner {
+    background: rgba(var(--accent-blue-rgb), 0.08);
+    border-color: rgba(var(--accent-blue-rgb), 0.2);
+}
+
+/* Atomic Reconstruction Compact List (Full Repo View) */
+.sp-atomic-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 0.75rem 1.25rem 1rem;
+}
+
+/* Iteration group within atomic list */
+.sp-atomic-iteration-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.sp-atomic-iteration-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(20, 184, 166, 0.7);
+    padding: 0 0.25rem;
+}
+
+.sp-atomic-entry {
+    background: rgba(20, 184, 166, 0.04);
+    border: 1px solid rgba(20, 184, 166, 0.2);
+    border-radius: 14px;
+    padding: 0.75rem 1.125rem;
+    transition: all 0.2s ease;
+}
+
+.sp-atomic-entry:hover {
+    border-color: rgba(20, 184, 166, 0.4);
+    background: rgba(20, 184, 166, 0.07);
+}
+
+.sp-atomic-entry-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.sp-atomic-entry-title {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #14b8a6;
+}
+
+.sp-atomic-entry-text {
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+
+body.light-mode .sp-atomic-entry {
+    background: rgba(20, 184, 166, 0.05);
+    border-color: rgba(20, 184, 166, 0.25);
+}
+
+/* Pool label accents for new sections */
+.sp-atomic-label {
+    color: #14b8a6;
+}
+
+.sp-atomic-label .material-symbols-outlined {
+    color: #14b8a6;
+}
+
+.sp-corrected-label {
+    color: var(--accent-purple);
+}
+
+.sp-corrected-label .material-symbols-outlined {
+    color: var(--accent-purple);
 }
 
 /* ==========================================================================
