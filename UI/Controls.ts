@@ -1,27 +1,56 @@
-
 import { globalState } from '../Core/State';
 import { hasValidApiKey, routingManager } from '../Routing';
 
-export function updateControlsState() {
-    const { pipelinesState, activeDeepthinkPipeline, currentMode } = globalState;
+export interface ControlsDisabledState {
+    generateButton: boolean;
+    exportConfigButton: boolean;
+    importConfigInput: boolean;
+    initialIdeaInput: boolean;
+    redTeamButtons: boolean;
+    sliders: boolean;
+    toggles: boolean;
+    sidebarContent: boolean;
+    providersButton: boolean;
+    promptsButton: boolean;
+}
+
+export function computeIsGenerating(): boolean {
+    const { pipelinesState, activeDeepthinkPipeline, isAgenticRunning, isContextualRunning, isAdaptiveDeepthinkRunning } = globalState;
 
     const anyPipelineRunningOrStopping = pipelinesState.some(p => p.status === 'running' || p.status === 'stopping');
     const deepthinkPipelineRunningOrStopping = activeDeepthinkPipeline?.status === 'processing' || activeDeepthinkPipeline?.status === 'stopping';
-    const agenticRunning = globalState.isAgenticRunning;
-    const contextualRunning = globalState.isContextualRunning;
-    const adaptiveDeepthinkRunning = globalState.isAdaptiveDeepthinkRunning;
 
-    globalState.isGenerating = anyPipelineRunningOrStopping || deepthinkPipelineRunningOrStopping || agenticRunning || contextualRunning || adaptiveDeepthinkRunning;
+    return anyPipelineRunningOrStopping || deepthinkPipelineRunningOrStopping || isAgenticRunning || isContextualRunning || isAdaptiveDeepthinkRunning;
+}
 
-    const isApiKeyReady = hasValidApiKey();
+export function computeIsApiKeyReady(): boolean {
+    return hasValidApiKey();
+}
+
+export function computeControlsDisabledState(): ControlsDisabledState {
+    const isGenerating = computeIsGenerating();
+    const isApiKeyReady = computeIsApiKeyReady();
+
+    return {
+        generateButton: isGenerating || !isApiKeyReady,
+        exportConfigButton: isGenerating,
+        importConfigInput: isGenerating,
+        initialIdeaInput: isGenerating,
+        redTeamButtons: isGenerating,
+        sliders: isGenerating,
+        toggles: isGenerating,
+        sidebarContent: isGenerating,
+        providersButton: isGenerating,
+        promptsButton: isGenerating
+    };
+}
+
+export function updateControlsState(): void {
+    const disabledState = computeControlsDisabledState();
 
     const generateButton = document.getElementById('generate-button') as HTMLButtonElement;
     if (generateButton) {
-        let disabled = globalState.isGenerating || !isApiKeyReady;
-        if (!disabled) {
-            // Mode specific gating if needed
-        }
-        generateButton.disabled = disabled;
+        generateButton.disabled = disabledState.generateButton;
     }
 
     const exportConfigButton = document.getElementById('export-config-button') as HTMLButtonElement;
@@ -29,47 +58,42 @@ export function updateControlsState() {
     const importConfigLabel = document.getElementById('import-config-label') as HTMLLabelElement;
     const initialIdeaInput = document.getElementById('initial-idea') as HTMLTextAreaElement;
 
-    if (exportConfigButton) exportConfigButton.disabled = globalState.isGenerating;
-    if (importConfigInput) importConfigInput.disabled = globalState.isGenerating;
-    if (importConfigLabel) importConfigLabel.classList.toggle('disabled', globalState.isGenerating);
-    if (initialIdeaInput) initialIdeaInput.disabled = globalState.isGenerating;
+    if (exportConfigButton) exportConfigButton.disabled = disabledState.exportConfigButton;
+    if (importConfigInput) importConfigInput.disabled = disabledState.importConfigInput;
+    if (importConfigLabel) importConfigLabel.classList.toggle('disabled', disabledState.importConfigInput);
+    if (initialIdeaInput) initialIdeaInput.disabled = disabledState.initialIdeaInput;
 
-    // Model controls are now managed by routing system
-    // Disable red team buttons during generation
     const redTeamButtons = document.querySelectorAll('.red-team-button');
     redTeamButtons.forEach(button => {
-        (button as HTMLButtonElement).disabled = globalState.isGenerating;
+        (button as HTMLButtonElement).disabled = disabledState.redTeamButtons;
     });
 
-    // Disable sliders during generation
     const sliders = document.querySelectorAll('.slider');
     sliders.forEach(slider => {
-        (slider as HTMLInputElement).disabled = globalState.isGenerating;
+        (slider as HTMLInputElement).disabled = disabledState.sliders;
     });
 
-    // Disable toggles during generation
     const toggles = document.querySelectorAll('input[type="checkbox"]:not([id*="pipeline"])');
     toggles.forEach(toggle => {
-        (toggle as HTMLInputElement).disabled = globalState.isGenerating;
+        (toggle as HTMLInputElement).disabled = disabledState.toggles;
     });
 
-    // Update prompts modal state through routing system
-    routingManager.updatePromptsModalState(globalState.isGenerating);
+    routingManager.updatePromptsModalState(disabledState.generateButton);
 
-    // Block sidebar content during generation
     const sidebarContent = document.querySelector('#controls-sidebar .sidebar-content');
     if (sidebarContent) {
-        (sidebarContent as HTMLElement).style.pointerEvents = globalState.isGenerating ? 'none' : 'auto';
-        (sidebarContent as HTMLElement).style.opacity = globalState.isGenerating ? '0.6' : '1';
+        (sidebarContent as HTMLElement).style.pointerEvents = disabledState.sidebarContent ? 'none' : 'auto';
+        (sidebarContent as HTMLElement).style.opacity = disabledState.sidebarContent ? '0.6' : '1';
     }
 
-    // Disable providers and prompts buttons
     const providersButton = document.getElementById('add-providers-trigger');
     if (providersButton) {
-        (providersButton as HTMLButtonElement).disabled = globalState.isGenerating;
+        (providersButton as HTMLButtonElement).disabled = disabledState.providersButton;
     }
     const promptsButton = document.getElementById('prompts-trigger');
     if (promptsButton) {
-        (promptsButton as HTMLButtonElement).disabled = globalState.isGenerating;
+        (promptsButton as HTMLButtonElement).disabled = disabledState.promptsButton;
     }
+
+    globalState.isGenerating = computeIsGenerating();
 }

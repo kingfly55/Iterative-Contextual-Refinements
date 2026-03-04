@@ -1,8 +1,10 @@
 import React from 'react';
+import { PromptStylingEditor } from './PromptStyling';
 
 /**
  * Prompt Card Component
- * Reusable component for displaying system and user prompts with model selection
+ * Reusable component for displaying system and user prompts with model selection.
+ * Supports both controlled (value/onChange) and uncontrolled modes.
  */
 
 interface PromptCardProps {
@@ -11,6 +13,11 @@ interface PromptCardProps {
     rows?: number;
     agentName?: string;
     placeholders?: string;
+    value?: string;
+    onChange?: (text: string) => void;
+    modelValue?: string;
+    onModelChange?: (value: string) => void;
+    availableModels?: string[];
 }
 
 export const PromptCard: React.FC<PromptCardProps> = ({
@@ -18,7 +25,12 @@ export const PromptCard: React.FC<PromptCardProps> = ({
     textareaId,
     rows = 8,
     agentName,
-    placeholders
+    placeholders,
+    value,
+    onChange,
+    modelValue,
+    onModelChange,
+    availableModels = []
 }) => {
     return (
         <div className="prompt-card">
@@ -26,8 +38,16 @@ export const PromptCard: React.FC<PromptCardProps> = ({
                 <span className="prompt-card-title">{title}</span>
                 {agentName && (
                     <div className="prompt-model-selector">
-                        <select className="prompt-model-select" data-agent={agentName}>
+                        <select
+                            className="prompt-model-select"
+                            data-agent={agentName}
+                            value={onModelChange ? (modelValue || '') : undefined}
+                            onChange={onModelChange ? (e) => onModelChange(e.target.value) : undefined}
+                        >
                             <option value="">Use Global Model</option>
+                            {availableModels.map(model => (
+                                <option key={model} value={model}>{model}</option>
+                            ))}
                         </select>
                     </div>
                 )}
@@ -36,10 +56,12 @@ export const PromptCard: React.FC<PromptCardProps> = ({
                 )}
             </div>
             <div className="prompt-card-body">
-                <textarea
+                <PromptStylingEditor
                     id={textareaId}
                     className="prompt-textarea"
                     rows={rows}
+                    value={value}
+                    onChange={onChange}
                 />
             </div>
         </div>

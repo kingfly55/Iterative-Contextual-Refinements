@@ -10,7 +10,7 @@ import {
     getActiveAgenticState,
     setActiveAgenticStateForImport,
     renderAgenticMode,
-} from '../../../Agentic/Agentic';
+} from '../../../Agentic/AgenticUI_Bridge';
 import type { AgenticState } from '../../../Agentic/AgenticCore';
 
 export const agenticStateHandler: ModeStateHandler<AgenticState> = {

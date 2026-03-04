@@ -471,8 +471,7 @@ body.light-mode .solution-pool-download-button {
 
 .pool-iteration-container:hover {
     border-color: rgba(var(--accent-purple-rgb), 0.35);
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12),
-        0 0 0 1px rgba(var(--accent-purple-rgb), 0.08);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12);
 }
 
 /* Light Mode Override for Pool Iteration Container */
@@ -803,8 +802,7 @@ body.light-mode .sp-fullscreen-header {
 
 .sp-solution-card:hover {
     border-color: rgba(var(--accent-purple-rgb), 0.35);
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12),
-        0 0 0 1px rgba(var(--accent-purple-rgb), 0.06);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12);
 }
 
 body.light-mode .sp-solution-card {

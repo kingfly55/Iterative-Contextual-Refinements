@@ -4,10 +4,8 @@
  */
 
 import React from 'react';
-import ReactDOM from 'react-dom/client';
-import { flushSync } from 'react-dom';
 import { AgenticState, AgenticMessage } from './AgenticCore';
-import { renderMathContent } from '../Styles/Components/RenderMathMarkdown';
+import { renderMathContent } from '../Styles/Components/RenderMathMarkdownLogic';
 import { FaRobot, FaUser, FaCheckCircle, FaExclamationTriangle, FaStop, FaCalendarAlt, FaTag, FaFilePdf, FaExternalLinkAlt, FaChevronDown, FaChevronRight } from 'react-icons/fa';
 import { MdVerifiedUser } from 'react-icons/md';
 import { IoMdPaper } from 'react-icons/io';
@@ -669,6 +667,38 @@ export const AgentActivityPanel: React.FC<{ state: AgenticState; onStop?: () => 
 
 // Component for the left panel showing current text (exported for reuse)
 export const CurrentTextPanel: React.FC<{ content: string; originalContent: string; state: AgenticState }> = ({ content, originalContent, state }) => {
+    const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+
+    // Check sidebar state on mount and listen for changes
+    React.useEffect(() => {
+        const checkSidebarState = () => {
+            const sidebar = document.getElementById('controls-sidebar');
+            setSidebarCollapsed(sidebar?.classList.contains('collapsed') || false);
+        };
+
+        checkSidebarState();
+
+        // Listen for sidebar state changes
+        const observer = new MutationObserver(checkSidebarState);
+        const sidebar = document.getElementById('controls-sidebar');
+        if (sidebar) {
+            observer.observe(sidebar, { attributes: true, attributeFilter: ['class'] });
+        }
+
+        return () => observer.disconnect();
+    }, []);
+
+    const handleExpandSidebar = () => {
+        const sidebar = document.getElementById('controls-sidebar');
+        const expandButton = document.getElementById('sidebar-expand-button');
+        if (sidebar) {
+            sidebar.classList.remove('collapsed');
+            if (expandButton) {
+                expandButton.style.display = 'none';
+            }
+        }
+    };
+
     const renderContent = () => {
         if (false) {
             // Use diff library for proper diff visualization
@@ -704,7 +734,44 @@ export const CurrentTextPanel: React.FC<{ content: string; originalContent: stri
     return (
         <div className="agentic-text-panel">
             <div className="text-panel-header">
-                <h3>Current Text</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    {sidebarCollapsed && (
+                        <>
+                            <button
+                                onClick={handleExpandSidebar}
+                                title="Expand Sidebar"
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: 0,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: 'var(--text-color)',
+                                    opacity: 0.7,
+                                    transition: 'opacity 0.2s ease',
+                                    alignSelf: 'center',
+                                    marginLeft: '0.5rem'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                                onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                            >
+                                <span className="material-symbols-outlined" style={{ fontSize: '1.1rem', lineHeight: 1 }}>dock_to_left</span>
+                            </button>
+                            <div
+                                style={{
+                                    width: '1px',
+                                    alignSelf: 'stretch',
+                                    background: 'linear-gradient(180deg, transparent 0%, rgba(var(--accent-purple-rgb), 0.35) 20%, rgba(var(--accent-purple-rgb), 0.35) 80%, transparent 100%)',
+                                    opacity: 1,
+                                    margin: '0 0.4rem'
+                                }}
+                            />
+                        </>
+                    )}
+                    <h3 style={{ margin: 0, lineHeight: 1, display: 'flex', alignItems: 'center' }}>Current Text</h3>
+                </div>
                 <div className="text-panel-actions">
                     <button
                         className="action-btn"
@@ -775,30 +842,3 @@ export const AgenticUI: React.FC<AgenticUIProps> = ({ state, onStop }) => {
         </div>
     );
 };
-
-// Function to render the Agentic UI
-export function renderAgenticUI(container: HTMLElement, state: AgenticState, onStop?: () => void) {
-    const root = ReactDOM.createRoot(container);
-    root.render(<AgenticUI state={state} onStop={onStop} />);
-    return root;
-}
-
-// Function to update the Agentic UI with forced synchronous rendering
-export function updateAgenticUI(root: any, state: AgenticState, onStop?: () => void) {
-    // Use flushSync to force immediate DOM update, preventing React batching
-    flushSync(() => {
-        root.render(<AgenticUI state={state} onStop={onStop} />);
-    });
-}
-
-// Helper to force a browser repaint using requestAnimationFrame
-// This is more reliable than setTimeout(0) for ensuring UI updates are visible
-export async function forceUIRender() {
-    return new Promise<void>(resolve => {
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                resolve();
-            });
-        });
-    });
-}

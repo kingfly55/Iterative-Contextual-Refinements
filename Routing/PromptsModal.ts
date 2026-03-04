@@ -6,6 +6,7 @@
 import { initializePromptStyling, updatePromptContent } from '../Styles/Components/PromptStyling';
 import { PromptRefiner } from './PromptRefiner';
 import { openPromptDiffModal } from '../Styles/Components/DiffModal/DiffModalController';
+import { globalState } from '../Core/State';
 
 export class PromptsModal {
     private elements: {
@@ -75,6 +76,14 @@ export class PromptsModal {
                 this.hide();
             }
         });
+
+        // Listen for mode changes to update the modal
+        window.addEventListener('appModeChanged', () => {
+            this.setCurrentMode(globalState.currentMode);
+            if (this.elements.overlay?.classList.contains('is-visible')) {
+                this.initializeModal();
+            }
+        });
     }
 
     public show(): void {
@@ -94,12 +103,7 @@ export class PromptsModal {
                 setTimeout(() => updatePromptContent(), 60);
                 // Safety: run once more after layout settles
                 setTimeout(() => updatePromptContent(), 200);
-
-                // Ensure textareas are populated with latest state
-                if (this.promptsManager) {
-                    this.promptsManager.initializeTextareas(); // Re-bind listeners if needed
-                    this.promptsManager.updateTextareasFromState();
-                }
+                // React-controlled components auto-sync from their managers
             }, 10);
         }
     }
@@ -317,35 +321,47 @@ export class PromptsModal {
     private initializeModelSelectors(): void {
         if (!this.modelConfig) return;
 
+        // React-controlled containers manage their own select options and change handlers.
+        // We still apply createCustomModelSelect() for the visual overlay (styled dropdown,
+        // Refine button, Diff button), but skip wiping options and adding imperative listeners.
+        const reactContainerIds = new Set([
+            'website-prompts-container',
+            'deepthink-prompts-container',
+            'agentic-prompts-container',
+            'adaptiveDeepthink-prompts-container',
+            'contextual-prompts-container'
+        ]);
+
         const modelSelectors = document.querySelectorAll('.prompt-model-select');
         modelSelectors.forEach((selector: Element) => {
             const selectElement = selector as HTMLSelectElement;
 
-            // Clear existing options except the first one
-            while (selectElement.children.length > 1) {
-                selectElement.removeChild(selectElement.lastChild!);
+            const parentContainer = selectElement.closest('.prompts-mode-container');
+            const isReactControlled = parentContainer && reactContainerIds.has(parentContainer.id);
+
+            if (!isReactControlled) {
+                // Non-React selects: clear and repopulate options imperatively
+                while (selectElement.children.length > 1) {
+                    selectElement.removeChild(selectElement.lastChild!);
+                }
+
+                const availableModels = this.modelConfig.getAvailableModels();
+                availableModels.forEach((model: any) => {
+                    const option = document.createElement('option');
+                    option.value = model.value;
+                    option.textContent = model.value;
+                    if (model.description) {
+                        option.title = model.description;
+                    }
+                    selectElement.appendChild(option);
+                });
+
+                selectElement.addEventListener('change', (e) => {
+                    this.handleModelSelectionChange(e);
+                });
             }
 
-            // Get available models from model config
-            const availableModels = this.modelConfig.getAvailableModels();
-
-            // Add model options
-            availableModels.forEach((model: any) => {
-                const option = document.createElement('option');
-                option.value = model.value;
-                option.textContent = model.value;
-                if (model.description) {
-                    option.title = model.description;
-                }
-                selectElement.appendChild(option);
-            });
-
-            // Add event listener for model selection changes
-            selectElement.addEventListener('change', (e) => {
-                this.handleModelSelectionChange(e);
-            });
-
-            // Create custom dropdown for this selector
+            // Custom dropdown overlay is always created for consistent styling
             this.createCustomModelSelect(selectElement);
         });
 
@@ -714,8 +730,14 @@ export class PromptsModal {
 
         // Update the hidden select
         if (originalSelect) {
-            originalSelect.value = value;
-            // Trigger change event
+            // Use the native setter to bypass React's value tracker, ensuring onChange fires
+            const nativeSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+            if (nativeSetter) {
+                nativeSetter.call(originalSelect, value);
+            } else {
+                originalSelect.value = value;
+            }
+            // Trigger change event (React's onChange for <select> maps to native 'change')
             const changeEvent = new Event('change', { bubbles: true });
             originalSelect.dispatchEvent(changeEvent);
         }
@@ -732,10 +754,7 @@ export class PromptsModal {
     }
 
     private updateModelSelectorsFromState(): void {
-        // Call the PromptsManager directly to update model selectors from state
-        if (this.promptsManager) {
-            this.promptsManager.updateModelSelectorsFromState();
-        }
+        // React-controlled components auto-sync model selectors from their managers
     }
 
     private handleModelSelectionChange(_event: Event): void {

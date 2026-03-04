@@ -1,13 +1,34 @@
 import React from 'react';
+import { ApplicationMode } from '../../../Core/Types';
+import { App } from '../../../Core/App';
 
-/**
- * Sidebar footer component
- * Contains API call counter and generate button
- */
-export const SidebarFooter: React.FC = () => {
+interface SidebarFooterProps {
+    currentMode: ApplicationMode;
+}
+
+export const SidebarFooter: React.FC<SidebarFooterProps> = ({ currentMode }) => {
+
+    const handleGenerateClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+        e.preventDefault();
+        const initialIdeaInput = document.getElementById('initial-idea') as HTMLTextAreaElement;
+        const initialIdea = initialIdeaInput?.value?.trim() || '';
+        App.handleGenerate(initialIdea);
+    };
+
+    const getButtonText = () => {
+        switch (currentMode) {
+            case 'website': return 'Generate & Refine';
+            case 'deepthink': return 'Deepthink';
+            case 'agentic': return 'Generate & Refine';
+            case 'contextual': return 'Start Contextual Refinement';
+            case 'adaptive-deepthink': return 'Adaptive Deepthink';
+            default: return 'Generate & Refine';
+        }
+    };
+
     return (
         <footer className="sidebar-footer">
-            <div className="api-call-indicator">
+            <div className="api-call-indicator" style={{ display: currentMode === 'deepthink' ? 'flex' : 'none' }}>
                 <div className="api-call-info">
                     <span className="api-call-count" id="api-call-count">~0</span>
                     <span className="api-call-label">API Calls</span>
@@ -29,8 +50,13 @@ export const SidebarFooter: React.FC = () => {
                     info
                 </span>
             </div>
-            <button id="generate-button" className="button primary-action" type="button">
-                <span className="button-text">Deepthink</span>
+            <button
+                id="generate-button"
+                className="button primary-action"
+                type="button"
+                onClick={handleGenerateClick}
+            >
+                <span className="button-text" id="generate-button-text">{getButtonText()}</span>
             </button>
         </footer>
     );

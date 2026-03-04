@@ -1,17 +1,69 @@
-
 import { globalState } from '../Core/State';
+import { ApplicationMode } from '../Core/Types';
 import { activateDeepthinkStrategyTab } from '../Deepthink/Deepthink';
 
-export function activateTab(idToActivate: string | number) {
-    const { currentMode, activeDeepthinkPipeline } = globalState;
+export function getTabsNavContainer(): HTMLElement | null {
+    return document.getElementById('tabs-nav-container');
+}
+
+export function getPipelinesContentContainer(): HTMLElement | null {
+    return document.getElementById('pipelines-content-container');
+}
+
+export function getDeepthinkTabButton(id: string | number): HTMLElement | null {
+    return document.getElementById(`deepthink-tab-${id}`);
+}
+
+export function getPipelineTabButton(id: number): HTMLElement | null {
+    return document.getElementById(`pipeline-tab-${id}`);
+}
+
+export function getPipelineContentPane(id: string | number): HTMLElement | null {
+    return document.getElementById(`pipeline-content-${id}`);
+}
+
+export function getAllTabButtons(selector: string): NodeListOf<Element> {
+    return document.querySelectorAll(selector);
+}
+
+export function getAllPipelinePanes(): NodeListOf<Element> {
+    return document.querySelectorAll('#pipelines-content-container > .pipeline-content');
+}
+
+export function getCurrentMode(): ApplicationMode {
+    return globalState.currentMode;
+}
+
+export function getActiveDeepthinkPipeline() {
+    return globalState.activeDeepthinkPipeline;
+}
+
+export function getActivePipelineId(): number | null {
+    return globalState.activePipelineId;
+}
+
+export function setActivePipelineId(id: number): void {
+    globalState.activePipelineId = id;
+}
+
+export function setActiveDeepthinkTabId(id: string): void {
+    if (globalState.activeDeepthinkPipeline) {
+        globalState.activeDeepthinkPipeline.activeTabId = id;
+    }
+}
+
+export function activateTab(idToActivate: string | number): void {
+    const currentMode = getCurrentMode();
+    const activeDeepthinkPipeline = getActiveDeepthinkPipeline();
 
     if (currentMode === 'deepthink' && activeDeepthinkPipeline) {
-        activeDeepthinkPipeline.activeTabId = idToActivate as string;
-        document.querySelectorAll('#tabs-nav-container .tab-button.deepthink-mode-tab').forEach(btn => btn.classList.remove('active'));
-        document.querySelectorAll('#pipelines-content-container > .pipeline-content').forEach(pane => pane.classList.remove('active'));
+        setActiveDeepthinkTabId(idToActivate as string);
+        
+        getAllTabButtons('#tabs-nav-container .tab-button.deepthink-mode-tab').forEach(btn => btn.classList.remove('active'));
+        getAllPipelinePanes().forEach(pane => pane.classList.remove('active'));
 
-        const tabButton = document.getElementById(`deepthink-tab-${idToActivate}`);
-        const contentPane = document.getElementById(`pipeline-content-${idToActivate}`);
+        const tabButton = getDeepthinkTabButton(idToActivate);
+        const contentPane = getPipelineContentPane(idToActivate);
         if (tabButton) tabButton.classList.add('active');
         if (contentPane) contentPane.classList.add('active');
 
@@ -20,19 +72,21 @@ export function activateTab(idToActivate: string | number) {
         }
 
     } else if (currentMode !== 'deepthink') {
-        globalState.activePipelineId = idToActivate as number;
-        document.querySelectorAll('#tabs-nav-container .tab-button').forEach(btn => {
-            btn.classList.toggle('active', btn.id === `pipeline-tab-${globalState.activePipelineId}`);
-            btn.setAttribute('aria-selected', (btn.id === `pipeline-tab-${globalState.activePipelineId}`).toString());
+        setActivePipelineId(idToActivate as number);
+        const activePipelineId = getActivePipelineId();
+        
+        getAllTabButtons('#tabs-nav-container .tab-button').forEach(btn => {
+            btn.classList.toggle('active', btn.id === `pipeline-tab-${activePipelineId}`);
+            btn.setAttribute('aria-selected', (btn.id === `pipeline-tab-${activePipelineId}`).toString());
         });
-        document.querySelectorAll('#pipelines-content-container > .pipeline-content').forEach(pane => {
-            pane.classList.toggle('active', pane.id === `pipeline-content-${globalState.activePipelineId}`);
+        getAllPipelinePanes().forEach(pane => {
+            pane.classList.toggle('active', pane.id === `pipeline-content-${activePipelineId}`);
         });
     }
 }
 
-export function clearTabsContainer() {
-    const tabsNavContainer = document.getElementById('tabs-nav-container');
+export function clearTabsContainer(): void {
+    const tabsNavContainer = getTabsNavContainer();
     if (tabsNavContainer) {
         tabsNavContainer.innerHTML = '';
     }

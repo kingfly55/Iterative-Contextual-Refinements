@@ -1,38 +1,17 @@
 import React, { useEffect, useRef } from 'react';
-import { routingManager } from '../../../Routing';
+import { mountProviderButtons, createPollingInterval } from './SidebarHeaderLogic';
 
-/**
- * Sidebar header component
- * Contains provider management button, theme toggle, and collapse controls
- */
 export const SidebarHeader: React.FC = () => {
     const buttonsContainerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        const mountButtons = () => {
-            const providerUI = routingManager.getProviderManagementUI();
-            if (providerUI && buttonsContainerRef.current) {
-                providerUI.mountButtons(buttonsContainerRef.current);
-            }
+        const attemptMount = () => {
+            mountProviderButtons(buttonsContainerRef);
         };
 
-        // Try to mount immediately
-        mountButtons();
+        attemptMount();
 
-        // Also set up a polling interval to check for initialization (fallback)
-        // This handles the case where SidebarHeader mounts before App.init completes
-        const intervalId = setInterval(() => {
-            const providerUI = routingManager.getProviderManagementUI();
-            if (providerUI && buttonsContainerRef.current) {
-                // Check if already mounted to avoid unnecessary re-renders/flickers if possible,
-                // but mountButtons clears innerHTML so it's safe.
-                // However, we don't want to clear it if it's already there and working.
-                // Simple check: if empty, mount.
-                if (buttonsContainerRef.current.children.length === 0) {
-                    providerUI.mountButtons(buttonsContainerRef.current);
-                }
-            }
-        }, 100);
+        const intervalId = createPollingInterval(buttonsContainerRef, attemptMount);
 
         return () => clearInterval(intervalId);
     }, []);
@@ -45,7 +24,6 @@ export const SidebarHeader: React.FC = () => {
                     className="api-key-status-container"
                     ref={buttonsContainerRef}
                 >
-                    {/* Provider management buttons will be inserted here */}
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     <button

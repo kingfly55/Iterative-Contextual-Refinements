@@ -6,56 +6,85 @@
 import { globalState } from '../Core/State';
 import { getProviderForCurrentModel } from '../Routing';
 
-/**
- * Set up event listener for the Gemini code execution toggle
- */
-export function setupCodeExecutionToggle() {
-    const toggle = document.getElementById('gemini-code-execution-toggle') as HTMLInputElement;
+export function getCodeExecutionToggle(): HTMLInputElement | null {
+    return document.getElementById('gemini-code-execution-toggle') as HTMLInputElement | null;
+}
+
+export function getContextualModeControls(): HTMLElement | null {
+    return document.getElementById('contextual-mode-controls');
+}
+
+export function getGeminiCodeExecutionEnabled(): boolean {
+    return globalState.geminiCodeExecutionEnabled;
+}
+
+export function setGeminiCodeExecutionEnabled(enabled: boolean): void {
+    globalState.geminiCodeExecutionEnabled = enabled;
+}
+
+export function getCurrentProvider(): string {
+    return getProviderForCurrentModel();
+}
+
+export function isGeminiProvider(): boolean {
+    return getCurrentProvider() === 'gemini';
+}
+
+export function isContextualMode(mode: string): boolean {
+    return mode === 'contextual';
+}
+
+export function shouldShowCodeExecutionToggle(currentMode: string): boolean {
+    return isContextualMode(currentMode) && isGeminiProvider();
+}
+
+export function setToggleChecked(checked: boolean): void {
+    const toggle = getCodeExecutionToggle();
+    if (toggle) {
+        toggle.checked = checked;
+    }
+}
+
+export function setContainerDisplay(display: 'block' | 'none'): void {
+    const container = getContextualModeControls();
+    if (container) {
+        container.style.display = display;
+    }
+}
+
+export function setupCodeExecutionToggle(): void {
+    const toggle = getCodeExecutionToggle();
     if (!toggle) return;
 
-    // Initialize toggle from global state
-    toggle.checked = globalState.geminiCodeExecutionEnabled;
+    setToggleChecked(getGeminiCodeExecutionEnabled());
 
-    // Listen for changes
     toggle.addEventListener('change', () => {
-        globalState.geminiCodeExecutionEnabled = toggle.checked;
+        setGeminiCodeExecutionEnabled(toggle.checked);
         console.log('[Code Execution] Toggle changed:', toggle.checked);
     });
 }
 
-/**
- * Update the visibility of contextual mode controls based on current mode and provider
- * @param currentMode - The current application mode
- */
-export function updateCodeExecutionToggleVisibility(currentMode: string) {
-    const container = document.getElementById('contextual-mode-controls');
+export function updateCodeExecutionToggleVisibility(currentMode: string): void {
+    const container = getContextualModeControls();
     if (!container) {
         console.log('[Code Execution] Container not found: #contextual-mode-controls');
         return;
     }
 
-    const isContextualMode = currentMode === 'contextual';
-    const provider = getProviderForCurrentModel();
-    const isGeminiProvider = provider === 'gemini';
-
-    // Show only when in contextual mode AND using Gemini provider
-    const shouldShow = isContextualMode && isGeminiProvider;
-    container.style.display = shouldShow ? 'block' : 'none';
+    const shouldShow = shouldShowCodeExecutionToggle(currentMode);
+    setContainerDisplay(shouldShow ? 'block' : 'none');
 
     console.log('[Code Execution] Visibility updated:', {
         currentMode,
-        provider,
-        isGeminiProvider,
+        provider: getCurrentProvider(),
+        isGeminiProvider: isGeminiProvider(),
         shouldShow
     });
 }
 
-/**
- * Initialize code execution toggle state from stored value
- */
-export function initializeCodeExecutionToggle() {
-    const toggle = document.getElementById('gemini-code-execution-toggle') as HTMLInputElement;
+export function initializeCodeExecutionToggle(): void {
+    const toggle = getCodeExecutionToggle();
     if (!toggle) return;
 
-    toggle.checked = globalState.geminiCodeExecutionEnabled;
+    setToggleChecked(getGeminiCodeExecutionEnabled());
 }

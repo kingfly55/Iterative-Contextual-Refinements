@@ -1,6 +1,6 @@
 import * as Diff from 'diff';
 import { highlightCodeSync } from '../../Shiki';
-import { renderMathContent } from '../RenderMathMarkdown';
+import { renderMathContent } from '../RenderMathMarkdownLogic';
 
 export { renderMathContent };
 

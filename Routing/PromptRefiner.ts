@@ -101,11 +101,11 @@ export class PromptRefiner {
         const dropdown = overlay.querySelector('#prompt-refiner-model-dropdown') as HTMLElement;
         const trigger = overlay.querySelector('#prompt-refiner-model-trigger') as HTMLElement;
         const textElement = overlay.querySelector('#prompt-refiner-model-text') as HTMLElement;
-        
+
         if (!select || !dropdown || !trigger || !textElement) return;
 
         const availableModels = this.config.modelConfig.getAvailableModels();
-        
+
         // Populate hidden select
         availableModels.forEach((model: any) => {
             const option = document.createElement('option');
@@ -173,10 +173,10 @@ export class PromptRefiner {
         sortedProviders.forEach(provider => {
             const models = modelsByProvider[provider];
             const config = providerConfig[provider.toLowerCase()] || { class: 'default' };
-            
+
             const providerSection = document.createElement('div');
             providerSection.className = `custom-model-select-provider-section ${config.class}`;
-            
+
             const providerHeader = document.createElement('div');
             providerHeader.className = `custom-model-select-provider-header ${config.class}`;
             providerHeader.innerHTML = `<span>${provider.charAt(0).toUpperCase() + provider.slice(1)}</span>`;
@@ -257,7 +257,7 @@ export class PromptRefiner {
             }
         };
         document.addEventListener('keydown', escapeHandler, true);
-        
+
         // Store handler for cleanup
         (overlay as any)._escapeHandler = escapeHandler;
 
@@ -311,7 +311,7 @@ export class PromptRefiner {
         try {
             const selectedModel = modelSelect.value || this.config.modelConfig.getSelectedModel();
             const refinedPrompt = await this.refinePrompt(instructions, selectedModel);
-            
+
             this.config.onPromptUpdated(refinedPrompt);
             this.hide();
         } catch (error) {
@@ -361,7 +361,7 @@ Please provide the complete refined prompt:`;
         );
 
         const refinedPrompt = response.text?.trim() || '';
-        
+
         if (!refinedPrompt) {
             throw new Error('Empty response from AI');
         }

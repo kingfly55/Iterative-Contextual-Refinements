@@ -1,9 +1,7 @@
-
 import { globalState } from '../Core/State';
 import { PipelineStopRequestedError } from '../Core/Types';
-import { updatePipelineStatusUI, updateIterationUI } from './WebsiteUI';
-import { getSelectedRefinementStages, getSelectedTopP, callAI, getSelectedModel } from '../Routing';
-import { cleanHtmlOutput, isHtmlContent } from '../Core/Parsing';
+import { updatePipelineStatusUI, notifyIterationUpdated } from './WebsiteUI';
+import { getSelectedRefinementStages, getSelectedTopP, callAI, getSelectedModel, getSelectedTemperature } from '../Routing';
 import { QUALITY_MODE_SYSTEM_PROMPT } from './RefinePrompts';
 
 function renderPrompt(template: string, data: Record<string, string>): string {
@@ -25,29 +23,32 @@ export async function runPipeline(pipelineId: number, initialRequest: string) {
     pipeline.isStopRequested = false;
     updatePipelineStatusUI(pipelineId, 'running');
 
-    let currentContent = "";
-    let currentSuggestions: string = '';
+    let currentContent = '';
+    let currentSuggestions = '';
 
     const numMainRefinementLoops = globalState.currentMode === 'website' ? getSelectedRefinementStages() : 0;
     const totalPipelineSteps = globalState.currentMode === 'website' ? 1 + numMainRefinementLoops + 1 : 0;
 
     for (let i = 0; i < totalPipelineSteps; i++) {
         const iteration = pipeline.iterations[i];
+
         if (pipeline.isStopRequested) {
             iteration.status = 'cancelled';
             iteration.error = 'Process execution was stopped by the user.';
-            updateIterationUI(pipelineId, i);
+            notifyIterationUpdated(pipelineId, i);
             for (let j = i + 1; j < pipeline.iterations.length; j++) {
                 pipeline.iterations[j].status = 'cancelled';
                 pipeline.iterations[j].error = 'Process execution was stopped by user.';
-                updateIterationUI(pipelineId, j);
+                notifyIterationUpdated(pipelineId, j);
             }
             updatePipelineStatusUI(pipelineId, 'stopped');
             return;
         }
 
-        // Reset prompts and outputs for current iteration (website mode only)
-        iteration.requestPromptContent_InitialGenerate = iteration.requestPromptContent_FeatureImplement = iteration.requestPromptContent_BugFix = iteration.requestPromptFeatures_Suggest = undefined;
+        iteration.requestPromptContent_InitialGenerate = undefined;
+        iteration.requestPromptContent_FeatureImplement = undefined;
+        iteration.requestPromptContent_BugFix = undefined;
+        iteration.requestPromptFeatures_Suggest = undefined;
         iteration.contentBeforeBugFix = undefined;
         iteration.error = undefined;
 
@@ -55,43 +56,50 @@ export async function runPipeline(pipelineId: number, initialRequest: string) {
             const getAgentModel = (agentKey: string): string | undefined => {
                 if (globalState.currentMode === 'website') {
                     const modelField = `model_${agentKey}` as keyof typeof globalState.customPromptsWebsiteState;
-                    const selectedModel = globalState.customPromptsWebsiteState[modelField] as string | undefined;
-                    return selectedModel;
+                    return globalState.customPromptsWebsiteState[modelField] as string | undefined;
                 } else if (globalState.currentMode === 'deepthink') {
                     const modelField = `model_${agentKey}` as keyof typeof globalState.customPromptsDeepthinkState;
-                    const selectedModel = globalState.customPromptsDeepthinkState[modelField] as string | undefined;
-                    return selectedModel;
+                    return globalState.customPromptsDeepthinkState[modelField] as string | undefined;
                 }
                 return undefined;
             };
 
-            const makeApiCall = async (userPrompt: string, systemInstruction: string, isJson: boolean, stepDesc: string, agentKey?: string): Promise<string> => {
-                if (!pipeline) throw new Error("Pipeline context lost");
+            const makeApiCall = async (
+                userPrompt: string,
+                systemInstruction: string,
+                isJson: boolean,
+                stepDesc: string,
+                agentKey?: string
+            ): Promise<string> => {
+                if (!pipeline) throw new Error('Pipeline context lost');
                 if (pipeline.isStopRequested) throw new PipelineStopRequestedError(`Stop requested before API call: ${stepDesc}`);
-                let responseText = "";
+
                 const customModel = agentKey ? getAgentModel(agentKey) : undefined;
                 const modelToUse: string = customModel ?? pipeline.modelName;
                 if (!modelToUse) {
                     throw new Error(`No model specified for ${stepDesc}. Please select a model for this agent or set a global model.`);
                 }
+
                 for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
                     if (pipeline.isStopRequested) throw new PipelineStopRequestedError(`Stop requested during retry for: ${stepDesc}`);
                     iteration.retryAttempt = attempt;
                     iteration.status = attempt > 0 ? 'retrying' : 'processing';
-                    updateIterationUI(pipelineId, i);
-                    if (attempt > 0) await new Promise(resolve => setTimeout(resolve, INITIAL_DELAY_MS * Math.pow(BACKOFF_FACTOR, attempt)));
+                    notifyIterationUpdated(pipelineId, i);
+
+                    if (attempt > 0) {
+                        await new Promise(resolve => setTimeout(resolve, INITIAL_DELAY_MS * Math.pow(BACKOFF_FACTOR, attempt)));
+                    }
 
                     try {
                         const apiResponse = await callAI(userPrompt, pipeline.temperature, modelToUse, systemInstruction, isJson, getSelectedTopP());
-                        responseText = apiResponse.text || "";
                         iteration.status = 'processing';
-                        updateIterationUI(pipelineId, i);
-                        return responseText;
+                        notifyIterationUpdated(pipelineId, i);
+                        return apiResponse.text || '';
                     } catch (e: any) {
                         iteration.error = `Attempt ${attempt + 1} for ${stepDesc} failed: ${e.message || 'Unknown API error'}`;
                         if (e.details) iteration.error += `\nDetails: ${JSON.stringify(e.details)}`;
                         if (e.status) iteration.error += `\nStatus: ${e.status}`;
-                        updateIterationUI(pipelineId, i);
+                        notifyIterationUpdated(pipelineId, i);
                         if (attempt === MAX_RETRIES) {
                             iteration.error = `Failed ${stepDesc} after ${MAX_RETRIES + 1} attempts: ${e.message || 'Unknown API error'}`;
                             throw e;
@@ -105,26 +113,28 @@ export async function runPipeline(pipelineId: number, initialRequest: string) {
                 const placeholderContent = '<!-- No content provided by previous step. Please generate foundational structure based on the original idea. -->';
 
                 if (i === 0) {
-                    const userPromptInitialGen = renderPrompt(globalState.customPromptsWebsiteState.user_initialGen, { initialIdea: initialRequest, currentContent: currentContent });
+                    const userPromptInitialGen = renderPrompt(globalState.customPromptsWebsiteState.user_initialGen, {
+                        initialIdea: initialRequest,
+                        currentContent,
+                    });
                     iteration.requestPromptContent_InitialGenerate = userPromptInitialGen;
-                    {
-                        const initialGenResponse = await makeApiCall(userPromptInitialGen, globalState.customPromptsWebsiteState.sys_initialGen, false, "Initial HTML Generation", "initialGen");
-                        currentContent = initialGenResponse;
-                        iteration.contentBeforeBugFix = currentContent;
-                    }
+
+                    const initialGenResponse = await makeApiCall(userPromptInitialGen, globalState.customPromptsWebsiteState.sys_initialGen, false, 'Initial HTML Generation', 'initialGen');
+                    currentContent = initialGenResponse;
+                    iteration.contentBeforeBugFix = currentContent;
 
                     let bugFixSystemPrompt = globalState.customPromptsWebsiteState.sys_initialBugFix;
                     if (globalState.currentEvolutionMode === 'quality') {
                         bugFixSystemPrompt = `${QUALITY_MODE_SYSTEM_PROMPT}\n\n${bugFixSystemPrompt}`;
                     }
 
-                    const userPromptInitialBugFix = renderPrompt(globalState.customPromptsWebsiteState.user_initialBugFix, { initialIdea: initialRequest, currentContent: currentContent || placeholderContent });
+                    const userPromptInitialBugFix = renderPrompt(globalState.customPromptsWebsiteState.user_initialBugFix, {
+                        initialIdea: initialRequest,
+                        currentContent: currentContent || placeholderContent,
+                    });
                     iteration.requestPromptContent_BugFix = userPromptInitialBugFix;
-                    {
-                        const bugfixResponse = await makeApiCall(userPromptInitialBugFix, bugFixSystemPrompt, false, "Initial Bug Fix & Polish - Full Content", "initialBugFix");
-                        currentContent = bugfixResponse;
-                        iteration.generatedContent = isHtmlContent(currentContent) ? cleanHtmlOutput(currentContent) : currentContent;
-                    }
+                    currentContent = await makeApiCall(userPromptInitialBugFix, bugFixSystemPrompt, false, 'Initial Bug Fix & Polish - Full Content', 'initialBugFix');
+                    iteration.generatedContent = currentContent;
 
                     if (globalState.currentEvolutionMode !== 'off') {
                         let featureSuggestSystemPrompt = globalState.customPromptsWebsiteState.sys_initialFeatureSuggest;
@@ -132,15 +142,19 @@ export async function runPipeline(pipelineId: number, initialRequest: string) {
                             featureSuggestSystemPrompt = `${QUALITY_MODE_SYSTEM_PROMPT}\n\n${featureSuggestSystemPrompt}`;
                         }
 
-                        const userPromptInitialFeatures = renderPrompt(globalState.customPromptsWebsiteState.user_initialFeatureSuggest, { initialIdea: initialRequest, currentContent: currentContent || placeholderContent });
+                        const userPromptInitialFeatures = renderPrompt(globalState.customPromptsWebsiteState.user_initialFeatureSuggest, {
+                            initialIdea: initialRequest,
+                            currentContent: currentContent || placeholderContent,
+                        });
                         iteration.requestPromptFeatures_Suggest = userPromptInitialFeatures;
-                        const featuresModel = getAgentModel("initialFeatures") || pipeline.modelName;
+
+                        const featuresModel = getAgentModel('initialFeatures') || pipeline.modelName;
                         if (!featuresModel) {
-                            throw new Error("No model specified for initial feature suggestions. Please select a model for this agent or set a global model.");
+                            throw new Error('No model specified for initial feature suggestions. Please select a model for this agent or set a global model.');
                         }
-                        const featuresContent = await callAI(userPromptInitialFeatures, pipeline.temperature, featuresModel, featureSuggestSystemPrompt, false, getSelectedTopP()).then((response: any) => response.text);
-                        iteration.suggestedFeaturesContent = featuresContent;
-                        currentSuggestions = featuresContent || '';
+                        const featuresResponse = await callAI(userPromptInitialFeatures, pipeline.temperature, featuresModel, featureSuggestSystemPrompt, false, getSelectedTopP());
+                        iteration.suggestedFeaturesContent = featuresResponse.text || '';
+                        currentSuggestions = iteration.suggestedFeaturesContent;
                     } else {
                         iteration.suggestedFeaturesContent = '';
                         currentSuggestions = '';
@@ -152,13 +166,13 @@ export async function runPipeline(pipelineId: number, initialRequest: string) {
                             refineImplementSystemPrompt = `${QUALITY_MODE_SYSTEM_PROMPT}\n\n${refineImplementSystemPrompt}`;
                         }
 
-                        const userPromptRefineImplement = renderPrompt(globalState.customPromptsWebsiteState.user_refineStabilizeImplement, { currentContent: currentContent || placeholderContent, featuresToImplementStr: currentSuggestions });
+                        const userPromptRefineImplement = renderPrompt(globalState.customPromptsWebsiteState.user_refineStabilizeImplement, {
+                            currentContent: currentContent || placeholderContent,
+                            featuresToImplementStr: currentSuggestions,
+                        });
                         iteration.requestPromptContent_FeatureImplement = userPromptRefineImplement;
-                        {
-                            const refineImplementResponse = await makeApiCall(userPromptRefineImplement, refineImplementSystemPrompt, false, `Stabilization & Feature Impl (Iter ${i}) - Full Content`, "refineStabilizeImplement");
-                            currentContent = refineImplementResponse;
-                            iteration.contentBeforeBugFix = currentContent;
-                        }
+                        currentContent = await makeApiCall(userPromptRefineImplement, refineImplementSystemPrompt, false, `Stabilization & Feature Impl (Iter ${i}) - Full Content`, 'refineStabilizeImplement');
+                        iteration.contentBeforeBugFix = currentContent;
                     } else {
                         iteration.requestPromptContent_FeatureImplement = 'Skipped (Evolution Mode: Off)';
                     }
@@ -168,13 +182,13 @@ export async function runPipeline(pipelineId: number, initialRequest: string) {
                         refineBugFixSystemPrompt = `${QUALITY_MODE_SYSTEM_PROMPT}\n\n${refineBugFixSystemPrompt}`;
                     }
 
-                    const userPromptRefineBugFix = renderPrompt(globalState.customPromptsWebsiteState.user_refineBugFix, { initialIdea: initialRequest, currentContent: currentContent || placeholderContent });
+                    const userPromptRefineBugFix = renderPrompt(globalState.customPromptsWebsiteState.user_refineBugFix, {
+                        initialIdea: initialRequest,
+                        currentContent: currentContent || placeholderContent,
+                    });
                     iteration.requestPromptContent_BugFix = userPromptRefineBugFix;
-                    {
-                        const bugfixResponse = await makeApiCall(userPromptRefineBugFix, refineBugFixSystemPrompt, false, `Bug Fix & Completion (Iter ${i}) - Full Content`, "refineBugFix");
-                        currentContent = bugfixResponse;
-                        iteration.generatedContent = isHtmlContent(currentContent) ? cleanHtmlOutput(currentContent) : currentContent;
-                    }
+                    currentContent = await makeApiCall(userPromptRefineBugFix, refineBugFixSystemPrompt, false, `Bug Fix & Completion (Iter ${i}) - Full Content`, 'refineBugFix');
+                    iteration.generatedContent = currentContent;
 
                     if (globalState.currentEvolutionMode !== 'off') {
                         let refineFeatureSuggestSystemPrompt = globalState.customPromptsWebsiteState.sys_refineFeatureSuggest;
@@ -182,15 +196,19 @@ export async function runPipeline(pipelineId: number, initialRequest: string) {
                             refineFeatureSuggestSystemPrompt = `${QUALITY_MODE_SYSTEM_PROMPT}\n\n${refineFeatureSuggestSystemPrompt}`;
                         }
 
-                        const userPromptRefineFeatures = renderPrompt(globalState.customPromptsWebsiteState.user_refineFeatureSuggest, { initialIdea: initialRequest, currentContent: currentContent || placeholderContent });
+                        const userPromptRefineFeatures = renderPrompt(globalState.customPromptsWebsiteState.user_refineFeatureSuggest, {
+                            initialIdea: initialRequest,
+                            currentContent: currentContent || placeholderContent,
+                        });
                         iteration.requestPromptFeatures_Suggest = userPromptRefineFeatures;
-                        const refineFeatureModel = getAgentModel("refineFeatures") || pipeline.modelName;
+
+                        const refineFeatureModel = getAgentModel('refineFeatures') || pipeline.modelName;
                         if (!refineFeatureModel) {
-                            throw new Error("No model specified for refine feature suggestions. Please select a model for this agent or set a global model.");
+                            throw new Error('No model specified for refine feature suggestions. Please select a model for this agent or set a global model.');
                         }
-                        const featuresContent = await callAI(userPromptRefineFeatures, pipeline.temperature, refineFeatureModel, refineFeatureSuggestSystemPrompt, false, getSelectedTopP()).then((response: any) => response.text);
-                        iteration.suggestedFeaturesContent = featuresContent;
-                        currentSuggestions = featuresContent || '';
+                        const featuresResponse = await callAI(userPromptRefineFeatures, pipeline.temperature, refineFeatureModel, refineFeatureSuggestSystemPrompt, false, getSelectedTopP());
+                        iteration.suggestedFeaturesContent = featuresResponse.text || '';
+                        currentSuggestions = iteration.suggestedFeaturesContent;
                     } else {
                         iteration.suggestedFeaturesContent = '';
                         currentSuggestions = '';
@@ -201,21 +219,18 @@ export async function runPipeline(pipelineId: number, initialRequest: string) {
                         finalPolishSystemPrompt = `${QUALITY_MODE_SYSTEM_PROMPT}\n\n${finalPolishSystemPrompt}`;
                     }
 
-                    const userPromptFinalPolish = renderPrompt(globalState.customPromptsWebsiteState.user_finalPolish, { initialIdea: initialRequest, currentContent: currentContent || placeholderContent });
+                    const userPromptFinalPolish = renderPrompt(globalState.customPromptsWebsiteState.user_finalPolish, {
+                        initialIdea: initialRequest,
+                        currentContent: currentContent || placeholderContent,
+                    });
                     iteration.requestPromptContent_BugFix = userPromptFinalPolish;
-                    {
-                        const finalPolishResponse = await makeApiCall(userPromptFinalPolish, finalPolishSystemPrompt, false, "Final Polish - Full Content", "finalPolish");
-                        currentContent = finalPolishResponse;
-                        iteration.generatedContent = isHtmlContent(currentContent) ? cleanHtmlOutput(currentContent) : currentContent;
-                    }
-                    iteration.suggestedFeaturesContent = "";
+                    currentContent = await makeApiCall(userPromptFinalPolish, finalPolishSystemPrompt, false, 'Final Polish - Full Content', 'finalPolish');
+                    iteration.generatedContent = currentContent;
+                    iteration.suggestedFeaturesContent = '';
                 }
             }
-            if (!iteration.error) {
-                iteration.status = 'completed';
-            } else {
-                iteration.status = 'error';
-            }
+
+            iteration.status = iteration.error ? 'error' : 'completed';
         } catch (error: any) {
             if (error instanceof PipelineStopRequestedError) {
                 iteration.status = 'cancelled';
@@ -226,17 +241,20 @@ export async function runPipeline(pipelineId: number, initialRequest: string) {
                 iteration.status = 'error';
                 updatePipelineStatusUI(pipelineId, 'failed');
             }
-            updateIterationUI(pipelineId, i);
+            notifyIterationUpdated(pipelineId, i);
             for (let j = i + 1; j < pipeline.iterations.length; j++) {
                 if (pipeline.iterations[j].status !== 'cancelled') {
                     pipeline.iterations[j].status = 'cancelled';
-                    pipeline.iterations[j].error = (error instanceof PipelineStopRequestedError) ? 'Process stopped by user.' : 'Halted due to prior error.';
-                    updateIterationUI(pipelineId, j);
+                    pipeline.iterations[j].error = (error instanceof PipelineStopRequestedError)
+                        ? 'Process stopped by user.'
+                        : 'Halted due to prior error.';
+                    notifyIterationUpdated(pipelineId, j);
                 }
             }
             return;
         }
-        updateIterationUI(pipelineId, i);
+
+        notifyIterationUpdated(pipelineId, i);
     }
 
     if (pipeline && !pipeline.isStopRequested && pipeline.status !== 'failed') {
@@ -247,29 +265,19 @@ export async function runPipeline(pipelineId: number, initialRequest: string) {
 export function initPipelines() {
     globalState.pipelinesState = [];
 
-    const tempSlider = document.getElementById('temperature-slider') as HTMLInputElement;
-    const selectedTemp = tempSlider ? parseFloat(tempSlider.value) : 0.7;
-    console.log('[Website] Selected temperature from slider:', selectedTemp);
-
+    const selectedTemp = getSelectedTemperature();
     const selectedModel = getSelectedModel();
 
-    // Create a single pipeline with the selected temperature
     globalState.pipelinesState.push({
         id: 0,
-        originalTemperatureIndex: 0, // Not really used with slider
+        originalTemperatureIndex: 0,
         temperature: selectedTemp,
         modelName: selectedModel,
-        iterations: Array(10).fill(null).map((_, idx) => ({
+        iterations: Array.from({ length: 10 }, (_, idx) => ({
             iterationNumber: idx + 1,
-            title: idx === 0 ? "Initial Generation" : `Refinement ${idx}`,
-            status: 'pending'
+            title: idx === 0 ? 'Initial Generation' : `Refinement ${idx}`,
+            status: 'pending' as const,
         })),
-        status: 'idle'
+        status: 'idle',
     });
-
-    console.log('[Website] Created', globalState.pipelinesState.length, 'pipelines');
-
-    if (globalState.pipelinesState.length === 0) {
-        console.warn('[Website] WARNING: No pipelines created!');
-    }
 }

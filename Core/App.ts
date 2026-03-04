@@ -11,16 +11,14 @@ import {
     startAdaptiveDeepthinkProcess
 } from '../AdaptiveDeepthink/AdaptiveDeepthinkMode';
 import { exportConfiguration, handleImportConfiguration } from './ConfigManager';
-import {
-    updateUIAfterModeChange,
-    initializeEvolutionConvergenceButtons
-} from '../Refine/WebsiteUI';
+import { updateUIAfterModeChange, renderActiveMode } from './AppRouter';
+import { initializeEvolutionConvergenceButtons } from '../Styles/Components/Sidebar/ModelParameters';
 import { openDiffModal } from '../Styles/Components/DiffModal/DiffModalController';
 import {
     initializeAgenticMode,
     startAgenticProcess,
     setAgenticPromptsManager,
-} from '../Agentic/Agentic';
+} from '../Agentic/AgenticUI_Bridge';
 
 import {
     routingManager,
@@ -36,23 +34,18 @@ import {
     getSkipSubStrategies,
     getDissectedObservationsEnabled,
     getIterativeCorrectionsEnabled,
+    getIterativeDepth,
     getProvideAllSolutionsToCorrectors,
     getPostQualityFilterEnabled,
     hasValidApiKey,
     callAI,
     getProviderForCurrentModel
 } from '../Routing';
-import {
-    parseJsonSafe,
-    cleanTextOutput,
-    cleanOutputByType,
-    parseJsonSuggestions
-} from './Parsing';
+import { parseJsonSafe } from './JsonParser';
 import { globalState } from './State';
 import { ApplicationMode } from './Types';
 import { updateControlsState } from '../UI/Controls';
 import { runPipeline, initPipelines } from '../Refine/WebsiteLogic';
-import { renderPipelines } from '../Refine/WebsiteUI';
 import { LayoutController } from '../UI/LayoutController';
 import { GlobalModals } from '../UI/GlobalModals';
 import { setupCodeExecutionToggle } from '../UI/setupCodeExecutionToggle';
@@ -60,8 +53,7 @@ import { setupCodeExecutionToggle } from '../UI/setupCodeExecutionToggle';
 export class App {
     public static init() {
         this.initializeGlobalFunctions();
-        this.initializeUI();
-        this.initializeEventListeners();
+        this.initializeCoreLogic();
         LayoutController.initialize();
         GlobalModals.initialize();
     }
@@ -69,7 +61,7 @@ export class App {
     private static initializeGlobalFunctions() {
     }
 
-    private static initializeUI() {
+    private static initializeCoreLogic() {
         // Initialize routing system
         initializeRouting();
 
@@ -77,7 +69,7 @@ export class App {
         routingManager.refreshProviders();
 
         this.initializeCustomPromptTextareas();
-        updateUIAfterModeChange(); // Called early to set up initial UI based on default mode
+        updateUIAfterModeChange(); // Called early to set up initial UI logic based on default mode
 
         // Initialize Agentic mode
         initializeAgenticMode();
@@ -91,8 +83,6 @@ export class App {
         initializeDeepthinkModule({
             getAIProvider: () => routingManager.getAIProvider(),
             callGemini: callAI,
-            cleanOutputByType,
-            parseJsonSuggestions: parseJsonSuggestions as any, // Only for Deepthink strategies
             parseJsonSafe,
             updateControlsState,
             escapeHtml: (str: string) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'),
@@ -107,25 +97,25 @@ export class App {
             getSkipSubStrategies,
             getDissectedObservationsEnabled,
             getIterativeCorrectionsEnabled,
+            getIterativeDepth,
             getProvideAllSolutionsToCorrectors,
             getPostQualityFilterEnabled,
             getDeepthinkCodeExecutionEnabled: () => routingManager.getDeepthinkConfigController().isCodeExecutionEnabled(),
             getModelProvider: getProviderForCurrentModel,
-            cleanTextOutput,
+            cleanTextOutput: (text: string) => text.trim(),
             customPromptsDeepthinkState: globalState.customPromptsDeepthinkState,
-            tabsNavContainer: document.getElementById('tabs-nav-container'),
-            pipelinesContentContainer: document.getElementById('pipelines-content-container'),
+            tabsNavContainer: document.getElementById('tabs-nav-container'), // Deprecated UI dependency
+            pipelinesContentContainer: document.getElementById('pipelines-content-container'), // Deprecated UI dependency
             setActiveDeepthinkPipeline: (pipeline: any) => {
                 globalState.activeDeepthinkPipeline = pipeline as any;
             }
         });
-
         // Default to first mode if none specifically checked (e.g. after import or on fresh load)
-        const appModeRadios = document.querySelectorAll('input[name="appMode"]');
+        const appModeRadios = document.querySelectorAll('input[name="app-mode"]');
         let modeIsAlreadySet = false;
         appModeRadios.forEach(radio => {
             if ((radio as HTMLInputElement).checked) {
-                globalState.currentMode = (radio as HTMLInputElement).value as ApplicationMode; // Ensure currentMode reflects HTML state
+                globalState.currentMode = (radio as HTMLInputElement).value as ApplicationMode;
                 modeIsAlreadySet = true;
             }
         });
@@ -137,134 +127,99 @@ export class App {
                 globalState.currentMode = firstModeRadio.value as ApplicationMode;
             }
         }
+
+        // The default mode must be captured at UI level and set via globalState
         updateUIAfterModeChange();
+        updateControlsState();
 
         const preloader = document.getElementById('preloader');
         if (preloader) {
             preloader.classList.add('hidden');
         }
-
-        updateControlsState();
     }
 
-    private static initializeEventListeners() {
-        const generateButton = document.getElementById('generate-button') as HTMLButtonElement;
-        const initialIdeaInput = document.getElementById('initial-idea') as HTMLTextAreaElement;
-        const appModeSelector = document.getElementById('app-mode-selector') as HTMLElement;
-        const exportConfigButton = document.getElementById('export-config-button') as HTMLButtonElement;
-        const importConfigInput = document.getElementById('import-config-input') as HTMLInputElement;
+    public static async handleGenerate(initialIdea: string) {
+        console.log('Generate button clicked');
+        console.log('Current mode:', globalState.currentMode);
 
-        if (generateButton) {
-            generateButton.addEventListener('click', async () => {
-                console.log('Generate button clicked');
-                console.log('Current mode:', globalState.currentMode);
-                if (!hasValidApiKey()) { // Double check if any provider is configured
-                    alert("No providers are configured. Please configure at least one AI provider using the 'Add Providers' button.");
+        if (!hasValidApiKey()) {
+            alert("No providers are configured. Please configure at least one AI provider using the 'Add Providers' button.");
+            return;
+        }
+
+        if (!initialIdea) {
+            alert("Please enter an idea, premise, or request.");
+            return;
+        }
+
+        // Validate file compatibility with selected provider in Deepthink modes
+        if ((globalState.currentMode === 'deepthink' || globalState.currentMode === 'adaptive-deepthink') &&
+            globalState.currentProblemImages.length > 0) {
+
+            const provider = getProviderForCurrentModel();
+            const uploadedFiles = globalState.currentProblemImages;
+
+            if (provider === 'openrouter') {
+                alert("OpenRouter models do not support file uploads. Please remove all files or select a different provider.");
+                return;
+            }
+
+            if (provider === 'openai' || provider === 'anthropic') {
+                const supportedImageTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+                const unsupportedFiles = uploadedFiles.filter(f => !supportedImageTypes.includes(f.mimeType));
+
+                if (unsupportedFiles.length > 0) {
+                    const unsupportedTypes = [...new Set(unsupportedFiles.map(f => f.mimeType))].join(', ');
+                    alert(`${provider.charAt(0).toUpperCase() + provider.slice(1)} only supports images (PNG, JPEG, GIF, WEBP).\n\nUnsupported file types detected: ${unsupportedTypes}\n\nPlease remove unsupported files or switch to Gemini for full file support.`);
                     return;
                 }
-                const initialIdea = initialIdeaInput.value.trim();
-                if (!initialIdea) {
-                    alert("Please enter an idea, premise, or request.");
-                    return;
-                }
-
-                // Validate file compatibility with selected provider in Deepthink modes
-                if ((globalState.currentMode === 'deepthink' || globalState.currentMode === 'adaptive-deepthink') &&
-                    globalState.currentProblemImages.length > 0) {
-
-                    const provider = getProviderForCurrentModel();
-                    const uploadedFiles = globalState.currentProblemImages;
-
-                    // OpenRouter: No file support at all
-                    if (provider === 'openrouter') {
-                        alert("OpenRouter models do not support file uploads. Please remove all files or select a different provider.");
-                        return;
-                    }
-
-                    // OpenAI / Anthropic: Only images (PNG, JPEG, GIF, WEBP) are supported
-                    if (provider === 'openai' || provider === 'anthropic') {
-                        const supportedImageTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
-                        const unsupportedFiles = uploadedFiles.filter(f => !supportedImageTypes.includes(f.mimeType));
-
-                        if (unsupportedFiles.length > 0) {
-                            const unsupportedTypes = [...new Set(unsupportedFiles.map(f => f.mimeType))].join(', ');
-                            alert(`${provider.charAt(0).toUpperCase() + provider.slice(1)} only supports images (PNG, JPEG, GIF, WEBP).\n\nUnsupported file types detected: ${unsupportedTypes}\n\nPlease remove unsupported files or switch to Gemini for full file support.`);
-                            return;
-                        }
-                    }
-
-                    // Gemini: Full support, no validation needed
-                }
-
-                if (globalState.currentMode === 'deepthink') {
-                    console.log('Starting Deepthink process');
-                    // Note: original deepthink might only support one image, pass the first one for backwards compatibility if needed, or update deepthink too
-                    const firstImage = globalState.currentProblemImages.length > 0 ? globalState.currentProblemImages[0] : null;
-                    await startDeepthinkAnalysisProcess(initialIdea, firstImage?.base64, firstImage?.mimeType);
-                } else if (globalState.currentMode === 'agentic') {
-                    console.log('Starting Agentic process');
-                    try {
-                        await startAgenticProcess(initialIdea);
-                    } catch (e) {
-                        console.error('Error starting Agentic process:', e);
-                    }
-                } else if (globalState.currentMode === 'contextual') {
-                    await startContextualProcess(initialIdea, globalState.customPromptsContextualState);
-                } else if (globalState.currentMode === 'adaptive-deepthink') {
-                    await startAdaptiveDeepthinkProcess(initialIdea, globalState.customPromptsAdaptiveDeepthinkState, globalState.currentProblemImages);
-                } else { // Website mode
-                    console.log('Starting Website mode');
-                    initPipelines();
-                    renderPipelines(); // Fix: Render the pipelines UI before running them
-                    console.log('Pipelines initialized:', globalState.pipelinesState.length);
-                    const runningPromises = globalState.pipelinesState.map(p => runPipeline(p.id, initialIdea));
-
-                    try {
-                        await Promise.allSettled(runningPromises);
-                    } finally {
-                        globalState.isGenerating = false;
-                        updateControlsState();
-                    }
-                }
-            });
+            }
         }
 
-        if (appModeSelector) {
-            appModeSelector.querySelectorAll('input[name="app-mode"]').forEach(radio => {
-                radio.addEventListener('change', (e) => {
-                    globalState.currentMode = (e.target as HTMLInputElement).value as ApplicationMode;
-                    updateUIAfterModeChange();
-                });
-            });
-        }
+        if (globalState.currentMode === 'deepthink') {
+            console.log('Starting Deepthink process');
+            const firstImage = globalState.currentProblemImages.length > 0 ? globalState.currentProblemImages[0] : null;
+            await startDeepthinkAnalysisProcess(initialIdea, firstImage?.base64, firstImage?.mimeType);
+        } else if (globalState.currentMode === 'agentic') {
+            console.log('Starting Agentic process');
+            try {
+                await startAgenticProcess(initialIdea);
+            } catch (e) {
+                console.error('Error starting Agentic process:', e);
+            }
+        } else if (globalState.currentMode === 'contextual') {
+            await startContextualProcess(initialIdea, globalState.customPromptsContextualState);
+        } else if (globalState.currentMode === 'adaptive-deepthink') {
+            await startAdaptiveDeepthinkProcess(initialIdea, globalState.customPromptsAdaptiveDeepthinkState, globalState.currentProblemImages);
+        } else { // Website mode
+            console.log('Starting Website mode');
+            initPipelines();
+            renderActiveMode();
+            console.log('Pipelines initialized:', globalState.pipelinesState.length);
+            const runningPromises = globalState.pipelinesState.map(p => runPipeline(p.id, initialIdea));
 
-        if (exportConfigButton) {
-            exportConfigButton.addEventListener('click', () => exportConfiguration());
+            try {
+                await Promise.allSettled(runningPromises);
+            } finally {
+                globalState.isGenerating = false;
+                updateControlsState();
+            }
         }
-        if (importConfigInput) {
-            importConfigInput.addEventListener('change', handleImportConfiguration);
-        }
+    }
 
-        // Event delegation for dynamically created "Compare" buttons and "View The Argument" buttons
-        const pipelinesContentContainer = document.getElementById('pipelines-content-container');
-        if (pipelinesContentContainer) {
-            pipelinesContentContainer.addEventListener('click', (event: Event) => {
-                const target = event.target as HTMLElement;
-                const button = target.closest('.compare-output-button') as HTMLElement | null;
-                if (button) {
-                    const pipelineId = parseInt(button.dataset.pipelineId || "-1", 10);
-                    const iterationNumber = parseInt(button.dataset.iterationNumber || "-1", 10);
-                    const contentType = button.dataset.contentType as ('html' | 'text');
-                    if (pipelineId !== -1 && iterationNumber !== -1 && (contentType === 'html' || contentType === 'text')) {
-                        openDiffModal(pipelineId, iterationNumber, contentType);
-                    }
-                }
-            });
-        }
+    public static handleExportConfig() {
+        exportConfiguration();
+    }
+
+    public static handleImportConfig(e: Event) {
+        handleImportConfiguration(e);
+    }
+
+    public static handleDiffModalClick(pipelineId: number, iterationNumber: number, contentType: 'html' | 'text') {
+        openDiffModal(pipelineId, iterationNumber, contentType);
     }
 
     private static initializeCustomPromptTextareas() {
-        // Initialize prompts manager in routing system with references to global variables
         routingManager.initializePromptsManager(
             { current: globalState.customPromptsWebsiteState },
             { current: globalState.customPromptsDeepthinkState },
@@ -273,7 +228,6 @@ export class App {
             { current: globalState.customPromptsContextualState }
         );
 
-        // Set up Agentic mode with prompts manager
         const agenticPromptsManager = routingManager.getAgenticPromptsManager();
         if (agenticPromptsManager) {
             setAgenticPromptsManager(agenticPromptsManager);

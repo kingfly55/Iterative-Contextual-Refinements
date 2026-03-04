@@ -168,12 +168,12 @@ export class AgenticConversationManager {
      */
     async buildPrompt(): Promise<string> {
         const history = await this.getConversationHistory();
-        
+
         // On first turn (empty history), include initial content
         if (!history || history.trim().length === 0) {
             return this.getInitialContextMessage().content;
         }
-        
+
         return history;
     }
 
@@ -183,12 +183,12 @@ export class AgenticConversationManager {
      */
     async buildStructuredPrompt(): Promise<Array<{ role: 'system' | 'assistant' | 'user'; content: string }>> {
         const messages = await this.getStructuredMessages();
-        
+
         // On first turn (no messages yet), include initial content
         if (messages.length === 0) {
             return [this.getInitialContextMessage()];
         }
-        
+
         return messages;
     }
 
@@ -261,18 +261,18 @@ export class AgenticConversationManager {
      */
     async buildVerifierPrompt(currentContent: string): Promise<string> {
         const verifierMessages = await this.verifierHistory.getMessages();
-        
+
         let fullPrompt = '';
-        
+
         // Add conversation history if it exists
         if (verifierMessages.length > 0) {
             fullPrompt += '<conversation_history>\n';
             fullPrompt += 'You have previously analyzed content in this session. Here are your previous reports:\n\n';
-            
+
             let turnNumber = 1;
             for (let i = 0; i < verifierMessages.length; i += 2) {
                 const reportMsg = verifierMessages[i + 1];
-                
+
                 if (reportMsg) {
                     fullPrompt += `[Verification Turn ${turnNumber}]\n`;
                     fullPrompt += '<your_previous_report>\n';
@@ -281,14 +281,14 @@ export class AgenticConversationManager {
                     turnNumber++;
                 }
             }
-            
+
             fullPrompt += '</conversation_history>\n\n';
             fullPrompt += 'Now analyze the following current content. Consider what improvements have been made since your last report and identify any remaining or new issues:\n\n';
         }
-        
+
         // Add the current content to analyze
         fullPrompt += `<current_content>\n${currentContent}\n</current_content>`;
-        
+
         return fullPrompt;
     }
 
@@ -317,7 +317,7 @@ export class AgenticConversationManager {
             // Remove code blocks (these can confuse the model)
             .replace(/```[\s\S]*?```/g, '')
             .replace(/'''[\s\S]*?'''/g, '')
-            
+
             // Remove tool result markers (these are for UI only, but keep the content)
             // Simply remove the opening bracket tags, preserve all content after the colon
             .replace(/\[TOOL_RESULT:\s*/g, '')
@@ -327,11 +327,11 @@ export class AgenticConversationManager {
             .replace(/\[BUILD_FAILED:\s*/g, '')
             .replace(/\[EDIT_RESULT:\s*/g, '')
             // Remove any standalone closing brackets that might be left (like "fixing.]" -> "fixing.")
-            
+
             // Remove tool-related headers
             .replace(/^\s*Tools? called:.*$/gmi, '')
             .replace(/^\s*Commands? executed:.*$/gmi, '')
-            
+
             // Clean up whitespace
             .replace(/\n{3,}/g, '\n\n')
             .trim();
@@ -428,7 +428,7 @@ export async function executeToolCall(
 
             case 'verify_current_content': {
                 const verifierPrompt = conversationManager.getVerifierPrompt();
-                
+
                 try {
                     // Build verifier prompt with conversation history
                     const verifierInput = await conversationManager.buildVerifierPrompt(currentContent);
@@ -474,12 +474,12 @@ export async function executeToolCall(
                     }
 
                     const results = [`Found ${papers.length} papers for query: "${toolCall.query}"\n`];
-                    
+
                     for (let index = 0; index < papers.length; index++) {
                         const paper = papers[index];
                         results.push(`[Paper ${index + 1}]`);
                         results.push(formatPaperForDisplay(paper));
-                        
+
                         // Fetch and include full PDF text
                         try {
                             results.push('\nFull Paper Text:');
@@ -488,7 +488,7 @@ export async function executeToolCall(
                         } catch (pdfError) {
                             results.push(`\n[PDF extraction failed: ${pdfError instanceof Error ? pdfError.message : 'Unknown error'}]`);
                         }
-                        
+
                         results.push('='.repeat(80));
                     }
 
@@ -515,12 +515,12 @@ export async function executeToolCall(
                     }
 
                     const results = [`Found ${papers.length} papers matching all terms: ${toolCall.terms.join(', ')}\n`];
-                    
+
                     for (let index = 0; index < papers.length; index++) {
                         const paper = papers[index];
                         results.push(`[Paper ${index + 1}]`);
                         results.push(formatPaperForDisplay(paper));
-                        
+
                         // Fetch and include full PDF text
                         try {
                             results.push('\nFull Paper Text:');
@@ -529,7 +529,7 @@ export async function executeToolCall(
                         } catch (pdfError) {
                             results.push(`\n[PDF extraction failed: ${pdfError instanceof Error ? pdfError.message : 'Unknown error'}]`);
                         }
-                        
+
                         results.push('='.repeat(80));
                     }
 

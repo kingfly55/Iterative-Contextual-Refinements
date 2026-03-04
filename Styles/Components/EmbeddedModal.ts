@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { renderMathContent } from './RenderMathMarkdown';
+import { renderMathContent } from './RenderMathMarkdownLogic';
 
 export interface ModalMessage {
     id: string;
@@ -31,7 +31,7 @@ export function openEmbeddedModal(
     const modalOverlay = document.createElement('div');
     modalOverlay.className = 'embedded-modal-overlay';
     modalOverlay.style.position = 'fixed';
-    
+
     // Detect if we're inside Deepthink modal (z-index 2100) and boost z-index accordingly
     const isInsideDeepthinkModal = document.getElementById('solution-modal-overlay') !== null;
     modalOverlay.style.setProperty('z-index', isInsideDeepthinkModal ? '2200' : '1000', 'important');
@@ -48,10 +48,10 @@ export function openEmbeddedModal(
     if (hasNavigation) {
         // Filter messages from the same agent
         const sameAgentMessages = allMessages
-            .filter(m => m.role === currentMessage.role)
+            .filter(m => currentMessage && m.role === currentMessage.role)
             .sort((a, b) => a.iterationNumber - b.iterationNumber);
-        
-        const currentIndex = sameAgentMessages.findIndex(m => m.id === currentMessage.id);
+
+        const currentIndex = currentMessage ? sameAgentMessages.findIndex(m => m.id === currentMessage.id) : -1;
         if (currentIndex > 0) {
             prevMessage = sameAgentMessages[currentIndex - 1];
         }
@@ -95,7 +95,7 @@ export function openEmbeddedModal(
         if (contentWrapper) {
             const scrollWidth = contentWrapper.scrollWidth;
             const currentWidth = modalContent.offsetWidth;
-            
+
             // If content is wider, expand the modal up to max-width
             if (scrollWidth > currentWidth - 100) { // Account for padding
                 const newWidth = Math.min(scrollWidth + 100, window.innerWidth * 0.95, 1400);
@@ -131,27 +131,27 @@ export function openEmbeddedModal(
         // Update navigation button states
         const prevBtn = modalContent.querySelector('#prev-btn') as HTMLButtonElement;
         const nextBtn = modalContent.querySelector('#next-btn') as HTMLButtonElement;
-        
+
         if (prevBtn && nextBtn && allMessages) {
             const sameAgentMessages = allMessages
-                .filter(m => m.role === message.role)
+                .filter(m => message && m.role === message.role)
                 .sort((a, b) => a.iterationNumber - b.iterationNumber);
-            
-            const currentIndex = sameAgentMessages.findIndex(m => m.id === message.id);
+
+            const currentIndex = message ? sameAgentMessages.findIndex(m => m.id === message.id) : -1;
             prevBtn.disabled = currentIndex <= 0;
             nextBtn.disabled = currentIndex >= sameAgentMessages.length - 1;
         }
 
         // Update current message reference for keyboard navigation
         currentMessage = message;
-        
+
         // Re-calculate prev/next messages
         if (allMessages) {
             const sameAgentMessages = allMessages
-                .filter(m => m.role === message.role)
+                .filter(m => message && m.role === message.role)
                 .sort((a, b) => a.iterationNumber - b.iterationNumber);
-            
-            const currentIndex = sameAgentMessages.findIndex(m => m.id === message.id);
+
+            const currentIndex = message ? sameAgentMessages.findIndex(m => m.id === message.id) : -1;
             prevMessage = currentIndex > 0 ? sameAgentMessages[currentIndex - 1] : null;
             nextMessage = currentIndex < sameAgentMessages.length - 1 ? sameAgentMessages[currentIndex + 1] : null;
         }
@@ -186,15 +186,19 @@ export function openEmbeddedModal(
         const prevBtn = modalContent.querySelector('#prev-btn');
         const nextBtn = modalContent.querySelector('#next-btn');
 
-        if (prevBtn && prevMessage) {
+        if (prevBtn) {
             prevBtn.addEventListener('click', () => {
-                updateModalContent(prevMessage);
+                if (prevMessage) {
+                    updateModalContent(prevMessage);
+                }
             });
         }
 
-        if (nextBtn && nextMessage) {
+        if (nextBtn) {
             nextBtn.addEventListener('click', () => {
-                updateModalContent(nextMessage);
+                if (nextMessage) {
+                    updateModalContent(nextMessage);
+                }
             });
         }
     }

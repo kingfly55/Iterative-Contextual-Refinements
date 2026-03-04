@@ -7,6 +7,13 @@ import { callAI } from '../Routing';
 import { VERIFIER_SYSTEM_PROMPT } from './AgenticModePrompt';
 import { searchArxiv, formatPaperForDisplay } from './ArxivAPI';
 
+import { getSelectedModel, getSelectedTemperature, getSelectedTopP } from '../Routing';
+import { globalState } from '../Core/State';
+import { updateControlsState } from '../UI/Controls';
+import type { AgenticPromptsManager } from './AgenticPromptsManager';
+import { AgenticConversationManager } from './AgenticCoreLangchain';
+
+
 // Verifier history storage - stores conversation history for each agentic session
 interface VerifierHistoryEntry {
     timestamp: number;
@@ -144,7 +151,7 @@ export function extractTextFromAny(response: any): string {
         if (typeof (response as any).response?.text === 'function') {
             return (response as any).response.text();
         }
-        
+
         // Priority 8: Try calling .text() method directly (used by other modes)
         if (typeof (response as any).text === 'function') {
             return (response as any).text();
@@ -162,14 +169,14 @@ export function extractTextFromAny(response: any): string {
 }
 
 // Types for parsed response segments
-export type ResponseSegment = 
+export type ResponseSegment =
     | { kind: 'text'; text: string }
     | { kind: 'diff'; command: DiffCommand }
     | { kind: 'tool'; tool: ToolCall };
 
-export type ResponseActionWithPos = { 
-    pos: number; 
-    end: number; 
+export type ResponseActionWithPos = {
+    pos: number;
+    end: number;
     action: DiffCommand | ToolCall;
 };
 
@@ -180,7 +187,7 @@ export interface ParsedResponse {
 }
 
 // Types for system message blocks
-export type SystemBlock = 
+export type SystemBlock =
     | { kind: 'edit_ok' }
     | { kind: 'error'; message: string }
     | { kind: 'ignored_tool'; tool: string }
@@ -222,29 +229,29 @@ export interface AgenticState {
 export function parseAgentResponseWithSegments(response: string): ParsedResponse {
     const actionsWithPos = parseActionsWithPositions(response);
     const actions = actionsWithPos.map(x => x.action);
-    
+
     // Build segments from the response and actions
     const segments: ResponseSegment[] = [];
     const sanitizeNarrative = (text: string): string => {
         // AGGRESSIVE cleaning to prevent ANY tool syntax or code blocks from leaking
-        
+
         // 1. Remove code blocks (```, ''', or single `)
         let cleaned = text
             .replace(/```[\s\S]*?```/g, '')  // Triple backticks
             .replace(/'''[\s\S]*?'''/g, '')  // Triple quotes
             .replace(/`[^`\n]+`/g, '')       // Inline code
-            
-        // 2. Remove bracketed tool/diff syntax
+
+            // 2. Remove bracketed tool/diff syntax
             .replace(/\[(TOOL_CALL|DIFF):([^\]]+)\]/g, '')
             .replace(/\[TOOL_RESULT:[^\]]+\]/g, '')
             .replace(/\[SYSTEM_ERROR:[^\]]+\]/g, '')
-            
-        // 3. Remove any lines that look like tool calls (even without brackets)
+
+            // 3. Remove any lines that look like tool calls (even without brackets)
             .replace(/\b(multi_edit|read_current_content|verify_current_content|searchacademia|Exit)\s*\([^)]*\)/g, '')
-            
-        // 4. Remove any lines with search_and_replace, delete, insert_before, insert_after
+
+            // 4. Remove any lines with search_and_replace, delete, insert_before, insert_after
             .replace(/\b(search_and_replace|delete|insert_before|insert_after)\s*\([^)]*\)/g, '');
-        
+
         // 5. Filter out lines that are tool-related headers
         const lines = cleaned.split('\n');
         const filtered = lines.filter(l => {
@@ -260,15 +267,15 @@ export function parseAgentResponseWithSegments(response: string): ParsedResponse
             if (/^\s*\w+\s*\([^)]*\)\s*;?\s*$/.test(l)) return false;
             return true;
         });
-        
+
         // 6. Clean up excessive whitespace
         return filtered.join('\n').replace(/\n{3,}/g, '\n\n').trim();
     };
     let lastEnd = 0;
-    
+
     // Sort by position to ensure proper ordering
     const sortedActions = [...actionsWithPos].sort((a, b) => a.pos - b.pos);
-    
+
     for (const actionInfo of sortedActions) {
         // Add text segment before this action
         if (actionInfo.pos > lastEnd) {
@@ -278,17 +285,17 @@ export function parseAgentResponseWithSegments(response: string): ParsedResponse
                 segments.push({ kind: 'text', text });
             }
         }
-        
+
         // Add action segment
         if ('params' in actionInfo.action) {
             segments.push({ kind: 'diff', command: actionInfo.action as DiffCommand });
         } else {
             segments.push({ kind: 'tool', tool: actionInfo.action as ToolCall });
         }
-        
+
         lastEnd = actionInfo.end;
     }
-    
+
     // Add trailing text if any
     if (lastEnd < response.length) {
         const raw = response.substring(lastEnd);
@@ -297,7 +304,7 @@ export function parseAgentResponseWithSegments(response: string): ParsedResponse
             segments.push({ kind: 'text', text });
         }
     }
-    
+
     return { actions, actionsWithPos, segments };
 }
 
@@ -423,14 +430,14 @@ function parseCommandParams(paramsStr: string): string[] {
     let escapeNext = false;
     let quoteChar: string | null = null; // Track which quote type we're in
     let bracketDepth = 0; // Track bracket nesting for complex syntax
-    
+
     for (let i = 0; i < paramsStr.length; i++) {
         const char = paramsStr[i];
         const nextChar = i < paramsStr.length - 1 ? paramsStr[i + 1] : null;
-        
+
         if (escapeNext) {
             // Enhanced escape sequence handling
-            switch(char) {
+            switch (char) {
                 case 'n': current += '\n'; break;
                 case 't': current += '\t'; break;
                 case 'r': current += '\r'; break;
@@ -510,12 +517,12 @@ function parseCommandParams(paramsStr: string): string[] {
             current += char;
         }
     }
-    
+
     // Add any remaining parameter
     if (current.trim()) {
         params.push(current.trim());
     }
-    
+
     return params;
 }
 
@@ -533,21 +540,21 @@ function normalizeWhitespace(str: string): string {
 function calculateFuzzyEndIndex(content: string, searchStr: string, startIndex: number): number {
     // Default to the expected length
     let endIndex = startIndex + searchStr.length;
-    
+
     // Try to match normalized versions to find actual end
     const normalizedSearch = normalizeWhitespace(searchStr);
     const contentFromIndex = content.substring(startIndex);
     const normalizedContent = normalizeWhitespace(contentFromIndex);
-    
+
     if (normalizedContent.startsWith(normalizedSearch)) {
         // Walk through both strings to find where the match actually ends
         let searchPos = 0;
         let contentPos = 0;
-        
+
         while (searchPos < searchStr.length && contentPos < contentFromIndex.length) {
             const searchChar = searchStr[searchPos];
             const contentChar = contentFromIndex[contentPos];
-            
+
             // Check if characters match (exact or normalized)
             if (searchChar === contentChar) {
                 searchPos++;
@@ -568,10 +575,10 @@ function calculateFuzzyEndIndex(content: string, searchStr: string, startIndex: 
                 break;
             }
         }
-        
+
         endIndex = startIndex + contentPos;
     }
-    
+
     return endIndex;
 }
 
@@ -580,7 +587,7 @@ function fuzzyIndexOf(content: string, searchStr: string, startIndex: number = 0
     // First try exact match
     let index = content.indexOf(searchStr, startIndex);
     if (index !== -1) return index;
-    
+
     // Try with normalized whitespace
     const normalizedContent = normalizeWhitespace(content);
     const normalizedSearch = normalizeWhitespace(searchStr);
@@ -597,14 +604,14 @@ function fuzzyIndexOf(content: string, searchStr: string, startIndex: number = 0
         }
         return originalPos;
     }
-    
+
     // Try trimmed match (ignore leading/trailing whitespace)
     const trimmedSearch = searchStr.trim();
     if (trimmedSearch !== searchStr) {
         index = content.indexOf(trimmedSearch, startIndex);
         if (index !== -1) return index;
     }
-    
+
     // Try with collapsed whitespace (multiple spaces to single space)
     const collapsedContent = content.replace(/\s+/g, ' ');
     const collapsedSearch = searchStr.replace(/\s+/g, ' ');
@@ -627,7 +634,7 @@ function fuzzyIndexOf(content: string, searchStr: string, startIndex: number = 0
         }
         return origPos;
     }
-    
+
     // Try case-insensitive match as last resort for short strings
     if (searchStr.length < 100) {
         const lowerContent = content.toLowerCase();
@@ -638,127 +645,127 @@ function fuzzyIndexOf(content: string, searchStr: string, startIndex: number = 0
             return index;
         }
     }
-    
+
     return -1;
 }
 
 // Apply a diff command to the content
-export function applyDiffCommand(content: string, command: DiffCommand): { 
-    success: boolean; 
-    result: string; 
-    error?: string 
+export function applyDiffCommand(content: string, command: DiffCommand): {
+    success: boolean;
+    result: string;
+    error?: string
 } {
     try {
         switch (command.type) {
             case 'search_and_replace': {
                 if (command.params.length !== 2) {
-                    return { 
-                        success: false, 
-                        result: content, 
-                        error: 'search_and_replace requires exactly 2 parameters' 
+                    return {
+                        success: false,
+                        result: content,
+                        error: 'search_and_replace requires exactly 2 parameters'
                     };
                 }
                 const [find, replace] = command.params;
-                
+
                 // Try exact match first
                 if (content.includes(find)) {
                     const result = content.replace(find, replace);
                     return { success: true, result };
                 }
-                
+
                 // Try fuzzy matching
                 const fuzzyIndex = fuzzyIndexOf(content, find);
                 if (fuzzyIndex !== -1) {
                     // Calculate the actual matched length in the content
                     const endIndex = calculateFuzzyEndIndex(content, find, fuzzyIndex);
-                    
+
                     const result = content.substring(0, fuzzyIndex) + replace + content.substring(endIndex);
                     return { success: true, result };
                 }
-                
-                return { 
-                    success: false, 
-                    result: content, 
-                    error: `String not found (tried exact and fuzzy matching): "${find.substring(0, 100)}${find.length > 100 ? '...' : ''}"` 
+
+                return {
+                    success: false,
+                    result: content,
+                    error: `String not found (tried exact and fuzzy matching): "${find.substring(0, 100)}${find.length > 100 ? '...' : ''}"`
                 };
             }
-            
+
             case 'delete': {
                 if (command.params.length !== 1) {
-                    return { 
-                        success: false, 
-                        result: content, 
-                        error: 'delete requires exactly 1 parameter' 
+                    return {
+                        success: false,
+                        result: content,
+                        error: 'delete requires exactly 1 parameter'
                     };
                 }
                 const [toDelete] = command.params;
-                
+
                 // Try exact match first
                 if (content.includes(toDelete)) {
                     const result = content.replace(toDelete, '');
                     return { success: true, result };
                 }
-                
+
                 // Try fuzzy matching
                 const fuzzyIndex = fuzzyIndexOf(content, toDelete);
                 if (fuzzyIndex !== -1) {
                     // Calculate the actual matched length in the content
                     const endIndex = calculateFuzzyEndIndex(content, toDelete, fuzzyIndex);
-                    
+
                     const result = content.substring(0, fuzzyIndex) + content.substring(endIndex);
                     return { success: true, result };
                 }
-                
-                return { 
-                    success: false, 
-                    result: content, 
-                    error: `String not found (tried exact and fuzzy matching): "${toDelete.substring(0, 100)}${toDelete.length > 100 ? '...' : ''}"` 
+
+                return {
+                    success: false,
+                    result: content,
+                    error: `String not found (tried exact and fuzzy matching): "${toDelete.substring(0, 100)}${toDelete.length > 100 ? '...' : ''}"`
                 };
             }
-            
+
             case 'insert_before': {
                 if (command.params.length !== 2) {
-                    return { 
-                        success: false, 
-                        result: content, 
-                        error: 'insert_before requires exactly 2 parameters' 
+                    return {
+                        success: false,
+                        result: content,
+                        error: 'insert_before requires exactly 2 parameters'
                     };
                 }
                 const [marker, toInsert] = command.params;
-                
+
                 // Try exact match first
                 let index = content.indexOf(marker);
                 if (index === -1) {
                     // Try fuzzy matching
                     index = fuzzyIndexOf(content, marker);
                 }
-                
+
                 if (index === -1) {
-                    return { 
-                        success: false, 
-                        result: content, 
-                        error: `Marker not found (tried exact and fuzzy matching): "${marker.substring(0, 100)}${marker.length > 100 ? '...' : ''}"` 
+                    return {
+                        success: false,
+                        result: content,
+                        error: `Marker not found (tried exact and fuzzy matching): "${marker.substring(0, 100)}${marker.length > 100 ? '...' : ''}"`
                     };
                 }
-                
+
                 const result = content.slice(0, index) + toInsert + content.slice(index);
                 return { success: true, result };
             }
-            
+
             case 'insert_after': {
                 if (command.params.length !== 2) {
-                    return { 
-                        success: false, 
-                        result: content, 
-                        error: 'insert_after requires exactly 2 parameters' 
+                    return {
+                        success: false,
+                        result: content,
+                        error: 'insert_after requires exactly 2 parameters'
                     };
                 }
                 const [marker, toInsert] = command.params;
-                
+
                 // Try exact match first
                 let index = content.indexOf(marker);
                 let markerLength = marker.length;
-                
+
                 if (index === -1) {
                     // Try fuzzy matching
                     index = fuzzyIndexOf(content, marker);
@@ -767,38 +774,38 @@ export function applyDiffCommand(content: string, command: DiffCommand): {
                         markerLength = calculateFuzzyEndIndex(content, marker, index) - index;
                     }
                 }
-                
+
                 if (index === -1) {
-                    return { 
-                        success: false, 
-                        result: content, 
-                        error: `Marker not found (tried exact and fuzzy matching): "${marker.substring(0, 100)}${marker.length > 100 ? '...' : ''}"` 
+                    return {
+                        success: false,
+                        result: content,
+                        error: `Marker not found (tried exact and fuzzy matching): "${marker.substring(0, 100)}${marker.length > 100 ? '...' : ''}"`
                     };
                 }
-                
+
                 const result = content.slice(0, index + markerLength) + toInsert + content.slice(index + markerLength);
                 return { success: true, result };
             }
-            
+
             default:
-                return { 
-                    success: false, 
-                    result: content, 
-                    error: `Unknown command type: ${command.type}` 
+                return {
+                    success: false,
+                    result: content,
+                    error: `Unknown command type: ${command.type}`
                 };
         }
     } catch (error) {
-        return { 
-            success: false, 
-            result: content, 
-            error: `Error executing command: ${error}` 
+        return {
+            success: false,
+            result: content,
+            error: `Error executing command: ${error}`
         };
     }
 }
 
 // Execute a tool call
 export async function executeToolCall(
-    content: string, 
+    content: string,
     toolCall: ToolCall,
     modelName?: string,
     _agenticPromptsManager?: any,
@@ -814,7 +821,7 @@ export async function executeToolCall(
             }
             return content;
         }
-        
+
         case 'verify_current_content': {
             try {
                 // Get or initialize verifier history for this session
@@ -823,15 +830,15 @@ export async function executeToolCall(
                     verifierHistoryMap.set(historyKey, []);
                 }
                 const verifierHistory = verifierHistoryMap.get(historyKey)!;
-                
+
                 // Build the prompt with history context
                 let fullPrompt = VERIFIER_SYSTEM_PROMPT;
-                
+
                 // Add conversation history if it exists
                 if (verifierHistory.length > 0) {
                     fullPrompt += '\n\n<conversation_history>';
                     fullPrompt += '\nYou have previously analyzed content in this session. Here is your conversation history:';
-                    
+
                     verifierHistory.forEach((entry, index) => {
                         fullPrompt += `\n\n[Verification Turn ${index + 1} - ${new Date(entry.timestamp).toISOString()}]`;
                         fullPrompt += '\n<previous_content_received>';
@@ -841,46 +848,46 @@ export async function executeToolCall(
                         fullPrompt += `\n${entry.report}`;
                         fullPrompt += '\n</your_previous_report>';
                     });
-                    
+
                     fullPrompt += '\n</conversation_history>';
                     fullPrompt += '\n\nNow analyze the following current content. Consider what improvements have been made since your last report and identify any remaining or new issues:';
                 }
-                
+
                 // Add the current content to analyze
                 fullPrompt += `\n\n<current_content>\n${content}\n</current_content>`;
-                
+
                 // Call the verifier with the full context
                 const verifierResponse = await callAI(fullPrompt, 0.2, modelName || '', VERIFIER_SYSTEM_PROMPT, false);
                 const verifierText = extractTextFromAny(verifierResponse);
-                
+
                 if (!verifierText || !verifierText.trim()) {
                     console.warn('[Verifier] Empty response text from provider', {
                         provider: modelName,
                         keys: verifierResponse ? Object.keys(verifierResponse as any) : []
                     });
                 }
-                
+
                 const finalReport = verifierText || 'No issues detected by the verifier.';
-                
+
                 // Store this interaction in history
                 verifierHistory.push({
                     timestamp: Date.now(),
                     contentReceived: content,
                     report: finalReport
                 });
-                
+
                 // Store all interactions - no limit for natural conversation flow
-                
+
                 return finalReport;
             } catch (error) {
                 console.error('Verifier agent error:', error);
                 return `[VERIFIER_ERROR: ${error instanceof Error ? error.message : 'Unknown error'}]`;
             }
         }
-        
+
         case 'Exit':
             return '[AGENT_EXIT]';
-        
+
         case 'searchacademia': {
             try {
                 const papers = await searchArxiv({
@@ -888,27 +895,27 @@ export async function executeToolCall(
                     query: toolCall.query,
                     maxResults: 10
                 });
-                
+
                 if (papers.length === 0) {
                     return 'No papers found matching your search query.';
                 }
-                
+
                 const results: string[] = [];
                 results.push(`Found ${papers.length} papers:\n`);
-                
+
                 papers.forEach((paper, index) => {
                     results.push(`\n[Paper ${index + 1}]`);
                     results.push(formatPaperForDisplay(paper));
                     results.push('\n' + '='.repeat(80));
                 });
-                
+
                 return results.join('\n');
             } catch (error) {
                 console.error('SearchAcademia error:', error);
                 return `[SEARCH_ERROR: ${error instanceof Error ? error.message : 'Failed to search arXiv'}]`;
             }
         }
-        
+
         case 'searchacademia_and': {
             try {
                 const papers = await searchArxiv({
@@ -916,45 +923,46 @@ export async function executeToolCall(
                     terms: toolCall.terms,
                     maxResults: 10
                 });
-                
+
                 if (papers.length === 0) {
                     return `No papers found containing all terms: ${toolCall.terms.join(', ')}`;
                 }
-                
+
                 const results: string[] = [];
                 results.push(`Found ${papers.length} papers containing all terms (${toolCall.terms.join(' AND ')}):\n`);
-                
+
                 papers.forEach((paper, index) => {
                     results.push(`\n[Paper ${index + 1}]`);
                     results.push(formatPaperForDisplay(paper));
                     results.push('\n' + '='.repeat(80));
                 });
-                
+
                 return results.join('\n');
             } catch (error) {
                 console.error('SearchAcademia AND error:', error);
                 return `[SEARCH_ERROR: ${error instanceof Error ? error.message : 'Failed to search arXiv'}]`;
             }
         }
-            
+
         default:
             return `[TOOL_ERROR: Unknown tool ${(toolCall as any).type}]`;
     }
 }
 
 // Create initial state
-export function createInitialState(content: string): AgenticState {
-    const id = `agentic-${Date.now()}`;
+export function createInitialState(initialContent: string): AgenticState {
+    const id = `session-${Date.now()}`; // Changed id generation
     // Clear any existing verifier history for a new session
     verifierHistoryMap.delete(id);
     return {
         id,
-        originalContent: content,
-        currentContent: content,
+        originalContent: initialContent,
+        currentContent: initialContent,
+        contentHistory: [], // Added contentHistory
         messages: [{
-            id: `msg-${Date.now()}-user`,
+            id: 'msg-system-initial',
             role: 'user',
-            content: content,
+            content: 'Please refine the following content:\n\n' + initialContent.substring(0, 500) + (initialContent.length > 500 ? '...' : ''),
             timestamp: Date.now()
         }],
         isProcessing: false,
@@ -971,4 +979,373 @@ export function clearVerifierHistory(sessionId: string): void {
 // Helper function to get verifier history for debugging
 export function getVerifierHistory(sessionId: string): VerifierHistoryEntry[] | undefined {
     return verifierHistoryMap.get(sessionId);
+}
+
+// Constants for retry logic
+const MAX_RETRIES = 3;
+const INITIAL_DELAY_MS = 20000;
+const BACKOFF_FACTOR = 2;
+
+function newMsgId(prefix: string = 'msg'): string {
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export interface AgenticEngineCallbacks {
+    onStateChange: (state: AgenticState) => void;
+    onContentUpdated?: (content: string, isComplete?: boolean) => void;
+    onForceRender?: () => Promise<void>;
+}
+
+export class AgenticEngine {
+    private state: AgenticState & { conversationManager?: AgenticConversationManager };
+    private abortController: AbortController | null = null;
+    private conversationManager: AgenticConversationManager | null = null;
+    private callbacks: AgenticEngineCallbacks;
+    private promptsManager: AgenticPromptsManager | null = null;
+
+    constructor(initialContent: string, callbacks: AgenticEngineCallbacks, promptsManager?: AgenticPromptsManager) {
+        this.callbacks = callbacks;
+        this.promptsManager = promptsManager || null;
+        this.state = createInitialState(initialContent);
+
+        let systemPrompt = this.promptsManager?.getAgenticPrompts().systemPrompt;
+        let verifierPrompt = this.promptsManager?.getAgenticPrompts().verifierPrompt;
+
+        this.conversationManager = new AgenticConversationManager(
+            initialContent,
+            systemPrompt || '',
+            verifierPrompt || ''
+        );
+        this.state.conversationManager = this.conversationManager;
+    }
+
+    public getState(): AgenticState {
+        return this.state;
+    }
+
+    private updateState(newStateSubset: Partial<AgenticState>) {
+        this.state = { ...this.state, ...newStateSubset };
+        this.callbacks.onStateChange(this.state);
+    }
+
+    public stop() {
+        console.log('[AgenticEngine] stop called');
+        globalState.isAgenticRunning = false;
+        globalState.isGenerating = false;
+        if (this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
+        }
+        updateControlsState();
+        this.updateState({ isProcessing: false, isComplete: true });
+    }
+
+    public async start() {
+        if (!this.state.currentContent || globalState.isAgenticRunning) return;
+
+        globalState.isAgenticRunning = true;
+        globalState.isGenerating = true;
+        updateControlsState();
+        this.abortController = new AbortController();
+
+        this.callbacks.onStateChange(this.state);
+
+        if (this.callbacks.onContentUpdated) {
+            try { this.callbacks.onContentUpdated(this.state.currentContent); } catch { /* no-op */ }
+        }
+
+        await this.runLoop();
+    }
+
+    private async runLoop() {
+        let iterations = 0;
+        let consecutiveNoToolCalls = 0;
+        const MAX_CONSECUTIVE_NO_TOOL_CALLS = 3;
+
+        const flushUI = async () => {
+            if (this.callbacks.onForceRender) {
+                await this.callbacks.onForceRender();
+            }
+        };
+
+        while (globalState.isAgenticRunning && !this.state.isComplete) {
+            iterations++;
+            try {
+                this.updateState({ isProcessing: true });
+                const placeholderIndex = this.state.messages.length;
+                this.updateState({
+                    messages: [
+                        ...this.state.messages,
+                        {
+                            id: newMsgId('agent'),
+                            role: 'agent',
+                            content: '',
+                            timestamp: Date.now(),
+                            status: 'processing'
+                        }
+                    ]
+                });
+                await flushUI();
+
+                let modelName = getSelectedModel();
+                let temperature = getSelectedTemperature();
+                const topP = getSelectedTopP();
+
+                if (this.promptsManager) {
+                    const prompts = this.promptsManager.getAgenticPrompts();
+                    if (prompts.model) modelName = prompts.model;
+                }
+
+                if (!this.conversationManager) {
+                    throw new Error('Conversation manager not initialized');
+                }
+
+                const systemPrompt = this.conversationManager.getSystemPrompt();
+                // Because AgenticCore is imported by Langchain, we'll cast structure resolving any circular issues visually
+                const strMsgs = await (this.conversationManager as any).buildStructuredPrompt();
+
+                let response: any = null;
+                let responseText = '';
+                let lastError: Error | null = null;
+
+                for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+                    if (this.abortController?.signal.aborted) throw new Error('Process stopped by user');
+                    try {
+                        if (attempt > 0) await new Promise(r => setTimeout(r, INITIAL_DELAY_MS * Math.pow(BACKOFF_FACTOR, attempt - 1)));
+                        response = await callAI(strMsgs, temperature, modelName, systemPrompt, false, topP);
+
+                        // We use the imported extractTextFromAny method or a local equivalent.
+                        // Wait, extractTextFromAny is currently from AgenticCoreLangchain. We can import it.
+                        responseText = (await import('./AgenticCoreLangchain')).extractTextFromAny(response);
+                        if (responseText) break;
+                        throw new Error('Provider returned empty response');
+                    } catch (error) {
+                        lastError = error instanceof Error ? error : new Error(String(error));
+                        if (attempt === MAX_RETRIES) break;
+                    }
+                }
+
+                if (!responseText) {
+                    const errMsg = lastError ? `AI call failed after ${MAX_RETRIES + 1} attempts: ${lastError.message}` : 'Provider returned an empty response after all retries.';
+
+                    const msgs = [...this.state.messages];
+                    const idx = Math.min(placeholderIndex, msgs.length - 1);
+                    const ph = msgs[idx];
+                    if (ph && ph.role === 'agent' && ph.status === 'processing' && (!ph.segments || ph.segments.length === 0)) {
+                        msgs.splice(idx, 1);
+                    }
+                    msgs.push({
+                        id: newMsgId('system'),
+                        role: 'system',
+                        content: errMsg,
+                        timestamp: Date.now(),
+                        status: 'error',
+                        blocks: [{ kind: 'error', message: errMsg } as SystemBlock]
+                    });
+
+                    this.updateState({ isProcessing: false, messages: msgs });
+                    await flushUI();
+                    continue;
+                }
+
+                let actions: Array<DiffCommand | ToolCall> = [];
+                let segments: ResponseSegment[] = [];
+                try {
+                    // Call local parse function
+                    const parsed = parseAgentResponseWithSegments(responseText);
+                    actions = parsed.actions;
+                    segments = parsed.segments;
+                } catch {
+                    actions = [];
+                    segments = [{ kind: 'text', text: responseText }];
+                }
+
+                {
+                    let toolSeen = false;
+                    const isDiffType = (t: any) => t === 'search_and_replace' || t === 'delete' || t === 'insert_before' || t === 'insert_after';
+                    const sanitizedActions: Array<DiffCommand | ToolCall> = [];
+                    for (const a of actions) {
+                        const t = (a as any).type;
+                        if (isDiffType(t)) sanitizedActions.push(a);
+                        else if (!toolSeen) { sanitizedActions.push(a); toolSeen = true; }
+                    }
+                    let segToolSeen = false;
+                    const sanitizedSegments: ResponseSegment[] = [];
+                    for (const s of segments) {
+                        if (s.kind !== 'tool') sanitizedSegments.push(s);
+                        else if (!segToolSeen) { sanitizedSegments.push(s); segToolSeen = true; }
+                    }
+                    actions = sanitizedActions;
+                    segments = sanitizedSegments;
+                }
+
+                const commands = actions.filter(a => 'params' in a && (a.type === 'search_and_replace' || a.type === 'delete' || a.type === 'insert_before' || a.type === 'insert_after')) as DiffCommand[];
+                const toolCalls = actions.filter(a => ['read_current_content', 'verify_current_content', 'Exit', 'multi_edit'].includes(a.type as string)) as ToolCall[];
+
+                if (this.conversationManager) {
+                    await (this.conversationManager as any).addAgentMessage(responseText);
+                }
+
+                const narrativeText = segments.filter(seg => seg.kind === 'text').map(seg => (seg as any).text).join('\n').trim();
+                const msgs = [...this.state.messages];
+                const idx = Math.min(placeholderIndex, msgs.length - 1);
+                const last = msgs[idx];
+
+                if (last && last.role === 'agent' && last.status === 'processing' && !last.segments) {
+                    msgs[idx] = {
+                        id: last.id,
+                        role: 'agent',
+                        content: narrativeText || responseText,
+                        timestamp: last.timestamp,
+                        status: 'processing',
+                        commands: commands.length ? commands : undefined,
+                        toolCalls: toolCalls.length ? toolCalls : undefined,
+                        segments: segments.length > 0 ? segments : undefined
+                    };
+                } else {
+                    msgs.push({
+                        id: newMsgId('agent'),
+                        role: 'agent',
+                        content: narrativeText || responseText,
+                        timestamp: Date.now(),
+                        status: 'processing',
+                        commands: commands.length ? commands : undefined,
+                        toolCalls: toolCalls.length ? toolCalls : undefined,
+                        segments: segments.length > 0 ? segments : undefined
+                    });
+                }
+                this.updateState({ messages: msgs });
+                await flushUI();
+
+                if (actions.length === 0) {
+                    consecutiveNoToolCalls++;
+                    if (consecutiveNoToolCalls >= MAX_CONSECUTIVE_NO_TOOL_CALLS) {
+                        const loopErrorContent = `Agent is stuck in a loop (${consecutiveNoToolCalls} consecutive turns without tool calls). Stopping to prevent infinite loop. The agent may be confused or context window may be full.`;
+                        const loopErrorMsg: AgenticMessage = {
+                            id: newMsgId('system'),
+                            role: 'system',
+                            content: loopErrorContent,
+                            timestamp: Date.now(),
+                            status: 'error',
+                            blocks: [{ kind: 'error', message: loopErrorContent }]
+                        };
+                        this.updateState({ messages: [...this.state.messages, loopErrorMsg], isComplete: true, isProcessing: false });
+                        await flushUI();
+                        break;
+                    }
+                    const noToolContent = `No tool was executed (attempt ${consecutiveNoToolCalls}/${MAX_CONSECUTIVE_NO_TOOL_CALLS}). You MUST output a tool call on the final line. Use: [TOOL_CALL:toolname(...)]`;
+                    const noToolMsg: AgenticMessage = { id: newMsgId('system'), role: 'system', content: noToolContent, timestamp: Date.now(), status: 'error', blocks: [{ kind: 'error', message: 'No tool was executed. Please use proper tool call syntax.' }] };
+                    this.updateState({ messages: [...this.state.messages, noToolMsg] });
+                    if (this.conversationManager) {
+                        await (this.conversationManager as any).addSystemMessage(noToolContent);
+                    }
+                } else {
+                    consecutiveNoToolCalls = 0;
+                    const action = actions[0];
+                    const toolCall = action as ToolCall;
+
+                    if ((toolCall as any).type === 'multi_edit') {
+                        const ops = ((toolCall as any).operations as DiffCommand[]) || [];
+                        if (!ops.length) {
+                            const resultText = 'Multi-edit finished: 0 OK, 0 FAIL\nNo operations were provided in multi_edit()';
+                            const systemMsg: AgenticMessage = { id: newMsgId('system'), role: 'system', content: `[TOOL_RESULT:multi_edit]\n${resultText}`, timestamp: Date.now(), status: 'error', blocks: [{ kind: 'tool_result', tool: 'multi_edit', result: resultText }] };
+                            this.updateState({ messages: [...this.state.messages, systemMsg] });
+                            if (this.conversationManager) await (this.conversationManager as any).addSystemMessage(resultText);
+                        } else {
+                            const logs: string[] = [];
+                            const logsForHistory: string[] = [];
+                            let okCount = 0;
+                            let failCount = 0;
+                            let currentContent = this.state.currentContent;
+
+                            for (let i = 0; i < ops.length; i++) {
+                                const op = ops[i];
+                                // applyDiffCommand from original module
+                                const res = applyDiffCommand(currentContent, op);
+                                currentContent = res.result;
+
+                                this.updateState({ currentContent });
+                                if (this.conversationManager) this.conversationManager.updateCurrentContent(res.result);
+                                if (this.callbacks.onContentUpdated) {
+                                    try { this.callbacks.onContentUpdated(currentContent); } catch { }
+                                }
+
+                                if (res.success) {
+                                    logs.push(`OK ${op.type}(${op.params.map(p => '"' + p + '"').join(', ')})`);
+                                    logsForHistory.push(`OK ${op.type}`);
+                                    okCount++;
+                                } else {
+                                    logs.push(`FAIL ${op.type}: ${res.error}`);
+                                    logsForHistory.push(`FAIL ${op.type}: ${res.error}`);
+                                    failCount++;
+                                }
+                            }
+
+                            if (okCount > 0) {
+                                this.updateState({
+                                    contentHistory: [
+                                        ...this.state.contentHistory,
+                                        { content: currentContent, title: `After ${okCount} successful edit${okCount > 1 ? 's' : ''}`, timestamp: Date.now() }
+                                    ]
+                                });
+                            }
+                            const summary = `Multi-edit finished: ${okCount} OK, ${failCount} FAIL`;
+                            const resultBody = [summary, ...logs].join('\n');
+                            const resultBodyForHistory = [summary, ...logsForHistory].join('\n');
+                            const systemMsg: AgenticMessage = { id: newMsgId('system'), role: 'system', content: `[TOOL_RESULT:multi_edit]\n${resultBody}`, timestamp: Date.now(), status: failCount > 0 ? 'error' : 'success', blocks: [{ kind: 'tool_result', tool: 'multi_edit', result: resultBody }] };
+                            this.updateState({ messages: [...this.state.messages, systemMsg] });
+                            if (this.conversationManager) await (this.conversationManager as any).addSystemMessage(resultBodyForHistory);
+                        }
+                    } else if ((toolCall as any).type === 'Exit') {
+                        this.updateState({ isComplete: true });
+                        const exitMessage = 'Agent has completed the refinement process.';
+                        const systemMsg: AgenticMessage = { id: newMsgId('system'), role: 'system', content: exitMessage, timestamp: Date.now(), status: 'success', blocks: [{ kind: 'tool_result', tool: 'Exit', result: exitMessage }] };
+                        this.updateState({ messages: [...this.state.messages, systemMsg] });
+                        if (this.conversationManager) await (this.conversationManager as any).addSystemMessage(exitMessage);
+                        if (this.callbacks.onContentUpdated) {
+                            try { this.callbacks.onContentUpdated(this.state.currentContent, true); } catch { }
+                        }
+                    } else {
+                        if (!this.conversationManager) throw new Error('Conversation manager not initialized');
+
+                        // use executeToolCall from original module
+                        const result = await executeToolCall(this.state.currentContent, toolCall as any, modelName, this.conversationManager as any);
+                        const toolType = (toolCall as any).type;
+                        const isError = result.startsWith('[TOOL_ERROR:') || result.startsWith('[VERIFIER_ERROR:');
+                        const systemContent = isError ? `Your tool call failed. Reason: ${result}` : result;
+                        const systemMsg: AgenticMessage = { id: newMsgId('system'), role: 'system', content: isError ? systemContent : `[TOOL_RESULT:${toolType}]\n${result}`, timestamp: Date.now(), status: isError ? 'error' : 'success', blocks: [isError ? { kind: 'error', message: result } : { kind: 'tool_result', tool: toolType, result, toolCall: toolCall as any }] };
+                        this.updateState({ messages: [...this.state.messages, systemMsg] });
+                        if (this.conversationManager) await (this.conversationManager as any).addSystemMessage(systemContent);
+                    }
+
+                    if (actions.length > 1) {
+                        const firstToolName = (actions[0] as any).type;
+                        const warningContent = `First tool executed: ${firstToolName}. All other tools were ignored. Only one tool use is allowed per single response.`;
+                        const warningMsg: AgenticMessage = { id: newMsgId('system'), role: 'system', content: warningContent, timestamp: Date.now(), status: 'success', blocks: [{ kind: 'error', message: `Only the first tool (${firstToolName}) was executed. ${actions.length - 1} other tool(s) were ignored.` }] };
+                        this.updateState({ messages: [...this.state.messages, warningMsg] });
+                        if (this.conversationManager) await (this.conversationManager as any).addSystemMessage(warningContent);
+                    }
+                }
+
+                this.updateState({ isProcessing: false });
+                await flushUI();
+
+            } catch (error) {
+                console.error('Agent loop error:', error);
+                const msgs = [...this.state.messages];
+                const lastMsg = msgs[msgs.length - 1];
+                if (lastMsg && lastMsg.role === 'agent' && lastMsg.status === 'processing' && !lastMsg.segments) {
+                    msgs.pop();
+                }
+                this.updateState({ messages: msgs, isProcessing: false, error: error instanceof Error ? error.message : 'Unknown error occurred' });
+                await flushUI();
+            }
+
+            if (this.abortController?.signal.aborted) break;
+        }
+
+        globalState.isAgenticRunning = false;
+        globalState.isGenerating = false;
+        updateControlsState();
+    }
 }

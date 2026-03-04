@@ -9,10 +9,10 @@
 import { Part, GenerateContentResponse } from "@google/genai";
 import { AIProvider, ThinkingConfig } from '../Routing/AIProvider';
 import { CustomizablePromptsDeepthink } from './DeepthinkPrompts';
-import { renderMathContent } from '../Styles/Components/RenderMathMarkdown';
+import { renderMathContent } from '../Styles/Components/RenderMathMarkdownLogic';
 import { SolutionCritiqueHistoryManager, SolutionCorrectionHistoryManager, StructuredSolutionPoolHistoryManager, PostQualityFilterHistoryManager, StrategiesGeneratorHistoryManager } from './DeepthinkIterativeHistory';
 import { addSolutionPoolVersion } from './SolutionPool';
-import { extractPartsInOrder, formatPartsForDisplay } from '../Contextual/Contextual';
+import { extractPartsInOrder, formatPartsForDisplay } from '../Routing/ResponseParser';
 import { nanoid } from 'nanoid';
 
 // ========== TYPE DEFINITIONS ==========
@@ -228,8 +228,6 @@ let render: () => void = () => { };
 export interface DeepthinkCoreDeps {
     getAIProvider: () => AIProvider | null;
     callGemini: (parts: Part[], temperature: number, modelToUse: string, systemInstruction?: string, isJson?: boolean, topP?: number, thinkingConfig?: ThinkingConfig) => Promise<GenerateContentResponse>;
-    cleanOutputByType: (rawOutput: string, type?: string) => string;
-    parseJsonSuggestions: (rawJsonString: string, suggestionKey?: 'features' | 'suggestions' | 'strategies' | 'sub_strategies', expectedCount?: number) => string[];
     parseJsonSafe: (raw: string, context: string) => any;
     getSelectedTemperature: () => number;
     getSelectedModel: () => string;
@@ -783,7 +781,8 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                     'retryAttempt'
                 );
 
-                const strategies = deps.parseJsonSuggestions(strategiesResponse, 'strategies', deps.getSelectedStrategiesCount());
+                const parsedStrategies = deps.parseJsonSafe(strategiesResponse, 'Initial Strategy Generation');
+                const strategies: string[] = parsedStrategies.strategies || parsedStrategies.features || parsedStrategies.suggestions || [];
 
                 for (let i = 0; i < strategies.length; i++) {
                     const strategy: DeepthinkMainStrategyData = {
@@ -858,7 +857,8 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                                 'retryAttempt'
                             );
 
-                            const subStrategies = deps.parseJsonSuggestions(subStrategyResponse, 'sub_strategies', deps.getSelectedSubStrategiesCount());
+                            const parsedSub = deps.parseJsonSafe(subStrategyResponse, `Sub-Strategy Generation for ${mainStrategy.id}`);
+                            const subStrategies: string[] = parsedSub.sub_strategies || parsedSub.subStrategies || parsedSub.strategies || [];
 
                             for (let j = 0; j < subStrategies.length; j++) {
                                 const subStrategy: DeepthinkSubStrategyData = {
@@ -1314,7 +1314,8 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                                         'retryAttempt'
                                     );
 
-                                    const updatedStrategies = deps.parseJsonSuggestions(updatedStrategiesResponse, 'strategies', updateIds.length);
+                                    const parsedUpdated = deps.parseJsonSafe(updatedStrategiesResponse, `Strategy Updates (PostQualityFilter Iteration ${pqfIteration})`);
+                                    const updatedStrategies: string[] = parsedUpdated.strategies || parsedUpdated.features || parsedUpdated.suggestions || Object.values(parsedUpdated) || [];
 
                                     // Add to history (user prompt + AI response)
                                     await strategiesGeneratorHistoryManager.addGeneratedStrategies(updatedStrategiesResponse, strategiesGenPrompt);
@@ -2173,8 +2174,7 @@ ${currentProcess.dissectedObservationsSynthesis}
                     'retryAttempt'
                 );
                 currentProcess.finalJudgingResponseText = finalJudgingResponseText;
-                const cleanedJson = deps.cleanOutputByType(finalJudgingResponseText, 'json');
-                const parsed = JSON.parse(cleanedJson);
+                const parsed = deps.parseJsonSafe(finalJudgingResponseText, 'Final Judge');
 
                 if (!parsed.best_solution_id || !parsed.final_reasoning) {
                     throw new Error("Final Judge LLM response is missing critical fields (best_solution_id, final_reasoning).");
@@ -2186,7 +2186,7 @@ ${currentProcess.dissectedObservationsSynthesis}
                     `Solution ${parsed.best_solution_id}`;
 
                 currentProcess.finalJudgedBestStrategyId = winningSolution?.id || parsed.best_solution_id;
-                currentProcess.finalJudgedBestSolution = `### Final Judged Best Solution\n\n**Solution ID:** <span class="sub-strategy-purple-id">${parsed.best_solution_id}</span>\n\n**Origin:** ${solutionTitle}\n\n**Final Reasoning:**\n${parsed.final_reasoning}\n\n---\n\n**Definitive Solution:**\n${winningSolution?.solution || parsed.final_solution_text || 'Solution not found'}`;
+                currentProcess.finalJudgedBestSolution = `**Solution ID:** <span class="sub-strategy-purple-id">${parsed.best_solution_id}</span>\n\n**Origin:** ${solutionTitle}\n\n**Final Reasoning:**\n${parsed.final_reasoning}\n\n---\n\n**Definitive Solution:**\n${winningSolution?.solution || parsed.final_solution_text || 'Solution not found'}`;
                 currentProcess.finalJudgingStatus = 'completed';
 
             } catch (e: any) {

@@ -1,11 +1,42 @@
+export type ThemeMode = 'light' | 'dark';
 
-export function initializeThemeToggle() {
-    const savedTheme = localStorage.getItem('theme') || 'dark';
+export function getSavedTheme(): ThemeMode {
+    return (localStorage.getItem('theme') as ThemeMode) || 'dark';
+}
+
+export function setSavedTheme(theme: ThemeMode): void {
+    localStorage.setItem('theme', theme);
+}
+
+export function isLightMode(): boolean {
+    return getSavedTheme() === 'light';
+}
+
+export function toggleBodyLightMode(): boolean {
+    return document.body.classList.toggle('light-mode');
+}
+
+export function getThemeToggleButton(): HTMLElement | null {
+    return document.getElementById('theme-toggle-button');
+}
+
+export function getThemeIcon(): HTMLElement | null {
+    const button = getThemeToggleButton();
+    return button?.querySelector('.material-symbols-outlined') || null;
+}
+
+export function setThemeIcon(isLight: boolean): void {
+    const icon = getThemeIcon();
+    if (icon) {
+        icon.textContent = isLight ? 'dark_mode' : 'light_mode';
+    }
+}
+
+export function initializeThemeToggle(): void {
+    const savedTheme = getSavedTheme();
     if (savedTheme === 'light') {
         document.body.classList.add('light-mode');
-        const themeToggleButton = document.getElementById('theme-toggle-button');
-        const themeIcon = themeToggleButton?.querySelector('.material-symbols-outlined');
-        if (themeIcon) themeIcon.textContent = 'dark_mode';
+        setThemeIcon(true);
     }
 
     document.addEventListener('click', (e) => {
@@ -16,14 +47,9 @@ export function initializeThemeToggle() {
             e.preventDefault();
             e.stopPropagation();
 
-            const isLightMode = document.body.classList.toggle('light-mode');
-
-            const themeIcon = themeToggleButton.querySelector('.material-symbols-outlined');
-            if (themeIcon) {
-                themeIcon.textContent = isLightMode ? 'dark_mode' : 'light_mode';
-            }
-
-            localStorage.setItem('theme', isLightMode ? 'light' : 'dark');
+            const isLight = toggleBodyLightMode();
+            setThemeIcon(isLight);
+            setSavedTheme(isLight ? 'light' : 'dark');
         }
     }, true);
 }

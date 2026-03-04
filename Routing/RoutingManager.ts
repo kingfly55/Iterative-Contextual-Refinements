@@ -58,15 +58,9 @@ export class RoutingManager {
 
         // Initialize model selection UI
         this.modelSelectionUI.initialize();
-
-        // Set up any additional routing logic here
-        this.setupEventListeners();
     }
 
-    private setupEventListeners(): void {
-        // Add any global event listeners for routing
-        // This could include navigation, mode switching, etc.
-    }
+
 
     private updateAvailableModels(): void {
         const allModels = this.providerManager.getAllModels();
@@ -134,7 +128,6 @@ export class RoutingManager {
             adaptiveDeepthinkPromptsRef,
             contextualPromptsRef
         );
-        this.promptsManager.initializeTextareas();
 
         // Connect PromptsManager to PromptsModal for model selector state management
         if (this.promptsModal) {

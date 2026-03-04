@@ -4,12 +4,26 @@
  */
 
 import React from 'react';
-import { AgenticConfig } from './AgenticPromptsManager';
+import type { AgenticConfig } from './AgenticPromptsManager';
 
 interface AgenticImportExportProps {
     onImport: (config: AgenticConfig) => void;
     onExport: () => AgenticConfig;
     onReset: () => void;
+}
+
+/**
+ * Encapsulated browser download utility
+ * Does NOT interact with the React Virtual DOM or inject elements into the app UI.
+ */
+function triggerDownload(dataUri: string, filename: string) {
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', filename);
+    linkElement.style.display = 'none';
+    document.body.appendChild(linkElement); // Clean hook required by some browsers
+    linkElement.click();
+    document.body.removeChild(linkElement);
 }
 
 export const AgenticImportExport: React.FC<AgenticImportExportProps> = ({
@@ -20,14 +34,10 @@ export const AgenticImportExport: React.FC<AgenticImportExportProps> = ({
     const handleExport = () => {
         const config = onExport();
         const dataStr = JSON.stringify(config, null, 2);
-        const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-        
+        const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
         const exportFileDefaultName = `agentic-config-${new Date().toISOString().slice(0, 10)}.json`;
-        
-        const linkElement = document.createElement('a');
-        linkElement.setAttribute('href', dataUri);
-        linkElement.setAttribute('download', exportFileDefaultName);
-        linkElement.click();
+
+        triggerDownload(dataUri, exportFileDefaultName);
     };
 
     const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -39,7 +49,7 @@ export const AgenticImportExport: React.FC<AgenticImportExportProps> = ({
             try {
                 const config = JSON.parse(e.target?.result as string) as AgenticConfig;
                 onImport(config);
-                // Reset the input
+                // Reset the input for subsequent uploads of the same file
                 event.target.value = '';
             } catch (error) {
                 console.error('Failed to import config:', error);
@@ -52,7 +62,7 @@ export const AgenticImportExport: React.FC<AgenticImportExportProps> = ({
     return (
         <div className="agentic-import-export">
             <div className="import-export-buttons">
-                <button 
+                <button
                     className="export-button"
                     onClick={handleExport}
                     title="Export Agentic configuration and results"
@@ -60,7 +70,7 @@ export const AgenticImportExport: React.FC<AgenticImportExportProps> = ({
                     <span className="material-symbols-outlined">download</span>
                     Export Config
                 </button>
-                
+
                 <label className="import-button" title="Import Agentic configuration">
                     <span className="material-symbols-outlined">upload</span>
                     Import Config
@@ -72,7 +82,7 @@ export const AgenticImportExport: React.FC<AgenticImportExportProps> = ({
                     />
                 </label>
 
-                <button 
+                <button
                     className="reset-button"
                     onClick={onReset}
                     title="Reset to default system prompt"

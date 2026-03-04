@@ -1,14 +1,31 @@
+export function getSidebarElement(): HTMLElement | null {
+    return document.getElementById('controls-sidebar');
+}
 
-export function initializeSidebarControls() {
-    let sidebarIsCollapsed = false;
+export function getMainContentElement(): HTMLElement | null {
+    return document.getElementById('main-content');
+}
 
-    const sidebarCollapseButton = document.getElementById('sidebar-collapse-button');
-    const controlsSidebar = document.getElementById('controls-sidebar');
-    const mainContent = document.getElementById('main-content');
-    const expandButton = document.getElementById('sidebar-expand-button');
+export function getExpandButton(): HTMLElement | null {
+    return document.getElementById('sidebar-expand-button');
+}
+
+export function getCollapseButton(): HTMLElement | null {
+    return document.getElementById('sidebar-collapse-button');
+}
+
+export function isSidebarCollapsed(): boolean {
+    const sidebar = getSidebarElement();
+    return sidebar?.classList.contains('collapsed') || false;
+}
+
+export function initializeSidebarControls(): void {
+    const sidebarCollapseButton = getCollapseButton();
+    const controlsSidebar = getSidebarElement();
+    const mainContent = getMainContentElement();
+    const expandButton = getExpandButton();
 
     if (controlsSidebar && controlsSidebar.classList.contains('collapsed')) {
-        sidebarIsCollapsed = true;
         if (expandButton) {
             expandButton.style.display = 'flex';
         }
@@ -21,7 +38,6 @@ export function initializeSidebarControls() {
 
             if (controlsSidebar) {
                 controlsSidebar.classList.remove('collapsed');
-                sidebarIsCollapsed = false;
                 expandButton.style.display = 'none';
             }
         });
@@ -39,10 +55,9 @@ export function initializeSidebarControls() {
 
             controlsSidebar.style.transition = 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)';
             controlsSidebar.classList.add('collapsed');
-            sidebarIsCollapsed = true;
 
             requestAnimationFrame(() => {
-                const expandBtn = document.getElementById('sidebar-expand-button');
+                const expandBtn = getExpandButton();
                 if (expandBtn) {
                     expandBtn.style.display = 'flex';
                 }
@@ -58,9 +73,9 @@ export function initializeSidebarControls() {
     }
 }
 
-export function ensureExpandButton() {
-    const controlsSidebar = document.getElementById('controls-sidebar');
-    const expandButton = document.getElementById('sidebar-expand-button');
+export function ensureExpandButton(): void {
+    const controlsSidebar = getSidebarElement();
+    const expandButton = getExpandButton();
     const sidebarIsCollapsed = controlsSidebar?.classList.contains('collapsed');
 
     if (expandButton) {

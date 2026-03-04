@@ -5,23 +5,40 @@ import DeepthinkPromptsContent from '../../Deepthink/DeepthinkPromptsContent';
 import AgenticPromptsContent from '../../Agentic/AgenticPromptsContent';
 import AdaptivePromptsContent from '../../AdaptiveDeepthink/AdaptivePromptsContent';
 import ContextualPromptsContent from '../../Contextual/ContextualPromptsContent';
+import { getRoutingManager } from '../index';
 
 /**
  * Prompts Modal Manager
- * Orchestrates which mode-specific prompts content to display
- * Note: This component provides the structure for all modal content 
- * The actual modal visibility and navigation is still managed by PromptsModal.ts
+ * Orchestrates which mode-specific prompts content to display.
+ * All mode-specific content components receive their manager and render via React state.
  */
 export const PromptsModalManager: React.FC = () => {
+    const promptsManager = getRoutingManager().getPromptsManager();
+    const modelConfigManager = getRoutingManager().getModelConfigManager();
+    const availableModels = modelConfigManager
+        ? modelConfigManager.getAvailableModels().map((m: any) => m.value)
+        : [];
+
     return (
         <PromptsModalLayout>
             {/* All mode-specific prompt containers are rendered */}
             {/* The PromptsModal.ts handles showing/hiding based on active mode */}
-            <RefinePromptsContent />
-            <DeepthinkPromptsContent />
-            <AgenticPromptsContent />
+            <RefinePromptsContent
+                promptsManager={promptsManager!.getWebsitePromptsManager()}
+                availableModels={availableModels}
+            />
+            <DeepthinkPromptsContent
+                promptsManager={promptsManager!.getDeepthinkPromptsManager()}
+                availableModels={availableModels}
+            />
+            <AgenticPromptsContent
+                promptsManager={promptsManager!.getAgenticPromptsManager()!}
+                availableModels={availableModels}
+            />
             <AdaptivePromptsContent />
-            <ContextualPromptsContent />
+            {promptsManager?.getContextualPromptsManager() ? (
+                <ContextualPromptsContent manager={promptsManager!.getContextualPromptsManager()!} />
+            ) : null}
         </PromptsModalLayout>
     );
 };

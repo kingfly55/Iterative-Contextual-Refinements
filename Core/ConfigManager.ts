@@ -34,7 +34,8 @@ import {
 // Ensure handlers are registered
 import './StateSerializer/handlers';
 
-import { updateEvolutionModeDescription, updateUIAfterModeChange } from '../Refine/WebsiteUI';
+import { updateEvolutionModeDescription } from '../UI/CommonUI';
+import { updateUIAfterModeChange } from './AppRouter';
 import { createDefaultCustomPromptsDeepthink } from '../Deepthink/DeepthinkPrompts';
 import { defaultCustomPromptsWebsite } from '../Refine/RefinePrompts';
 import { createDefaultCustomPromptsContextual } from '../Contextual/ContextualPrompts';

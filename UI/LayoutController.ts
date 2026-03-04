@@ -5,157 +5,246 @@
 
 import { globalState } from '../Core/State';
 
-export class LayoutController {
-    private static sidebarIsCollapsed = false;
+export type ThemeMode = 'light' | 'dark';
 
-    public static initialize() {
-        this.initializeSidebarControls();
-        this.initializeThemeToggle();
-        this.initializeFullscreenHandler();
+export function getSavedTheme(): ThemeMode {
+    return (localStorage.getItem('theme') as ThemeMode) || 'dark';
+}
 
-        // Global function to reinitialize sidebar controls (called from other functions)
-        (window as any).pipelinesState = globalState.pipelinesState;
+export function setSavedTheme(theme: ThemeMode): void {
+    localStorage.setItem('theme', theme);
+}
 
-        // Re-initialize sidebar controls whenever tabs are updated
-        const observer = new MutationObserver(() => {
-            // Call ensureExpandButton to maintain button after tab changes
-            this.ensureExpandButton();
+export function isLightMode(): boolean {
+    return getSavedTheme() === 'light';
+}
+
+export function toggleBodyLightMode(): boolean {
+    return document.body.classList.toggle('light-mode');
+}
+
+export function getThemeToggleButton(): HTMLElement | null {
+    return document.getElementById('theme-toggle-button');
+}
+
+export function getThemeIcon(): HTMLElement | null {
+    const button = getThemeToggleButton();
+    return button?.querySelector('.material-symbols-outlined') || null;
+}
+
+export function setThemeIcon(isLight: boolean): void {
+    const icon = getThemeIcon();
+    if (icon) {
+        icon.textContent = isLight ? 'dark_mode' : 'light_mode';
+    }
+}
+
+export function getSidebarElement(): HTMLElement | null {
+    return document.getElementById('controls-sidebar');
+}
+
+export function getMainContentElement(): HTMLElement | null {
+    return document.getElementById('main-content');
+}
+
+export function getExpandButton(): HTMLElement | null {
+    return document.getElementById('sidebar-expand-button');
+}
+
+export function getCollapseButton(): HTMLElement | null {
+    return document.getElementById('sidebar-collapse-button');
+}
+
+export function isSidebarCollapsed(): boolean {
+    const sidebar = getSidebarElement();
+    return sidebar?.classList.contains('collapsed') || false;
+}
+
+export function getTabsContainer(): HTMLElement | null {
+    return document.getElementById('tabs-nav-container');
+}
+
+export function getFullscreenButtons(): NodeListOf<Element> {
+    return document.querySelectorAll('.fullscreen-toggle-button');
+}
+
+export function getPreviewContainerId(buttonId: string): string {
+    return buttonId.replace('fullscreen-btn-', 'preview-container-');
+}
+
+export function getAssociatedPreviewContainer(buttonId: string): HTMLElement | null {
+    const previewContainerId = getPreviewContainerId(buttonId);
+    return document.getElementById(previewContainerId);
+}
+
+export function isFullscreenActive(): boolean {
+    return !!document.fullscreenElement;
+}
+
+export function getFullscreenElement(): Element | null {
+    return document.fullscreenElement;
+}
+
+let sidebarIsCollapsed = false;
+
+export function setSidebarCollapsed(collapsed: boolean): void {
+    sidebarIsCollapsed = collapsed;
+}
+
+export function getSidebarCollapsed(): boolean {
+    return sidebarIsCollapsed;
+}
+
+export function ensureExpandButtonVisibility(): void {
+    const expandButton = getExpandButton();
+    if (expandButton) {
+        expandButton.style.display = sidebarIsCollapsed ? 'flex' : 'none';
+    }
+}
+
+export function collapseSidebar(): void {
+    const sidebar = getSidebarElement();
+    if (sidebar) {
+        sidebar.style.transition = 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)';
+        sidebar.classList.add('collapsed');
+        setSidebarCollapsed(true);
+    }
+}
+
+export function expandSidebar(): void {
+    const sidebar = getSidebarElement();
+    const expandButton = getExpandButton();
+    if (sidebar) {
+        sidebar.classList.remove('collapsed');
+        setSidebarCollapsed(false);
+    }
+    if (expandButton) {
+        expandButton.style.display = 'none';
+    }
+}
+
+export function initializeSidebarEventListeners(): void {
+    const expandButton = getExpandButton();
+    const collapseButton = getCollapseButton();
+    const sidebar = getSidebarElement();
+    const mainContent = getMainContentElement();
+
+    if (expandButton) {
+        expandButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            expandSidebar();
         });
+    }
 
-        const tabsContainer = document.getElementById('tabs-nav-container');
-        if (tabsContainer) {
-            observer.observe(tabsContainer, { childList: true, subtree: true });
+    if (collapseButton && sidebar) {
+        const newCollapseButton = collapseButton.cloneNode(true) as HTMLElement;
+        collapseButton.replaceWith(newCollapseButton);
+
+        newCollapseButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            sidebar.offsetHeight;
+            collapseSidebar();
+
+            requestAnimationFrame(() => {
+                const expandBtn = getExpandButton();
+                if (expandBtn) {
+                    expandBtn.style.display = 'flex';
+                }
+
+                if (mainContent) {
+                    mainContent.style.transform = 'translateZ(0)';
+                    setTimeout(() => {
+                        mainContent.style.transform = '';
+                    }, 300);
+                }
+            });
+        });
+    }
+}
+
+export function initializeThemeEventListeners(): void {
+    document.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        const themeToggleButton = target.closest('#theme-toggle-button');
+
+        if (themeToggleButton) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const isLight = toggleBodyLightMode();
+            setThemeIcon(isLight);
+            setSavedTheme(isLight ? 'light' : 'dark');
         }
+    }, true);
+}
+
+export function initializeFullscreenEventListeners(): void {
+    document.addEventListener('fullscreenchange', () => {
+        const isFullscreen = isFullscreenActive();
+        const fullscreenElement = getFullscreenElement();
+
+        getFullscreenButtons().forEach(button => {
+            const btn = button as HTMLButtonElement;
+            const iconFullscreen = btn.querySelector('.icon-fullscreen') as HTMLElement;
+            const iconExitFullscreen = btn.querySelector('.icon-exit-fullscreen') as HTMLElement;
+            const associatedPreview = getAssociatedPreviewContainer(btn.id);
+
+            if (isFullscreen && fullscreenElement === associatedPreview) {
+                if (iconFullscreen) iconFullscreen.style.display = 'none';
+                if (iconExitFullscreen) iconExitFullscreen.style.display = 'inline-block';
+                btn.title = "Exit Fullscreen Preview";
+                btn.setAttribute('aria-label', "Exit Fullscreen Preview");
+            } else {
+                if (iconFullscreen) iconFullscreen.style.display = 'inline-block';
+                if (iconExitFullscreen) iconExitFullscreen.style.display = 'none';
+                btn.title = "Toggle Fullscreen Preview";
+                btn.setAttribute('aria-label', "Toggle Fullscreen Preview");
+            }
+        });
+    });
+}
+
+export function initializeThemeFromStorage(): void {
+    const savedTheme = getSavedTheme();
+    if (savedTheme === 'light') {
+        document.body.classList.add('light-mode');
+        setThemeIcon(true);
+    }
+}
+
+export function initializeTabsObserver(): void {
+    const tabsContainer = getTabsContainer();
+    if (tabsContainer) {
+        const observer = new MutationObserver(() => {
+            ensureExpandButtonVisibility();
+        });
+        observer.observe(tabsContainer, { childList: true, subtree: true });
+    }
+}
+
+export function initializeLayoutController(): void {
+    initializeSidebarEventListeners();
+    initializeThemeEventListeners();
+    initializeFullscreenEventListeners();
+    initializeThemeFromStorage();
+    initializeTabsObserver();
+
+    if (isSidebarCollapsed()) {
+        ensureExpandButtonVisibility();
+    }
+
+    (window as any).pipelinesState = globalState.pipelinesState;
+}
+
+export class LayoutController {
+    public static initialize() {
+        initializeLayoutController();
     }
 
     public static ensureExpandButton() {
-        // Button now exists in HTML, just show/hide it
-        const expandButton = document.getElementById('sidebar-expand-button');
-        if (expandButton) {
-            expandButton.style.display = this.sidebarIsCollapsed ? 'flex' : 'none';
-        }
-    }
-
-    private static initializeSidebarControls() {
-        const sidebarCollapseButton = document.getElementById('sidebar-collapse-button');
-        const controlsSidebar = document.getElementById('controls-sidebar');
-        const mainContent = document.getElementById('main-content');
-        const expandButton = document.getElementById('sidebar-expand-button');
-
-        // Initialize expand button visibility based on current state
-        if (controlsSidebar && controlsSidebar.classList.contains('collapsed')) {
-            this.sidebarIsCollapsed = true;
-            if (expandButton) {
-                expandButton.style.display = 'flex';
-            }
-        }
-
-        // Attach expand button handler (button exists in HTML)
-        if (expandButton) {
-            expandButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-
-                if (controlsSidebar) {
-                    controlsSidebar.classList.remove('collapsed');
-                    this.sidebarIsCollapsed = false;
-                    expandButton.style.display = 'none';
-                }
-            });
-        }
-
-        if (sidebarCollapseButton && controlsSidebar) {
-            // Remove existing listeners to avoid duplicates
-            const newCollapseButton = sidebarCollapseButton.cloneNode(true) as HTMLElement;
-            sidebarCollapseButton.replaceWith(newCollapseButton);
-
-            newCollapseButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-
-                // Force layout recalculation before transition
-                controlsSidebar.offsetHeight;
-
-                // Add transition class and collapse
-                controlsSidebar.style.transition = 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)';
-                controlsSidebar.classList.add('collapsed');
-                this.sidebarIsCollapsed = true;
-
-                // Force repaint to ensure smooth transition
-                requestAnimationFrame(() => {
-                    // Show expand button
-                    const expandBtn = document.getElementById('sidebar-expand-button');
-                    if (expandBtn) {
-                        expandBtn.style.display = 'flex';
-                    }
-
-                    // Trigger layout recalculation for main content
-                    if (mainContent) {
-                        mainContent.style.transform = 'translateZ(0)';
-                        setTimeout(() => {
-                            mainContent.style.transform = '';
-                        }, 300);
-                    }
-                });
-            });
-        }
-    }
-
-    private static initializeThemeToggle() {
-        // Load saved theme preference or default to dark mode
-        const savedTheme = localStorage.getItem('theme') || 'dark';
-        if (savedTheme === 'light') {
-            document.body.classList.add('light-mode');
-            const themeToggleButton = document.getElementById('theme-toggle-button');
-            const themeIcon = themeToggleButton?.querySelector('.material-symbols-outlined');
-            if (themeIcon) themeIcon.textContent = 'dark_mode';
-        }
-
-        // Use event delegation on document to ensure it always works
-        document.addEventListener('click', (e) => {
-            const target = e.target as HTMLElement;
-            const themeToggleButton = target.closest('#theme-toggle-button');
-
-            if (themeToggleButton) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const isLightMode = document.body.classList.toggle('light-mode');
-
-                // Query for icon each time to avoid stale references
-                const themeIcon = themeToggleButton.querySelector('.material-symbols-outlined');
-                if (themeIcon) {
-                    themeIcon.textContent = isLightMode ? 'dark_mode' : 'light_mode';
-                }
-
-                // Save preference
-                localStorage.setItem('theme', isLightMode ? 'light' : 'dark');
-            }
-        }, true); // Use capture phase to ensure we catch it first
-    }
-
-    private static initializeFullscreenHandler() {
-        document.addEventListener('fullscreenchange', () => {
-            const isCurrentlyFullscreen = !!document.fullscreenElement;
-            document.querySelectorAll('.fullscreen-toggle-button').forEach(button => {
-                const btn = button as HTMLButtonElement;
-                const iconFullscreen = btn.querySelector('.icon-fullscreen') as HTMLElement;
-                const iconExitFullscreen = btn.querySelector('.icon-exit-fullscreen') as HTMLElement;
-                const previewContainerId = btn.id.replace('fullscreen-btn-', 'preview-container-');
-                const associatedPreviewContainer = document.getElementById(previewContainerId);
-
-                if (isCurrentlyFullscreen && document.fullscreenElement === associatedPreviewContainer) {
-                    if (iconFullscreen) iconFullscreen.style.display = 'none';
-                    if (iconExitFullscreen) iconExitFullscreen.style.display = 'inline-block';
-                    btn.title = "Exit Fullscreen Preview";
-                    btn.setAttribute('aria-label', "Exit Fullscreen Preview");
-                } else {
-                    if (iconFullscreen) iconFullscreen.style.display = 'inline-block';
-                    if (iconExitFullscreen) iconExitFullscreen.style.display = 'none';
-                    btn.title = "Toggle Fullscreen Preview";
-                    btn.setAttribute('aria-label', "Toggle Fullscreen Preview");
-                }
-            });
-        });
+        ensureExpandButtonVisibility();
     }
 }

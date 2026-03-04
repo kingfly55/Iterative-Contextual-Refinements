@@ -25,113 +25,71 @@ export interface AgenticResult {
     model: string;
 }
 
+export type AgenticPromptsObserver = (prompts: AgenticPrompts) => void;
+
 export class AgenticPromptsManager {
-    private agenticPromptsRef: { current: AgenticPrompts };
+    private currentPrompts: AgenticPrompts;
     private agenticResults: AgenticResult[] = [];
+    private observers: Set<AgenticPromptsObserver> = new Set();
 
-    constructor(agenticPromptsRef: { current: AgenticPrompts }) {
-        this.agenticPromptsRef = agenticPromptsRef;
-        // Initialize with default system prompt
-        if (!this.agenticPromptsRef.current.systemPrompt) {
-            this.agenticPromptsRef.current.systemPrompt = AGENTIC_SYSTEM_PROMPT;
-        }
-        // Initialize with default verifier prompt
-        if (!this.agenticPromptsRef.current.verifierPrompt) {
-            this.agenticPromptsRef.current.verifierPrompt = VERIFIER_SYSTEM_PROMPT;
+    constructor(initialPrompts?: Partial<AgenticPrompts>) {
+        this.currentPrompts = {
+            systemPrompt: initialPrompts?.systemPrompt ?? AGENTIC_SYSTEM_PROMPT,
+            verifierPrompt: initialPrompts?.verifierPrompt ?? VERIFIER_SYSTEM_PROMPT,
+            model: initialPrompts?.model,
+            verifierModel: initialPrompts?.verifierModel,
+        };
+    }
+
+    public subscribe(observer: AgenticPromptsObserver): () => void {
+        this.observers.add(observer);
+        observer(this.currentPrompts); // immediately invoke with current state
+        return () => this.observers.delete(observer);
+    }
+
+    private notifyObservers(): void {
+        for (const observer of this.observers) {
+            observer(this.currentPrompts);
         }
     }
 
-    public initializeTextarea(): void {
-        // Initialize main agent textarea
-        const textarea = document.getElementById('sys-agentic') as HTMLTextAreaElement;
-        if (textarea) {
-            textarea.value = this.agenticPromptsRef.current.systemPrompt;
-            textarea.addEventListener('input', (e) => {
-                this.agenticPromptsRef.current.systemPrompt = (e.target as HTMLTextAreaElement).value;
-            });
-        }
-        
-        // Initialize verifier agent textarea
-        const verifierTextarea = document.getElementById('sys-agentic-verifier') as HTMLTextAreaElement;
-        if (verifierTextarea) {
-            verifierTextarea.value = this.agenticPromptsRef.current.verifierPrompt;
-            verifierTextarea.addEventListener('input', (e) => {
-                this.agenticPromptsRef.current.verifierPrompt = (e.target as HTMLTextAreaElement).value;
-            });
-        }
+    public updateSystemPrompt(prompt: string): void {
+        this.currentPrompts = { ...this.currentPrompts, systemPrompt: prompt };
+        this.notifyObservers();
     }
 
-    public initializeModelSelector(): void {
-        // Initialize main agent model selector
-        const selector = document.querySelector('[data-agent="agentic"]') as HTMLSelectElement;
-        if (selector) {
-            const currentValue = this.agenticPromptsRef.current.model;
-            selector.value = currentValue || '';
-
-            selector.addEventListener('change', (e) => {
-                const selectedValue = (e.target as HTMLSelectElement).value;
-                if (selectedValue === '') {
-                    delete this.agenticPromptsRef.current.model;
-                } else {
-                    this.agenticPromptsRef.current.model = selectedValue;
-                }
-            });
-        }
-        
-        // Initialize verifier model selector
-        const verifierSelector = document.querySelector('[data-agent="agentic-verifier"]') as HTMLSelectElement;
-        if (verifierSelector) {
-            const currentValue = this.agenticPromptsRef.current.verifierModel;
-            verifierSelector.value = currentValue || '';
-
-            verifierSelector.addEventListener('change', (e) => {
-                const selectedValue = (e.target as HTMLSelectElement).value;
-                if (selectedValue === '') {
-                    delete this.agenticPromptsRef.current.verifierModel;
-                } else {
-                    this.agenticPromptsRef.current.verifierModel = selectedValue;
-                }
-            });
-        }
+    public updateVerifierPrompt(prompt: string): void {
+        this.currentPrompts = { ...this.currentPrompts, verifierPrompt: prompt };
+        this.notifyObservers();
     }
 
-    public updateTextareaFromState(): void {
-        const textarea = document.getElementById('sys-agentic') as HTMLTextAreaElement;
-        if (textarea) {
-            textarea.value = this.agenticPromptsRef.current.systemPrompt;
+    public updateModel(model: string | undefined): void {
+        this.currentPrompts = { ...this.currentPrompts, model };
+        if (!model) {
+            delete this.currentPrompts.model;
         }
-        
-        const verifierTextarea = document.getElementById('sys-agentic-verifier') as HTMLTextAreaElement;
-        if (verifierTextarea) {
-            verifierTextarea.value = this.agenticPromptsRef.current.verifierPrompt;
-        }
+        this.notifyObservers();
     }
 
-    public updateModelSelectorFromState(): void {
-        const selector = document.querySelector('[data-agent="agentic"]') as HTMLSelectElement;
-        if (selector) {
-            const currentValue = this.agenticPromptsRef.current.model;
-            selector.value = currentValue || '';
+    public updateVerifierModel(model: string | undefined): void {
+        this.currentPrompts = { ...this.currentPrompts, verifierModel: model };
+        if (!model) {
+            delete this.currentPrompts.verifierModel;
         }
-        
-        const verifierSelector = document.querySelector('[data-agent="agentic-verifier"]') as HTMLSelectElement;
-        if (verifierSelector) {
-            const currentValue = this.agenticPromptsRef.current.verifierModel;
-            verifierSelector.value = currentValue || '';
-        }
+        this.notifyObservers();
     }
 
     public getAgenticPrompts(): AgenticPrompts {
-        return this.agenticPromptsRef.current;
+        return this.currentPrompts;
     }
 
     public setAgenticPrompts(prompts: AgenticPrompts): void {
-        this.agenticPromptsRef.current = prompts;
+        this.currentPrompts = { ...prompts };
+        this.notifyObservers();
     }
 
     public addResult(result: AgenticResult): void {
         this.agenticResults.push(result);
-        // No artificial limits on results
     }
 
     public getResults(): AgenticResult[] {
@@ -144,28 +102,26 @@ export class AgenticPromptsManager {
 
     public exportConfig(): AgenticConfig {
         return {
-            prompts: this.agenticPromptsRef.current,
-            results: this.agenticResults
+            prompts: { ...this.currentPrompts },
+            results: [...this.agenticResults]
         };
     }
 
     public importConfig(config: AgenticConfig): void {
         if (config.prompts) {
-            this.agenticPromptsRef.current = config.prompts;
-            this.updateTextareaFromState();
-            this.updateModelSelectorFromState();
+            this.currentPrompts = { ...config.prompts };
+            this.notifyObservers();
         }
         if (config.results) {
-            this.agenticResults = config.results;
+            this.agenticResults = [...config.results];
         }
     }
 
     public resetToDefaults(): void {
-        this.agenticPromptsRef.current = {
+        this.currentPrompts = {
             systemPrompt: AGENTIC_SYSTEM_PROMPT,
             verifierPrompt: VERIFIER_SYSTEM_PROMPT
         };
-        this.updateTextareaFromState();
-        this.updateModelSelectorFromState();
+        this.notifyObservers();
     }
 }

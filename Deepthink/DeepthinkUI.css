@@ -70,16 +70,10 @@
    4. TAB BUTTONS & STATUS STYLES
    -------------------------------------------------------------------------- */
 
-/* Red Team Pink Glow */
+/* Red Team Pink Glow (Subtle update to match general tabs) */
 .tab-button.red-team-pink-glow {
-    background: rgba(var(--accent-pink-rgb), 0.08) !important;
+    /* Retain original theme context but toned down for consistency */
     color: var(--accent-pink) !important;
-    border-color: rgba(var(--accent-pink-rgb), 0.3) !important;
-    box-shadow: 0 0 6px rgba(var(--accent-pink-rgb), 0.2),
-        0 0 2px rgba(var(--accent-pink-rgb), 0.3) inset !important;
-    animation: pulse-glow-pink 2s infinite;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
 }
 
 /* Main View Evolution Button */
@@ -125,39 +119,29 @@
    5. DEEPTHINK PREMIUM TABS (Refactored)
    -------------------------------------------------------------------------- */
 
-/* Base Deepthink Tab Style */
+/* Base Deepthink Tab Style - Normalized */
 .tab-button.deepthink-mode-tab {
     position: relative;
-    padding: 0.9rem 1.6rem;
-    border-radius: 28px;
-    border: 1.5px solid rgba(var(--border-color-rgb), 0.08);
+    padding: var(--space-3) var(--spacing-section-sm);
+    border-radius: var(--border-radius-md);
+    border: 1px solid transparent;
 
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.8px;
-    text-transform: uppercase;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    letter-spacing: var(--letter-spacing-wide);
+    text-transform: none;
 
-    background: rgba(var(--card-bg-base-rgb), 0.02);
-    backdrop-filter: blur(32px) saturate(180%);
-    -webkit-backdrop-filter: blur(32px) saturate(180%);
+    background: transparent;
 
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.02),
-        inset 0 1px 0 rgba(255, 255, 255, 0.03),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.08);
-
-    transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all var(--transition-speed) var(--easing-curve);
 }
 
 /* Deepthink Tab Hover */
-.tab-button.deepthink-mode-tab:hover {
-    background: rgba(var(--card-bg-base-rgb), 0.08);
-    border-color: rgba(var(--border-color-rgb), 0.18);
-    backdrop-filter: blur(48px) saturate(200%);
-    -webkit-backdrop-filter: blur(48px) saturate(200%);
-    box-shadow: 0 8px 48px rgba(0, 0, 0, 0.08),
-        0 2px 8px rgba(0, 0, 0, 0.04),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.15);
+.tab-button.deepthink-mode-tab:hover:not(.active) {
+    background: rgba(84, 46, 150, 0.28);
+    border-color: rgba(var(--border-color-rgb), 0.35);
+    color: var(--text-color);
+    box-shadow: 0 0 18px rgba(124, 74, 240, 0.25);
 }
 
 /* Deepthink Tab Icons */
@@ -175,65 +159,93 @@
     filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
 }
 
-/* Status-Specific Borders (Non-Active) */
-.tab-button.deepthink-mode-tab.status-deepthink-processing:not(.active) {
-    border-color: rgba(var(--accent-yellow-rgb), 0.2);
-    border-width: 1.5px;
-}
-
-.tab-button.deepthink-mode-tab.status-deepthink-completed:not(.active) {
-    border-color: rgba(var(--accent-green-rgb), 0.2);
-    border-width: 1.5px;
-}
-
-.tab-button.deepthink-mode-tab.status-deepthink-error:not(.active) {
-    border-color: rgba(var(--accent-pink-rgb), 0.2);
-    border-width: 1.5px;
-}
+/* Core tab logic removal of status classes, keeping base transitions */
 
 /* Active State Styles (Shared Logic) */
 .tab-button.deepthink-mode-tab.active {
-    font-weight: 700;
-    letter-spacing: 0.9px;
-    backdrop-filter: blur(40px) saturate(190%);
-    -webkit-backdrop-filter: blur(40px) saturate(190%);
+    font-weight: var(--font-weight-semibold);
+    transform: translateY(-1px);
 }
 
-/* Active State Colors */
-/* Processing */
-.tab-button.deepthink-mode-tab.active.status-deepthink-processing {
-    background: rgba(var(--accent-yellow-rgb), 0.1);
+/* Specific Tab Colors (Always applied, not just active) */
+
+/* Strategic Solver -> Purple */
+#deepthink-tab-strategic-solver {
+    background: rgba(var(--accent-purple-rgb), 0.08);
+    color: var(--accent-purple);
+    border-color: rgba(var(--accent-purple-rgb), 0.1);
+}
+
+#deepthink-tab-strategic-solver.active {
+    border-color: rgba(var(--accent-purple-rgb), 0.5);
+    box-shadow: 0 0 6px rgba(var(--accent-purple-rgb), 0.2),
+        0 0 2px rgba(var(--accent-purple-rgb), 0.3) inset;
+}
+
+/* Hypothesis Explorer -> Blue */
+#deepthink-tab-hypothesis-explorer {
+    background: rgba(var(--accent-blue-rgb), 0.08);
+    color: var(--accent-blue);
+    border-color: rgba(var(--accent-blue-rgb), 0.1);
+}
+
+#deepthink-tab-hypothesis-explorer.active {
+    border-color: rgba(var(--accent-blue-rgb), 0.5);
+    box-shadow: 0 0 6px rgba(var(--accent-blue-rgb), 0.2),
+        0 0 2px rgba(var(--accent-blue-rgb), 0.3) inset;
+}
+
+/* Solution Pool -> Yellow */
+#deepthink-tab-solution-pool {
+    background: rgba(var(--accent-yellow-rgb), 0.08);
     color: var(--accent-yellow);
-    border-color: rgba(var(--accent-yellow-rgb), 0.35);
-    box-shadow: 0 0 0 4px rgba(var(--accent-yellow-rgb), 0.06),
-        0 8px 32px -8px rgba(var(--accent-yellow-rgb), 0.2),
-        0 2px 8px rgba(var(--accent-yellow-rgb), 0.12),
-        inset 0 1px 0 rgba(var(--accent-yellow-rgb), 0.15),
-        inset 0 -1px 2px rgba(0, 0, 0, 0.12);
+    border-color: rgba(var(--accent-yellow-rgb), 0.1);
 }
 
-/* Completed */
-.tab-button.deepthink-mode-tab.active.status-deepthink-completed {
-    background: rgba(var(--accent-green-rgb), 0.1);
-    color: var(--accent-green);
-    border-color: rgba(var(--accent-green-rgb), 0.35);
-    box-shadow: 0 0 0 4px rgba(var(--accent-green-rgb), 0.06),
-        0 8px 32px -8px rgba(var(--accent-green-rgb), 0.2),
-        0 2px 8px rgba(var(--accent-green-rgb), 0.12),
-        inset 0 1px 0 rgba(var(--accent-green-rgb), 0.15),
-        inset 0 -1px 2px rgba(0, 0, 0, 0.12);
+#deepthink-tab-solution-pool.active {
+    border-color: rgba(var(--accent-yellow-rgb), 0.5);
+    box-shadow: 0 0 6px rgba(var(--accent-yellow-rgb), 0.2),
+        0 0 2px rgba(var(--accent-yellow-rgb), 0.3) inset;
 }
 
-/* Error */
-.tab-button.deepthink-mode-tab.active.status-deepthink-error {
-    background: rgba(var(--accent-pink-rgb), 0.1);
+/* Dissected Observations -> Orange */
+#deepthink-tab-dissected-observations {
+    background: rgba(245, 158, 11, 0.08);
+    /* fallback hex converted to rgba */
+    color: var(--accent-orange, #F59E0B);
+    border-color: rgba(245, 158, 11, 0.1);
+}
+
+#deepthink-tab-dissected-observations.active {
+    border-color: rgba(245, 158, 11, 0.5);
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.2),
+        0 0 2px rgba(245, 158, 11, 0.3) inset;
+}
+
+/* Red Team -> Red (Pink) */
+#deepthink-tab-red-team {
+    background: rgba(var(--accent-pink-rgb), 0.08);
     color: var(--accent-pink);
-    border-color: rgba(var(--accent-pink-rgb), 0.35);
-    box-shadow: 0 0 0 4px rgba(var(--accent-pink-rgb), 0.06),
-        0 8px 32px -8px rgba(var(--accent-pink-rgb), 0.2),
-        0 2px 8px rgba(var(--accent-pink-rgb), 0.12),
-        inset 0 1px 0 rgba(var(--accent-pink-rgb), 0.15),
-        inset 0 -1px 2px rgba(0, 0, 0, 0.12);
+    border-color: rgba(var(--accent-pink-rgb), 0.1);
+}
+
+#deepthink-tab-red-team.active {
+    border-color: rgba(var(--accent-pink-rgb), 0.5);
+    box-shadow: 0 0 6px rgba(var(--accent-pink-rgb), 0.2),
+        0 0 2px rgba(var(--accent-pink-rgb), 0.3) inset;
+}
+
+/* Final Result -> Green */
+#deepthink-tab-final-result {
+    background: rgba(var(--accent-green-rgb), 0.08);
+    color: var(--accent-green);
+    border-color: rgba(var(--accent-green-rgb), 0.1);
+}
+
+#deepthink-tab-final-result.active {
+    border-color: rgba(var(--accent-green-rgb), 0.5);
+    box-shadow: 0 0 6px rgba(var(--accent-green-rgb), 0.2),
+        0 0 2px rgba(var(--accent-green-rgb), 0.3) inset;
 }
 
 /* --------------------------------------------------------------------------
@@ -261,50 +273,14 @@
 }
 
 /* Expandable Content Logic */
-.strategy-content,
-.sub-strategy-content {
-    position: relative;
-    overflow: hidden;
-    transition: max-height 0.3s ease-out;
-}
-
 .strategy-content {
-    max-height: 300px;
+    position: relative;
     margin-bottom: 1rem;
 }
 
 .sub-strategy-content {
-    max-height: 200px;
-}
-
-.strategy-content.expanded,
-.sub-strategy-content.expanded {
-    max-height: none;
-}
-
-.strategy-content.collapsible::after,
-.sub-strategy-content.collapsible::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    pointer-events: none;
-}
-
-.strategy-content.collapsible::after {
-    height: 40px;
-    background: linear-gradient(transparent, var(--card-bg));
-}
-
-.sub-strategy-content.collapsible::after {
-    height: 30px;
-    background: linear-gradient(transparent, var(--card-bg-color));
-}
-
-.strategy-content.expanded::after,
-.sub-strategy-content.expanded::after {
-    display: none;
+    position: relative;
+    margin-bottom: 0.5rem;
 }
 
 /* Buttons & Actions */
@@ -766,6 +742,12 @@
         0 4px 8px rgba(0, 0, 0, 0.06),
         inset 0 2px 0 rgba(255, 255, 255, 0.05),
         inset 0 -2px 0 rgba(0, 0, 0, 0.12);
+}
+
+.expandable-text-actions {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
 }
 
 /* Critique Content Typography */

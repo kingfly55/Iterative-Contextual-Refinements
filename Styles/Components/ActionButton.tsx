@@ -1,49 +1,14 @@
-// Utility functions for copy and download operations
-export const copyToClipboard = async (content: string, button?: HTMLElement): Promise<boolean> => {
-    try {
-        await navigator.clipboard.writeText(content);
-        
-        // Show silent feedback on the button itself
-        if (button) {
-            const originalIcon = button.querySelector('.material-symbols-outlined');
-            const buttonText = button.querySelector('.button-text');
-            if (originalIcon && buttonText) {
-                const originalIconText = originalIcon.textContent;
-                const originalButtonText = buttonText.textContent;
-                
-                originalIcon.textContent = 'check';
-                buttonText.textContent = 'Copied!';
-                button.classList.add('copied');
-                
-                setTimeout(() => {
-                    originalIcon.textContent = originalIconText;
-                    buttonText.textContent = originalButtonText;
-                    button.classList.remove('copied');
-                }, 1500);
-            }
-        }
-        
-        return true;
-    } catch (err) {
-        console.error('Failed to copy to clipboard:', err);
-        return false;
-    }
-};
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
-export const downloadFile = (content: string, filename: string, mimeType = 'text/plain'): void => {
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-};
+import React, { useState } from 'react';
+import { copyToClipboard, downloadFile, openLivePreviewFullscreen } from './ActionButtonLogic';
 
-// Enhanced action button creation with more flexibility
-export interface ActionButtonConfig {
+export { copyToClipboard, downloadFile, openLivePreviewFullscreen };
+
+export interface ActionButtonProps {
     id?: string;
     type?: 'copy' | 'download' | 'preview' | 'custom';
     icon: string;
@@ -52,45 +17,113 @@ export interface ActionButtonConfig {
     disabled?: boolean;
     className?: string;
     onClick?: () => void;
-    content?: string; // For copy/download buttons
-    filename?: string; // For download buttons
+    content?: string | (() => string);
+    filename?: string;
 }
 
-export const createActionButton = (config: ActionButtonConfig): string => {
-    const {
-        id = `action-btn-${Math.random().toString(36).substr(2, 9)}`,
-        type = 'custom',
-        icon,
-        text,
-        title = text,
-        disabled = false,
-        className = '',
-        content = '',
-        filename = 'file.txt'
-    } = config;
+export const ActionButton: React.FC<ActionButtonProps> = ({
+    id,
+    type = 'custom',
+    icon,
+    text,
+    title,
+    disabled = false,
+    className = '',
+    onClick,
+    content,
+    filename = 'file.txt'
+}) => {
+    const [status, setStatus] = useState<'idle' | 'success'>('idle');
 
-    const baseClass = type === 'copy' ? 'copy-solution-btn' : 
-                     type === 'download' ? 'download-solution-btn' : 
-                     'action-btn';
-    
-    const dataAttrs = type === 'copy' || type === 'download' ? 
-        `data-content="${content.replace(/"/g, '&quot;')}"` + 
-        (type === 'download' ? ` data-filename="${filename}"` : '') : '';
+    const handleClick = async () => {
+        if (disabled) return;
 
-    return `
-        <button 
-            id="${id}" 
-            class="button ${baseClass} ${className}" 
-            type="button" 
-            title="${title}"
-            ${disabled ? 'disabled' : ''}
-            ${dataAttrs}
+        const finalContent = typeof content === 'function' ? content() : content;
+
+        if (type === 'copy' && finalContent) {
+            const success = await copyToClipboard(finalContent);
+            if (success) {
+                setStatus('success');
+                setTimeout(() => setStatus('idle'), 1500);
+            }
+        } else if (type === 'download' && finalContent) {
+            downloadFile(finalContent, filename, filename.endsWith('html') ? 'text/html' : 'text/plain');
+        } else if (type === 'preview' && finalContent) {
+            openLivePreviewFullscreen(finalContent);
+        }
+
+        if (onClick) {
+            onClick();
+        }
+    };
+
+    const baseClass = type === 'copy' ? 'copy-solution-btn' :
+        type === 'download' ? 'download-solution-btn' :
+            'action-btn';
+
+    return (
+        <button
+            id={id}
+            className={`button ${baseClass} ${className} ${status === 'success' ? 'copied' : ''}`}
+            type="button"
+            title={title || text}
+            disabled={disabled}
+            onClick={handleClick}
         >
-            <span class="material-symbols-outlined">${icon}</span>
-            <span class="button-text">${text}</span>
+            <span className="material-symbols-outlined">
+                {status === 'success' ? 'check' : icon}
+            </span>
+            <span className="button-text">
+                {status === 'success' ? 'Copied!' : text}
+            </span>
         </button>
-    `;
+    );
 };
+
+export interface ActionGroupProps {
+    type: 'source' | 'target';
+    view: 'instant' | 'preview';
+    contentSource?: () => string;
+}
+
+export const ActionButtonGroup: React.FC<ActionGroupProps> = ({ type, view, contentSource }) => {
+    const copyId = `copy-${view}-${type}-button`;
+    const downloadId = `download-${view}-${type}-button`;
+    const fullscreenId = `fullscreen-${view}-${type}-button`;
+
+    return (
+        <div className="code-actions">
+            <ActionButton
+                id={copyId}
+                type="copy"
+                icon="content_copy"
+                text="Copy"
+                content={contentSource}
+            />
+            <ActionButton
+                id={downloadId}
+                type="download"
+                icon="download"
+                text="Download"
+                content={contentSource}
+                filename={`${type}-${Date.now()}.html`}
+            />
+            {view === 'preview' && (
+                <ActionButton
+                    id={fullscreenId}
+                    type="preview"
+                    icon="preview"
+                    text="Preview"
+                    content={contentSource}
+                />
+            )}
+        </div>
+    );
+};
+
+// ==========================================================
+// LEGACY BRIDGES FOR MIGRATION (DiffModalController compat)
+// ==========================================================
 
 export const createActionButtons = (type: 'source' | 'target', view: 'instant' | 'preview') => {
     const copyId = `copy-${view}-${type}-button`;
@@ -122,83 +155,39 @@ export const createActionButtons = (type: 'source' | 'target', view: 'instant' |
     return buttons;
 };
 
-export const bindActionButtons = (
-    type: 'source' | 'target',
-    view: 'instant' | 'preview',
-    copyFn: (type: 'source' | 'target') => void,
-    downloadFn: (type: 'source' | 'target') => void,
-    fullscreenFn?: (type: 'source' | 'target') => void
-) => {
-    const copyButton = document.getElementById(`copy-${view}-${type}-button`);
-    if (copyButton && !copyButton.hasAttribute('data-bound')) {
-        copyButton.setAttribute('data-bound', 'true');
-        copyButton.addEventListener('click', () => copyFn(type));
-    }
-
-    const downloadButton = document.getElementById(`download-${view}-${type}-button`);
-    if (downloadButton && !downloadButton.hasAttribute('data-bound')) {
-        downloadButton.setAttribute('data-bound', 'true');
-        downloadButton.addEventListener('click', () => downloadFn(type));
-    }
-
-    if (view === 'preview' && fullscreenFn) {
-        const fullscreenButton = document.getElementById(`fullscreen-${view}-${type}-button`);
-        if (fullscreenButton && !fullscreenButton.hasAttribute('data-bound')) {
-            fullscreenButton.setAttribute('data-bound', 'true');
-            fullscreenButton.addEventListener('click', () => fullscreenFn(type));
-        }
-    }
-};
-
-// Universal event binding for copy/download buttons
-export const bindCopyDownloadButtons = (container: HTMLElement | Document = document): void => {
-    // Bind copy buttons
-    container.querySelectorAll('.copy-solution-btn').forEach(btn => {
-        if (btn.hasAttribute('data-bound')) return; // Avoid double binding
-        btn.setAttribute('data-bound', 'true');
-        
-        btn.addEventListener('click', async () => {
-            const content = btn.getAttribute('data-content') || '';
-            const success = await copyToClipboard(content, btn as HTMLElement);
-            if (!success) {
-                // Fallback for older browsers
-                const textArea = document.createElement('textarea');
-                textArea.value = content;
-                document.body.appendChild(textArea);
-                textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-            }
-        });
-    });
-
-    // Bind download buttons
-    container.querySelectorAll('.download-solution-btn').forEach(btn => {
-        if (btn.hasAttribute('data-bound')) return; // Avoid double binding
-        btn.setAttribute('data-bound', 'true');
-        
-        btn.addEventListener('click', () => {
-            const content = btn.getAttribute('data-content') || '';
-            const filename = btn.getAttribute('data-filename') || 'solution.md';
-            downloadFile(content, filename);
-        });
-    });
-};
-
-// Specific binding for DiffModal buttons with dynamic content
-export const bindDiffModalButtons = (container: HTMLElement, getSourceContent: () => string, getTargetContent: () => string): void => {
+export const bindDiffModalButtons = (
+    container: HTMLElement,
+    getSourceContent: () => string,
+    getTargetContent: () => string
+): void => {
     // Bind copy buttons with dynamic content
     container.querySelectorAll('.copy-solution-btn').forEach(btn => {
         if (btn.hasAttribute('data-bound')) return;
         btn.setAttribute('data-bound', 'true');
-        
+
         btn.addEventListener('click', async () => {
             const buttonId = btn.id;
             const isSource = buttonId.includes('source');
             const content = isSource ? getSourceContent() : getTargetContent();
-            
+
             if (content) {
-                await copyToClipboard(content, btn as HTMLElement);
+                const success = await copyToClipboard(content);
+                if (success && btn) {
+                    const originalIcon = btn.querySelector('.material-symbols-outlined');
+                    const buttonText = btn.querySelector('.button-text');
+                    if (originalIcon && buttonText) {
+                        const originalIconText = originalIcon.textContent;
+                        const originalButtonText = buttonText.textContent;
+                        originalIcon.textContent = 'check';
+                        buttonText.textContent = 'Copied!';
+                        btn.classList.add('copied');
+                        setTimeout(() => {
+                            originalIcon.textContent = originalIconText;
+                            buttonText.textContent = originalButtonText;
+                            btn.classList.remove('copied');
+                        }, 1500);
+                    }
+                }
             }
         });
     });
@@ -207,13 +196,13 @@ export const bindDiffModalButtons = (container: HTMLElement, getSourceContent: (
     container.querySelectorAll('.download-solution-btn').forEach(btn => {
         if (btn.hasAttribute('data-bound')) return;
         btn.setAttribute('data-bound', 'true');
-        
+
         btn.addEventListener('click', () => {
             const buttonId = btn.id;
             const isSource = buttonId.includes('source');
             const content = isSource ? getSourceContent() : getTargetContent();
             const title = isSource ? 'source' : 'target';
-            
+
             if (content) {
                 const filename = `${title}-${Date.now()}.html`;
                 downloadFile(content, filename, 'text/html');
@@ -225,12 +214,12 @@ export const bindDiffModalButtons = (container: HTMLElement, getSourceContent: (
     container.querySelectorAll('button[id*="fullscreen-preview"]').forEach(btn => {
         if (btn.hasAttribute('data-bound')) return;
         btn.setAttribute('data-bound', 'true');
-        
+
         btn.addEventListener('click', () => {
             const buttonId = btn.id;
             const isSource = buttonId.includes('source');
             const content = isSource ? getSourceContent() : getTargetContent();
-            
+
             if (content) {
                 openLivePreviewFullscreen(content);
             }
@@ -238,57 +227,45 @@ export const bindDiffModalButtons = (container: HTMLElement, getSourceContent: (
     });
 };
 
-// Function to open fullscreen preview (shared helper)
-export const openLivePreviewFullscreen = (content: string) => {
-    if (content) {
-        const newWindow = window.open('', '_blank');
-        if (newWindow) {
-            // Add escape key listener to close the window
-            const fullscreenContent = `
-                ${content}
-                <script>
-                    document.addEventListener('keydown', function(e) {
-                        if (e.key === 'Escape') {
-                            window.close();
-                        }
-                    });
-                    
-                    // Add visual indicator that escape closes the window
-                    const indicator = document.createElement('div');
-                    indicator.style.cssText = \`
-                        position: fixed;
-                        top: 10px;
-                        right: 10px;
-                        background: rgba(0,0,0,0.8);
-                        color: white;
-                        padding: 8px 12px;
-                        border-radius: 4px;
-                        font-family: system-ui, sans-serif;
-                        font-size: 12px;
-                        z-index: 10000;
-                        opacity: 0.7;
-                        pointer-events: none;
-                    \`;
-                    indicator.textContent = 'Press ESC to close';
-                    document.body.appendChild(indicator);
-                    
-                    // Hide indicator after 3 seconds
+// Global polyfill for original document bindings (for backward compatibility if any vanilla JS expects it)
+export const bindCopyDownloadButtons = (container: HTMLElement | Document = document): void => {
+    // Only bind to ones not inside React components (React components don't have this attribute)
+    container.querySelectorAll('.copy-solution-btn:not([data-react-bound])').forEach(btn => {
+        if (btn.hasAttribute('data-bound')) return;
+        btn.setAttribute('data-bound', 'true');
+        btn.addEventListener('click', async () => {
+            const content = btn.getAttribute('data-content') || '';
+            const success = await copyToClipboard(content);
+            if (success) {
+                const originalIcon = btn.querySelector('.material-symbols-outlined');
+                const buttonText = btn.querySelector('.button-text');
+                if (originalIcon && buttonText) {
+                    const originalIconText = originalIcon.textContent;
+                    const originalButtonText = buttonText.textContent;
+                    originalIcon.textContent = 'check';
+                    buttonText.textContent = 'Copied!';
+                    btn.classList.add('copied');
                     setTimeout(() => {
-                        if (indicator.parentNode) {
-                            indicator.style.opacity = '0';
-                            setTimeout(() => indicator.remove(), 300);
-                        }
-                    }, 3000);
-                <\/script>
-            `;
-            
-            newWindow.document.write(fullscreenContent);
-            newWindow.document.close();
-        }
-    }
+                        originalIcon.textContent = originalIconText;
+                        buttonText.textContent = originalButtonText;
+                        btn.classList.remove('copied');
+                    }, 1500);
+                }
+            }
+        });
+    });
+
+    container.querySelectorAll('.download-solution-btn:not([data-react-bound])').forEach(btn => {
+        if (btn.hasAttribute('data-bound')) return;
+        btn.setAttribute('data-bound', 'true');
+        btn.addEventListener('click', () => {
+            const content = btn.getAttribute('data-content') || '';
+            const filename = btn.getAttribute('data-filename') || 'solution.md';
+            downloadFile(content, filename);
+        });
+    });
 };
 
-// Initialize global event listeners when DOM is ready
 if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => bindCopyDownloadButtons());

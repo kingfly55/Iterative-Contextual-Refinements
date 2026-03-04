@@ -123,10 +123,8 @@ export function getDeepthinkPrompts() {
 }
 
 export function updateCustomPromptTextareasFromState() {
-    const promptsManager = getRoutingManager().getPromptsManager();
-    if (promptsManager) {
-        promptsManager.updateTextareasFromState();
-    }
+    // No-op: React-controlled components auto-sync from their managers.
+    // Kept for backward compatibility with ConfigManager.ts imports.
 }
 
 export function getProviderForCurrentModel(): string {

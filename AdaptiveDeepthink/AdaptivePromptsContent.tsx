@@ -1,10 +1,30 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { globalAdaptiveDeepthinkPromptsManager } from './AdaptiveDeepthinkPromptsManager';
+import type { CustomizablePromptsAdaptiveDeepthink } from './AdaptiveDeepthinkPrompt';
+import { PromptStylingEditor } from '../Styles/Components/PromptStyling';
 
 /**
  * Adaptive Deepthink Mode Prompts Content
  * Prompts for Adaptive Deepthink mode
  */
 export const AdaptivePromptsContent: React.FC = () => {
+    const [prompts, setPrompts] = useState<CustomizablePromptsAdaptiveDeepthink>(
+        globalAdaptiveDeepthinkPromptsManager.getPrompts()
+    );
+
+    useEffect(() => {
+        const unsubscribe = globalAdaptiveDeepthinkPromptsManager.subscribe(setPrompts);
+        return () => unsubscribe();
+    }, []);
+
+    const handleTextChange = (key: keyof CustomizablePromptsAdaptiveDeepthink) => (val: string) => {
+        globalAdaptiveDeepthinkPromptsManager.updatePrompt(key, val);
+    };
+
+    const handleModelChange = (key: keyof CustomizablePromptsAdaptiveDeepthink) => (e: React.ChangeEvent<HTMLSelectElement>) => {
+        globalAdaptiveDeepthinkPromptsManager.updatePrompt(key, e.target.value);
+    };
+
     return (
         <div id="adaptiveDeepthink-prompts-container" className="prompts-mode-container">
             {/* Main Orchestrator */}
@@ -14,17 +34,22 @@ export const AdaptivePromptsContent: React.FC = () => {
                     <div className="prompt-card-header">
                         <span className="prompt-card-title">System Instruction</span>
                         <div className="prompt-model-selector">
-                            <select className="prompt-model-select" data-agent="adaptive-main">
+                            <select
+                                className="prompt-model-select"
+                                value={prompts.model_main || ''}
+                                onChange={handleModelChange('model_main')}
+                            >
                                 <option value="">Use Global Model</option>
                             </select>
                         </div>
                     </div>
                     <div className="prompt-card-body">
-                        <textarea
-                            id="sys-adaptive-main"
+                        <PromptStylingEditor
                             className="prompt-textarea"
                             rows={12}
                             placeholder="Main Adaptive Deepthink orchestrator system prompt..."
+                            value={prompts.sys_adaptiveDeepthink_main || ''}
+                            onChange={handleTextChange('sys_adaptiveDeepthink_main')}
                         />
                     </div>
                 </div>
@@ -37,17 +62,22 @@ export const AdaptivePromptsContent: React.FC = () => {
                     <div className="prompt-card-header">
                         <span className="prompt-card-title">System Instruction</span>
                         <div className="prompt-model-selector">
-                            <select className="prompt-model-select" data-agent="adaptive-strategy-gen">
+                            <select
+                                className="prompt-model-select"
+                                value={prompts.model_strategyGeneration || ''}
+                                onChange={handleModelChange('model_strategyGeneration')}
+                            >
                                 <option value="">Use Global Model</option>
                             </select>
                         </div>
                     </div>
                     <div className="prompt-card-body">
-                        <textarea
-                            id="sys-adaptive-strategy-gen"
+                        <PromptStylingEditor
                             className="prompt-textarea"
                             rows={10}
                             placeholder="Strategy generation agent system prompt..."
+                            value={prompts.sys_adaptiveDeepthink_strategyGeneration || ''}
+                            onChange={handleTextChange('sys_adaptiveDeepthink_strategyGeneration')}
                         />
                     </div>
                 </div>
@@ -60,17 +90,22 @@ export const AdaptivePromptsContent: React.FC = () => {
                     <div className="prompt-card-header">
                         <span className="prompt-card-title">System Instruction</span>
                         <div className="prompt-model-selector">
-                            <select className="prompt-model-select" data-agent="adaptive-hypothesis-gen">
+                            <select
+                                className="prompt-model-select"
+                                value={prompts.model_hypothesisGeneration || ''}
+                                onChange={handleModelChange('model_hypothesisGeneration')}
+                            >
                                 <option value="">Use Global Model</option>
                             </select>
                         </div>
                     </div>
                     <div className="prompt-card-body">
-                        <textarea
-                            id="sys-adaptive-hypothesis-gen"
+                        <PromptStylingEditor
                             className="prompt-textarea"
                             rows={10}
                             placeholder="Hypothesis generation agent system prompt..."
+                            value={prompts.sys_adaptiveDeepthink_hypothesisGeneration || ''}
+                            onChange={handleTextChange('sys_adaptiveDeepthink_hypothesisGeneration')}
                         />
                     </div>
                 </div>
@@ -83,17 +118,22 @@ export const AdaptivePromptsContent: React.FC = () => {
                     <div className="prompt-card-header">
                         <span className="prompt-card-title">System Instruction</span>
                         <div className="prompt-model-selector">
-                            <select className="prompt-model-select" data-agent="adaptive-hypothesis-test">
+                            <select
+                                className="prompt-model-select"
+                                value={prompts.model_hypothesisTesting || ''}
+                                onChange={handleModelChange('model_hypothesisTesting')}
+                            >
                                 <option value="">Use Global Model</option>
                             </select>
                         </div>
                     </div>
                     <div className="prompt-card-body">
-                        <textarea
-                            id="sys-adaptive-hypothesis-test"
+                        <PromptStylingEditor
                             className="prompt-textarea"
                             rows={10}
                             placeholder="Hypothesis testing agent system prompt..."
+                            value={prompts.sys_adaptiveDeepthink_hypothesisTesting || ''}
+                            onChange={handleTextChange('sys_adaptiveDeepthink_hypothesisTesting')}
                         />
                     </div>
                 </div>
@@ -106,17 +146,22 @@ export const AdaptivePromptsContent: React.FC = () => {
                     <div className="prompt-card-header">
                         <span className="prompt-card-title">System Instruction</span>
                         <div className="prompt-model-selector">
-                            <select className="prompt-model-select" data-agent="adaptive-execution">
+                            <select
+                                className="prompt-model-select"
+                                value={prompts.model_execution || ''}
+                                onChange={handleModelChange('model_execution')}
+                            >
                                 <option value="">Use Global Model</option>
                             </select>
                         </div>
                     </div>
                     <div className="prompt-card-body">
-                        <textarea
-                            id="sys-adaptive-execution"
+                        <PromptStylingEditor
                             className="prompt-textarea"
                             rows={10}
                             placeholder="Execution agent system prompt..."
+                            value={prompts.sys_adaptiveDeepthink_execution || ''}
+                            onChange={handleTextChange('sys_adaptiveDeepthink_execution')}
                         />
                     </div>
                 </div>
@@ -129,17 +174,22 @@ export const AdaptivePromptsContent: React.FC = () => {
                     <div className="prompt-card-header">
                         <span className="prompt-card-title">System Instruction</span>
                         <div className="prompt-model-selector">
-                            <select className="prompt-model-select" data-agent="adaptive-critique">
+                            <select
+                                className="prompt-model-select"
+                                value={prompts.model_solutionCritique || ''}
+                                onChange={handleModelChange('model_solutionCritique')}
+                            >
                                 <option value="">Use Global Model</option>
                             </select>
                         </div>
                     </div>
                     <div className="prompt-card-body">
-                        <textarea
-                            id="sys-adaptive-critique"
+                        <PromptStylingEditor
                             className="prompt-textarea"
                             rows={10}
                             placeholder="Solution critique agent system prompt..."
+                            value={prompts.sys_adaptiveDeepthink_solutionCritique || ''}
+                            onChange={handleTextChange('sys_adaptiveDeepthink_solutionCritique')}
                         />
                     </div>
                 </div>
@@ -152,17 +202,22 @@ export const AdaptivePromptsContent: React.FC = () => {
                     <div className="prompt-card-header">
                         <span className="prompt-card-title">System Instruction</span>
                         <div className="prompt-model-selector">
-                            <select className="prompt-model-select" data-agent="adaptive-corrector">
+                            <select
+                                className="prompt-model-select"
+                                value={prompts.model_corrector || ''}
+                                onChange={handleModelChange('model_corrector')}
+                            >
                                 <option value="">Use Global Model</option>
                             </select>
                         </div>
                     </div>
                     <div className="prompt-card-body">
-                        <textarea
-                            id="sys-adaptive-corrector"
+                        <PromptStylingEditor
                             className="prompt-textarea"
                             rows={10}
                             placeholder="Corrector agent system prompt..."
+                            value={prompts.sys_adaptiveDeepthink_corrector || ''}
+                            onChange={handleTextChange('sys_adaptiveDeepthink_corrector')}
                         />
                     </div>
                 </div>
@@ -175,17 +230,22 @@ export const AdaptivePromptsContent: React.FC = () => {
                     <div className="prompt-card-header">
                         <span className="prompt-card-title">System Instruction</span>
                         <div className="prompt-model-selector">
-                            <select className="prompt-model-select" data-agent="adaptive-judge">
+                            <select
+                                className="prompt-model-select"
+                                value={prompts.model_finalJudge || ''}
+                                onChange={handleModelChange('model_finalJudge')}
+                            >
                                 <option value="">Use Global Model</option>
                             </select>
                         </div>
                     </div>
                     <div className="prompt-card-body">
-                        <textarea
-                            id="sys-adaptive-judge"
+                        <PromptStylingEditor
                             className="prompt-textarea"
                             rows={10}
                             placeholder="Final judge agent system prompt..."
+                            value={prompts.sys_adaptiveDeepthink_finalJudge || ''}
+                            onChange={handleTextChange('sys_adaptiveDeepthink_finalJudge')}
                         />
                     </div>
                 </div>

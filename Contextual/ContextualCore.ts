@@ -3,6 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { callAI, getSelectedModel, getSelectedTemperature, getSelectedTopP, getProviderForCurrentModel } from '../Routing';
+import { updateControlsState } from '../UI/Controls';
+import { globalState } from '../Core/State';
+import { CustomizablePromptsContextual } from './ContextualPrompts';
+
 // Removed LangChain dependencies - using custom HistoryMessage interface (thought signatures disabled)
 
 export interface ContentHistoryEntry {
@@ -199,7 +204,7 @@ export class MainGeneratorHistoryManager {
             '',
             `Your Initial Main Generation: ${this.initialMainGeneration}`,
             '',
-            'Memory Summary (What worked and what didn\'t):',
+            'Memory Summary (What worked and what didn\'t): ',
             currentMemory,
             '',
             `Your Current Best Generation: ${currentBestGeneration}`,
@@ -535,7 +540,7 @@ export class StrategicPoolAgentHistoryManager {
             previousStrategicPool || 'N/A',
             '',
             '## Deep Analysis Task',
-            'Study the Main Generator\'s solution carefully:',
+            "Study the Main Generator's solution carefully:",
             '- Did they attempt any strategies from your previous pool? Which ones?',
             '- If they attempted a strategy, how did they execute it? Was it superficial or deep?',
             '- What strategic direction did they take? Are they stuck in a local approach?',
@@ -546,9 +551,9 @@ export class StrategicPoolAgentHistoryManager {
             'Based on your deep observation, UPDATE and EVOLVE your strategic pool with N strategies:',
             '- If a strategy was well-explored, replace it with something more orthogonal',
             '- If a strategy was ignored or poorly attempted, keep it but reframe more compellingly',
-            '- If they\'re fixated on one approach, propose radical departures',
+            "- If they're fixated on one approach, propose radical departures",
             '- Progressively expand into more unexpected domains with each iteration',
-            '- Focus on what they HAVEN\'T tried, not what they have',
+            "- Focus on what they HAVEN'T tried, not what they have",
             '',
             'Generate N evolved strategies that push exploration further.'
         ].join('\n');
@@ -613,4 +618,625 @@ export function createInitialContextualState(initialUserRequest: string): Contex
 
 export function newMessageId(prefix: string = 'msg'): string {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// Logic extracted from Contextual.tsx
+
+// Global state
+let activeContextualState: ContextualState | null = null;
+let abortController: AbortController | null = null;
+let mainGeneratorManager: MainGeneratorHistoryManager | null = null;
+let iterativeAgentManager: IterativeAgentHistoryManager | null = null;
+let memoryAgentManager: MemoryAgentHistoryManager | null = null;
+let strategicPoolAgentManager: StrategicPoolAgentHistoryManager | null = null;
+let contextualCustomPrompts: CustomizablePromptsContextual | null = null;
+let onContentUpdated: ((content: string) => void) | null = null;
+let onStateUpdated: ((state: ContextualState) => void) | null = null;
+
+// Retry configuration
+const MAX_RETRIES = 3;
+const INITIAL_DELAY_MS = 20000;
+const BACKOFF_FACTOR = 2;
+
+// Base thinking configuration with dummy tool to enable thought signatures
+const BASE_THINKING_TOOLS = [{
+    functionDeclarations: [{
+        name: "internal_reasoning_continuation",
+        description: "Internal marker for reasoning continuation across conversation turns",
+        parameters: {
+            type: "object",
+            properties: {},
+            required: []
+        }
+    }]
+}];
+
+function getThinkingConfig() {
+    const isGemini = getProviderForCurrentModel() === 'gemini';
+    const codeExecutionEnabled = globalState.geminiCodeExecutionEnabled && isGemini;
+
+    return {
+        thinkingBudget: -1,
+        tools: BASE_THINKING_TOOLS,
+        codeExecution: codeExecutionEnabled
+    };
+}
+
+export function setContextualContentUpdateCallback(cb: ((content: string) => void) | null) {
+    onContentUpdated = cb;
+}
+
+export function setContextualStateUpdateCallback(cb: ((state: ContextualState) => void) | null) {
+    onStateUpdated = cb;
+}
+
+export async function startContextualProcess(initialUserRequest: string, customPrompts: CustomizablePromptsContextual) {
+    if (!initialUserRequest || globalState.isContextualRunning) return;
+
+    contextualCustomPrompts = customPrompts;
+
+    activeContextualState = createInitialContextualState(initialUserRequest);
+    activeContextualState.isRunning = true;
+    globalState.isContextualRunning = true;
+    updateControlsState();
+    abortController = new AbortController();
+
+    mainGeneratorManager = new MainGeneratorHistoryManager(
+        contextualCustomPrompts.sys_contextual_mainGenerator,
+        initialUserRequest
+    );
+
+    mainGeneratorManager.setMemoryAgentCallback(callMemoryAgentForCondense);
+
+    if (onStateUpdated) onStateUpdated(activeContextualState);
+
+    await runContextualLoop();
+}
+
+export function stopContextualProcess() {
+    if (abortController) {
+        abortController.abort();
+    }
+    globalState.isContextualRunning = false;
+    if (activeContextualState) {
+        activeContextualState.isRunning = false;
+        activeContextualState.isProcessing = false;
+        if (onStateUpdated) onStateUpdated(activeContextualState);
+    }
+    updateControlsState();
+}
+
+export function getContextualState(): ContextualState | null {
+    return activeContextualState;
+}
+
+export function setContextualStateForImport(state: ContextualState | null) {
+    activeContextualState = state;
+    if (state) {
+        state.isRunning = false;
+        state.isProcessing = false;
+    }
+    globalState.isContextualRunning = false;
+    if (onStateUpdated && state) onStateUpdated(state);
+}
+
+async function runContextualLoop() {
+    if (!activeContextualState || !globalState.isContextualRunning || !mainGeneratorManager) return;
+
+    while (globalState.isContextualRunning && activeContextualState) {
+        try {
+            if (!globalState.isContextualRunning || abortController?.signal.aborted) {
+                break;
+            }
+
+            activeContextualState.isProcessing = true;
+            activeContextualState.iterationCount++;
+            if (onStateUpdated) onStateUpdated({ ...activeContextualState });
+
+            // Step 1: Main Generator Agent generates
+            const mainGenerationResult = await callMainGeneratorAgent();
+
+            if (!mainGenerationResult || abortController?.signal.aborted || !globalState.isContextualRunning) {
+                break;
+            }
+
+            const mainGeneration = mainGenerationResult.text;
+
+            if (activeContextualState.iterationCount === 1) {
+                activeContextualState.initialMainGeneration = mainGeneration;
+                mainGeneratorManager.setInitialGeneration(mainGeneration);
+
+                iterativeAgentManager = new IterativeAgentHistoryManager(
+                    contextualCustomPrompts!.sys_contextual_iterativeAgent,
+                    activeContextualState.initialUserRequest,
+                    mainGeneration
+                );
+                iterativeAgentManager.setMemoryAgentCallback(callMemoryAgentForCondense);
+
+                memoryAgentManager = new MemoryAgentHistoryManager(
+                    contextualCustomPrompts!.sys_contextual_memoryAgent,
+                    activeContextualState.initialUserRequest,
+                    mainGeneration
+                );
+
+                strategicPoolAgentManager = new StrategicPoolAgentHistoryManager(
+                    contextualCustomPrompts!.sys_contextual_solutionPoolAgent,
+                    activeContextualState.initialUserRequest,
+                    mainGeneration
+                );
+            }
+
+            activeContextualState.currentBestGeneration = mainGeneration;
+            activeContextualState.contentHistory.push({
+                content: mainGeneration,
+                title: `Iteration ${activeContextualState.iterationCount} - Main Generation`,
+                timestamp: Date.now()
+            });
+
+            const mainMsg: ContextualMessage = {
+                id: newMessageId('main'),
+                role: 'main_generator',
+                content: mainGeneration,
+                timestamp: Date.now(),
+                iterationNumber: activeContextualState.iterationCount
+            };
+            activeContextualState.messages.push(mainMsg);
+
+            await mainGeneratorManager.addGeneration(mainGeneration, activeContextualState.iterationCount);
+
+            if (onContentUpdated) {
+                try { onContentUpdated(mainGeneration); } catch { }
+            }
+
+            if (onStateUpdated) onStateUpdated({ ...activeContextualState });
+
+            if (abortController?.signal.aborted || !globalState.isContextualRunning) break;
+
+            // Step 2: Iterative Agent provides suggestions
+            if (!iterativeAgentManager) throw new Error('Iterative agent manager not initialized');
+
+            const suggestionsResult = await callIterativeAgent(mainGeneration);
+
+            if (!suggestionsResult || abortController?.signal.aborted || !globalState.isContextualRunning) {
+                break;
+            }
+
+            const suggestions = suggestionsResult.text;
+
+            activeContextualState.currentBestSuggestions = suggestions;
+            activeContextualState.allIterativeSuggestions.push(suggestions);
+
+            const iterMsg: ContextualMessage = {
+                id: newMessageId('iter'),
+                role: 'iterative_agent',
+                content: suggestions,
+                timestamp: Date.now(),
+                iterationNumber: activeContextualState.iterationCount
+            };
+            activeContextualState.messages.push(iterMsg);
+
+            if (onStateUpdated) onStateUpdated({ ...activeContextualState });
+
+            if (abortController?.signal.aborted || !globalState.isContextualRunning) break;
+
+            // Step 3: Strategic Pool Agent generates strategies
+            if (!strategicPoolAgentManager) throw new Error('Strategic pool agent manager not initialized');
+
+            const strategicPoolResult = await callStrategicPoolAgent(mainGeneration, suggestions);
+
+            if (!strategicPoolResult || abortController?.signal.aborted || !globalState.isContextualRunning) {
+                break;
+            }
+
+            const strategicPool = strategicPoolResult.text;
+
+            if (strategicPool.trim() === '<<<Exit>>>') {
+                const exitMsg: ContextualMessage = {
+                    id: newMessageId('system'),
+                    role: 'system',
+                    content: 'Strategic Pool Agent has detected that the Solution Critique found no flaws 3 times consecutively. Process completed successfully.',
+                    timestamp: Date.now(),
+                    iterationNumber: activeContextualState.iterationCount,
+                    status: 'success',
+                    blocks: [{ kind: 'info', message: 'Process completed: Solution Critique found no flaws 3 times consecutively.' }]
+                };
+                activeContextualState.messages.push(exitMsg);
+                activeContextualState.isProcessing = false;
+                if (onStateUpdated) onStateUpdated({ ...activeContextualState });
+                stopContextualProcess();
+                break;
+            }
+
+            activeContextualState.currentStrategicPool = strategicPool;
+            activeContextualState.allStrategicPools.push(strategicPool);
+
+            const stratMsg: ContextualMessage = {
+                id: newMessageId('strat'),
+                role: 'strategic_pool_agent',
+                content: strategicPool,
+                timestamp: Date.now(),
+                iterationNumber: activeContextualState.iterationCount
+            };
+            activeContextualState.messages.push(stratMsg);
+
+            await strategicPoolAgentManager.addStrategicPool(strategicPool);
+
+            const combinedCritique = [
+                suggestions,
+                '',
+                '---',
+                '',
+                '## Strategic Pool',
+                'The following 5 strategies have been generated to expand your solution exploration:',
+                '',
+                strategicPool
+            ].join('\n');
+
+            await mainGeneratorManager.addIterativeResponse(combinedCritique, activeContextualState.iterationCount);
+            await mainGeneratorManager.addIterativeSuggestion(combinedCritique);
+            await iterativeAgentManager.addFixedGeneration(mainGeneration, activeContextualState.iterationCount);
+            await iterativeAgentManager.addSuggestion(suggestions, activeContextualState.iterationCount);
+            await iterativeAgentManager.addIterativeSuggestion(suggestions);
+
+            activeContextualState.isProcessing = false;
+            if (onStateUpdated) onStateUpdated({ ...activeContextualState });
+
+            if (abortController?.signal.aborted || !globalState.isContextualRunning) break;
+
+            await new Promise((resolve, reject) => {
+                const timeout = setTimeout(resolve, 1000);
+                if (abortController) {
+                    abortController.signal.addEventListener('abort', () => {
+                        clearTimeout(timeout);
+                        reject(new Error('Process stopped by user'));
+                    });
+                }
+            }).catch(() => { return; });
+
+            if (!globalState.isContextualRunning) break;
+
+        } catch (error) {
+            const errMsg = error instanceof Error ? error.message : 'Unknown error';
+            const errorMsg: ContextualMessage = {
+                id: newMessageId('system'),
+                role: 'system',
+                content: `Error: ${errMsg}`,
+                timestamp: Date.now(),
+                iterationNumber: activeContextualState.iterationCount,
+                status: 'error',
+                blocks: [{ kind: 'error', message: errMsg }]
+            };
+            activeContextualState.messages.push(errorMsg);
+            activeContextualState.isProcessing = false;
+            if (onStateUpdated) onStateUpdated({ ...activeContextualState });
+            break;
+        }
+    }
+}
+
+async function callMainGeneratorAgent(): Promise<{ text: string; geminiContent?: any } | null> {
+    if (!activeContextualState || !mainGeneratorManager) return null;
+
+    const modelName = getSelectedModel();
+    const temperature = getSelectedTemperature();
+    const topP = getSelectedTopP();
+
+    const prompt = await mainGeneratorManager.buildPrompt(
+        activeContextualState.currentBestGeneration,
+        activeContextualState.currentBestSuggestions,
+        activeContextualState.currentMemory
+    );
+
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (abortController?.signal.aborted || !globalState.isContextualRunning) {
+            throw new Error('Process stopped by user');
+        }
+
+        try {
+            if (attempt > 0) {
+                const delay = INITIAL_DELAY_MS * Math.pow(BACKOFF_FACTOR, attempt - 1);
+                await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(resolve, delay);
+                    if (abortController) {
+                        abortController.signal.addEventListener('abort', () => {
+                            clearTimeout(timeout);
+                            reject(new Error('Process stopped by user'));
+                        });
+                    }
+                }).catch(() => { throw new Error('Process stopped by user'); });
+            }
+
+            if (!globalState.isContextualRunning) throw new Error('Process stopped by user');
+
+            const response = await callAI(
+                prompt,
+                temperature,
+                modelName,
+                contextualCustomPrompts!.sys_contextual_mainGenerator,
+                false,
+                topP,
+                getThinkingConfig()
+            );
+
+            const text = extractTextFromResponse(response);
+
+            if (text) {
+                return { text, geminiContent: response.candidates?.[0]?.content };
+            }
+
+            throw new Error('Provider returned empty response');
+
+        } catch (error) {
+            lastError = error instanceof Error ? error : new Error(String(error));
+            console.warn(`Main Generator call attempt ${attempt + 1}/${MAX_RETRIES + 1} failed:`, lastError.message);
+
+            if (attempt < MAX_RETRIES && activeContextualState) {
+                const retryMsg: ContextualMessage = {
+                    id: newMessageId('system'),
+                    role: 'system',
+                    content: `Main Generator call failed (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${lastError.message}. Retrying in ${INITIAL_DELAY_MS * Math.pow(BACKOFF_FACTOR, attempt) / 1000}s...`,
+                    timestamp: Date.now(),
+                    iterationNumber: activeContextualState.iterationCount,
+                    status: 'error',
+                    blocks: [{ kind: 'error', message: `Retry ${attempt + 1}/${MAX_RETRIES + 1}: ${lastError.message}` }]
+                };
+                activeContextualState.messages.push(retryMsg);
+                if (onStateUpdated) onStateUpdated({ ...activeContextualState });
+            }
+
+            if (attempt === MAX_RETRIES) break;
+        }
+    }
+
+    throw lastError || new Error('Failed to get response from Main Generator Agent');
+}
+
+async function callIterativeAgent(currentGeneration: string): Promise<{ text: string; geminiContent?: any } | null> {
+    if (!activeContextualState || !iterativeAgentManager) return null;
+
+    const modelName = getSelectedModel();
+    const temperature = getSelectedTemperature();
+    const topP = getSelectedTopP();
+
+    const prompt = await iterativeAgentManager.buildPrompt(currentGeneration, activeContextualState?.currentMemory || '');
+
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (abortController?.signal.aborted || !globalState.isContextualRunning) {
+            throw new Error('Process stopped by user');
+        }
+
+        try {
+            if (attempt > 0) {
+                const delay = INITIAL_DELAY_MS * Math.pow(BACKOFF_FACTOR, attempt - 1);
+                await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(resolve, delay);
+                    if (abortController) {
+                        abortController.signal.addEventListener('abort', () => {
+                            clearTimeout(timeout);
+                            reject(new Error('Process stopped by user'));
+                        });
+                    }
+                }).catch(() => { throw new Error('Process stopped by user'); });
+            }
+
+            if (!globalState.isContextualRunning) throw new Error('Process stopped by user');
+
+            const response = await callAI(
+                prompt,
+                temperature,
+                modelName,
+                contextualCustomPrompts!.sys_contextual_iterativeAgent,
+                false,
+                topP,
+                getThinkingConfig()
+            );
+
+            const text = extractTextFromResponse(response);
+
+            if (text) {
+                return { text, geminiContent: response.candidates?.[0]?.content };
+            }
+
+            throw new Error('Provider returned empty response');
+
+        } catch (error) {
+            lastError = error instanceof Error ? error : new Error(String(error));
+            console.warn(`Iterative Agent call attempt ${attempt + 1}/${MAX_RETRIES + 1} failed:`, lastError.message);
+
+            if (attempt < MAX_RETRIES && activeContextualState) {
+                const retryMsg: ContextualMessage = {
+                    id: newMessageId('system'),
+                    role: 'system',
+                    content: `Iterative Agent call failed (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${lastError.message}. Retrying in ${INITIAL_DELAY_MS * Math.pow(BACKOFF_FACTOR, attempt) / 1000}s...`,
+                    timestamp: Date.now(),
+                    iterationNumber: activeContextualState.iterationCount,
+                    status: 'error',
+                    blocks: [{ kind: 'error', message: `Retry ${attempt + 1}/${MAX_RETRIES + 1}: ${lastError.message}` }]
+                };
+                activeContextualState.messages.push(retryMsg);
+                if (onStateUpdated) onStateUpdated({ ...activeContextualState });
+            }
+
+            if (attempt === MAX_RETRIES) break;
+        }
+    }
+
+    throw lastError || new Error('Failed to get response from Iterative Agent');
+}
+
+async function callStrategicPoolAgent(currentGeneration: string, currentCritique: string): Promise<{ text: string; geminiContent?: any } | null> {
+    if (!activeContextualState || !strategicPoolAgentManager) return null;
+
+    const modelName = getSelectedModel();
+    const temperature = getSelectedTemperature();
+    const topP = getSelectedTopP();
+
+    const prompt = await strategicPoolAgentManager.buildPrompt(
+        currentGeneration,
+        currentCritique,
+        activeContextualState.currentStrategicPool
+    );
+
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (abortController?.signal.aborted || !globalState.isContextualRunning) {
+            throw new Error('Process stopped by user');
+        }
+
+        try {
+            if (attempt > 0) {
+                const delay = INITIAL_DELAY_MS * Math.pow(BACKOFF_FACTOR, attempt - 1);
+                await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(resolve, delay);
+                    if (abortController) {
+                        abortController.signal.addEventListener('abort', () => {
+                            clearTimeout(timeout);
+                            reject(new Error('Process stopped by user'));
+                        });
+                    }
+                }).catch(() => { throw new Error('Process stopped by user'); });
+            }
+
+            if (!globalState.isContextualRunning) throw new Error('Process stopped by user');
+
+            const response = await callAI(
+                prompt,
+                temperature,
+                modelName,
+                contextualCustomPrompts!.sys_contextual_solutionPoolAgent,
+                false,
+                topP,
+                getThinkingConfig()
+            );
+
+            const text = extractTextFromResponse(response);
+
+            if (text) {
+                return { text, geminiContent: response.candidates?.[0]?.content };
+            }
+
+            throw new Error('Provider returned empty response');
+
+        } catch (error) {
+            lastError = error instanceof Error ? error : new Error(String(error));
+            console.warn(`Strategic Pool Agent call attempt ${attempt + 1}/${MAX_RETRIES + 1} failed:`, lastError.message);
+
+            if (attempt < MAX_RETRIES && activeContextualState) {
+                const retryMsg: ContextualMessage = {
+                    id: newMessageId('system'),
+                    role: 'system',
+                    content: `Strategic Pool Agent call failed (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${lastError.message}. Retrying in ${INITIAL_DELAY_MS * Math.pow(BACKOFF_FACTOR, attempt) / 1000}s...`,
+                    timestamp: Date.now(),
+                    iterationNumber: activeContextualState.iterationCount,
+                    status: 'error',
+                    blocks: [{ kind: 'error', message: `Retry ${attempt + 1}/${MAX_RETRIES + 1}: ${lastError.message}` }]
+                };
+                activeContextualState.messages.push(retryMsg);
+                if (onStateUpdated) onStateUpdated({ ...activeContextualState });
+            }
+
+            if (attempt === MAX_RETRIES) break;
+        }
+    }
+
+    throw lastError || new Error('Failed to get response from Strategic Pool Agent');
+}
+
+async function callMemoryAgentForCondense(recentIterations: IterationData[], currentBestGeneration: string): Promise<string> {
+    if (!activeContextualState || !memoryAgentManager) return '';
+
+    const modelName = getSelectedModel();
+    const temperature = getSelectedTemperature();
+    const topP = getSelectedTopP();
+
+    const prompt = await memoryAgentManager.buildPrompt(recentIterations, currentBestGeneration);
+
+    const memoryMsg: ContextualMessage = {
+        id: newMessageId('memory'),
+        role: 'memory_agent',
+        content: 'Analyzing iterations and updating memory...',
+        timestamp: Date.now(),
+        iterationNumber: activeContextualState.iterationCount
+    };
+    activeContextualState.messages.push(memoryMsg);
+    if (onStateUpdated) onStateUpdated({ ...activeContextualState });
+
+    try {
+        const response = await callAI(
+            prompt,
+            temperature,
+            modelName,
+            contextualCustomPrompts!.sys_contextual_memoryAgent,
+            false,
+            topP,
+            getThinkingConfig()
+        );
+
+        const memory = extractTextFromResponse(response);
+
+        if (memory) {
+            memoryMsg.content = memory;
+            activeContextualState.currentMemory = memory;
+
+            if (memoryAgentManager) {
+                memoryAgentManager.addMemorySnapshot(
+                    memory,
+                    currentBestGeneration,
+                    activeContextualState.iterationCount
+                );
+            }
+
+            activeContextualState.memorySnapshots.push({
+                memory,
+                finalGeneration: currentBestGeneration,
+                condensePoint: activeContextualState.iterationCount
+            });
+
+            if (onStateUpdated) onStateUpdated({ ...activeContextualState });
+
+            return memory;
+        }
+
+        throw new Error('Memory Agent returned empty response');
+
+    } catch (error) {
+        console.error('Memory Agent call failed:', error);
+        memoryMsg.content = `Error: Failed to generate memory - ${error instanceof Error ? error.message : 'Unknown error'}`;
+        if (onStateUpdated) onStateUpdated({ ...activeContextualState });
+        return activeContextualState.currentMemory;
+    }
+}
+
+// Re-export from Routing/ResponseParser for backward compatibility
+import { type ResponsePart, extractPartsInOrder, formatPartsForDisplay } from '../Routing/ResponseParser';
+export type { ResponsePart };
+export { extractPartsInOrder, formatPartsForDisplay };
+
+function extractTextFromResponse(response: any): string {
+    if (typeof response === 'string') {
+        return response.trim();
+    }
+    if (response && typeof response === 'object') {
+        if (response.candidates && response.candidates[0]) {
+            const candidate = response.candidates[0];
+            if (candidate.content && candidate.content.parts) {
+                const orderedParts = extractPartsInOrder(response);
+                return formatPartsForDisplay(orderedParts);
+            }
+        }
+        if (response.text) {
+            if (typeof response.text === 'function') {
+                return String(response.text()).trim();
+            }
+            return String(response.text).trim();
+        }
+        if (response.content) return String(response.content).trim();
+        if (response.message) return String(response.message).trim();
+    }
+    return '';
 }

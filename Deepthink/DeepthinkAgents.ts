@@ -26,6 +26,55 @@ export interface AgentExecutionContext {
     getSelectedTopP: () => number;
 }
 
+// ========== SHARED HELPERS ==========
+
+type ImageInput = Array<{ base64: string; mimeType: string }>;
+
+/** Builds prompt parts array: images (in order) followed by text. */
+function buildPromptParts(text: string, images: ImageInput): Part[] {
+    return [
+        ...images.map(img => ({ inlineData: { mimeType: img.mimeType, data: img.base64 } })),
+        { text }
+    ];
+}
+
+/** Appends optional special context XML block to a prompt string. */
+function appendContext(prompt: string, specialContext: string): string {
+    return specialContext
+        ? `${prompt}\n\n<Special Context>\n${specialContext}\n</Special Context>`
+        : prompt;
+}
+
+/** Executes a single AI call: builds parts, calls the model, cleans output. */
+async function callAgent(
+    promptText: string,
+    images: ImageInput,
+    context: AgentExecutionContext,
+    systemPrompt: string,
+    isJson: boolean
+): Promise<string> {
+    const response = await context.callAI(
+        buildPromptParts(promptText, images),
+        context.getSelectedTemperature(),
+        context.getSelectedModel(),
+        systemPrompt,
+        isJson,
+        context.getSelectedTopP()
+    );
+    return context.cleanOutputByType(response.text || '', isJson ? 'json' : undefined);
+}
+
+/** Wraps an async agent body with standard error handling. */
+async function wrapAgent(fn: () => Promise<AgentResponse>): Promise<AgentResponse> {
+    try {
+        return await fn();
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
+// ========== AGENT IMPLEMENTATIONS ==========
+
 /**
  * Generate Strategies Agent
  * Generates N high-level strategic interpretations for a problem
@@ -37,53 +86,23 @@ export async function generateStrategiesAgent(
     systemPrompt: string,
     userPromptTemplate: string,
     context: AgentExecutionContext,
-    images: Array<{ base64: string, mimeType: string }> = []
+    images: ImageInput = []
 ): Promise<AgentResponse> {
-    try {
-        const userPrompt = userPromptTemplate
-            .replace('{{originalProblemText}}', question)
-            .replace(/\$\{NUM_INITIAL_STRATEGIES_DEEPTHINK\}/g, numStrategies.toString());
-
-        const finalUserPrompt = specialContext
-            ? `${userPrompt}\n\n<Special Context>\n${specialContext}\n</Special Context>`
-            : userPrompt;
-
-        const promptParts: Part[] = [{ text: finalUserPrompt }];
-        images.slice().reverse().forEach(img => {
-            promptParts.unshift({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
-        });
-
-        const response = await context.callAI(
-            promptParts,
-            context.getSelectedTemperature(),
-            context.getSelectedModel(),
-            systemPrompt,
-            true,
-            context.getSelectedTopP()
+    return wrapAgent(async () => {
+        const prompt = appendContext(
+            userPromptTemplate
+                .replace('{{originalProblemText}}', question)
+                .replace(/\$\{NUM_INITIAL_STRATEGIES_DEEPTHINK\}/g, numStrategies.toString()),
+            specialContext
         );
-
-        const rawText = context.cleanOutputByType(response.text || '', 'json');
+        const rawText = await callAgent(prompt, images, context, systemPrompt, true);
         const parsed = context.parseJsonSafe(rawText, 'GenerateStrategies');
 
         if (!parsed || !Array.isArray(parsed.strategies)) {
-            return {
-                success: false,
-                error: 'Failed to parse strategies from response',
-                rawResponse: rawText
-            };
+            return { success: false, error: 'Failed to parse strategies from response', rawResponse: rawText };
         }
-
-        return {
-            success: true,
-            data: { strategies: parsed.strategies },
-            rawResponse: rawText
-        };
-    } catch (error) {
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
-        };
-    }
+        return { success: true, data: { strategies: parsed.strategies }, rawResponse: rawText };
+    });
 }
 
 /**
@@ -97,53 +116,23 @@ export async function generateHypothesesAgent(
     systemPrompt: string,
     userPromptTemplate: string,
     context: AgentExecutionContext,
-    images: Array<{ base64: string, mimeType: string }> = []
+    images: ImageInput = []
 ): Promise<AgentResponse> {
-    try {
-        const userPrompt = userPromptTemplate
-            .replace('{{originalProblemText}}', question)
-            .replace(/\$\{NUM_HYPOTHESES\}/g, numHypotheses.toString());
-
-        const finalUserPrompt = specialContext
-            ? `${userPrompt}\n\n<Special Context>\n${specialContext}\n</Special Context>`
-            : userPrompt;
-
-        const promptParts: Part[] = [{ text: finalUserPrompt }];
-        images.slice().reverse().forEach(img => {
-            promptParts.unshift({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
-        });
-
-        const response = await context.callAI(
-            promptParts,
-            context.getSelectedTemperature(),
-            context.getSelectedModel(),
-            systemPrompt,
-            true,
-            context.getSelectedTopP()
+    return wrapAgent(async () => {
+        const prompt = appendContext(
+            userPromptTemplate
+                .replace('{{originalProblemText}}', question)
+                .replace(/\$\{NUM_HYPOTHESES\}/g, numHypotheses.toString()),
+            specialContext
         );
-
-        const rawText = context.cleanOutputByType(response.text || '', 'json');
+        const rawText = await callAgent(prompt, images, context, systemPrompt, true);
         const parsed = context.parseJsonSafe(rawText, 'GenerateHypotheses');
 
         if (!parsed || !Array.isArray(parsed.hypotheses)) {
-            return {
-                success: false,
-                error: 'Failed to parse hypotheses from response',
-                rawResponse: rawText
-            };
+            return { success: false, error: 'Failed to parse hypotheses from response', rawResponse: rawText };
         }
-
-        return {
-            success: true,
-            data: { hypotheses: parsed.hypotheses },
-            rawResponse: rawText
-        };
-    } catch (error) {
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
-        };
-    }
+        return { success: true, data: { hypotheses: parsed.hypotheses }, rawResponse: rawText };
+    });
 }
 
 /**
@@ -158,59 +147,26 @@ export async function testHypothesesAgent(
     systemPrompt: string,
     userPromptTemplate: string,
     context: AgentExecutionContext,
-    images: Array<{ base64: string, mimeType: string }> = []
+    images: ImageInput = []
 ): Promise<AgentResponse> {
-    try {
+    return wrapAgent(async () => {
         const results = await Promise.all(
             hypothesisIds.map(async (id) => {
                 const hypothesis = hypothesesData.get(id);
-                if (!hypothesis) {
-                    return { id, success: false, error: 'Hypothesis not found' };
-                }
+                if (!hypothesis) return { id, success: false, error: 'Hypothesis not found' };
 
-                const userPrompt = userPromptTemplate
-                    .replace('{{originalProblemText}}', question)
-                    .replace('{{hypothesisText}}', hypothesis.text);
-
-                const finalUserPrompt = specialContext
-                    ? `${userPrompt}\n\n<Special Context>\n${specialContext}\n</Special Context>`
-                    : userPrompt;
-
-                const promptParts: Part[] = [{ text: finalUserPrompt }];
-                images.slice().reverse().forEach(img => {
-                    promptParts.unshift({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
-                });
-
-                const response = await context.callAI(
-                    promptParts,
-                    context.getSelectedTemperature(),
-                    context.getSelectedModel(),
-                    systemPrompt,
-                    false,
-                    context.getSelectedTopP()
+                const prompt = appendContext(
+                    userPromptTemplate
+                        .replace('{{originalProblemText}}', question)
+                        .replace('{{hypothesisText}}', hypothesis.text),
+                    specialContext
                 );
-
-                const testingResult = context.cleanOutputByType(response.text || '');
-
-                return {
-                    id,
-                    success: true,
-                    hypothesis: hypothesis.text,
-                    testing: testingResult
-                };
+                const testing = await callAgent(prompt, images, context, systemPrompt, false);
+                return { id, success: true, hypothesis: hypothesis.text, testing };
             })
         );
-
-        return {
-            success: true,
-            data: { results }
-        };
-    } catch (error) {
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
-        };
-    }
+        return { success: true, data: { results } };
+    });
 }
 
 /**
@@ -226,73 +182,45 @@ export async function executeStrategiesAgent(
     systemPrompt: string,
     userPromptTemplate: string,
     context: AgentExecutionContext,
-    images: Array<{ base64: string, mimeType: string }> = []
+    images: ImageInput = []
 ): Promise<AgentResponse> {
-    try {
+    return wrapAgent(async () => {
         const results = await Promise.all(
             strategyExecutions.map(async (exec) => {
                 const strategy = strategiesData.get(exec.strategyId);
-                if (!strategy) {
-                    return { id: exec.strategyId, success: false, error: 'Strategy not found' };
-                }
+                if (!strategy) return { id: exec.strategyId, success: false, error: 'Strategy not found' };
 
-                // Build information packet for this execution
-                let informationPacket = '<Full Information Packet>\n';
-                exec.hypothesisIds.forEach((hypId, idx) => {
-                    const hypResult = hypothesisTestingResults.get(hypId);
-                    if (hypResult) {
-                        informationPacket += `<Hypothesis ${idx + 1}>\n`;
-                        informationPacket += `Hypothesis: ${hypResult.hypothesis}\n`;
-                        informationPacket += `Hypothesis Testing: ${hypResult.testing}\n`;
-                        informationPacket += `</Hypothesis ${idx + 1}>\n\n`;
-                    }
-                });
-                informationPacket += '</Full Information Packet>';
-
-                const userPrompt = userPromptTemplate
-                    .replace('{{originalProblemText}}', question)
-                    .replace('{{assignedStrategy}}', strategy.text)
-                    .replace('{{knowledgePacket}}', informationPacket);
-
-                const finalUserPrompt = specialContext
-                    ? `${userPrompt}\n\n<Special Context>\n${specialContext}\n</Special Context>`
-                    : userPrompt;
-
-                const promptParts: Part[] = [{ text: finalUserPrompt }];
-                images.slice().reverse().forEach(img => {
-                    promptParts.unshift({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
-                });
-
-                const response = await context.callAI(
-                    promptParts,
-                    context.getSelectedTemperature(),
-                    context.getSelectedModel(),
-                    systemPrompt,
-                    false,
-                    context.getSelectedTopP()
+                const informationPacket = buildInformationPacket(exec.hypothesisIds, hypothesisTestingResults);
+                const prompt = appendContext(
+                    userPromptTemplate
+                        .replace('{{originalProblemText}}', question)
+                        .replace('{{assignedStrategy}}', strategy.text)
+                        .replace('{{knowledgePacket}}', informationPacket),
+                    specialContext
                 );
-
-                const executionResult = context.cleanOutputByType(response.text || '');
-
-                return {
-                    id: exec.strategyId,
-                    success: true,
-                    strategy: strategy.text,
-                    execution: executionResult
-                };
+                const execution = await callAgent(prompt, images, context, systemPrompt, false);
+                return { id: exec.strategyId, success: true, strategy: strategy.text, execution };
             })
         );
+        return { success: true, data: { results } };
+    });
+}
 
-        return {
-            success: true,
-            data: { results }
-        };
-    } catch (error) {
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
-        };
-    }
+/** Builds the XML information packet from hypothesis testing results. */
+function buildInformationPacket(
+    hypothesisIds: string[],
+    results: Map<string, { hypothesis: string; testing: string }>
+): string {
+    const entries = hypothesisIds
+        .map((id, idx) => {
+            const r = results.get(id);
+            return r
+                ? `<Hypothesis ${idx + 1}>\nHypothesis: ${r.hypothesis}\nHypothesis Testing: ${r.testing}\n</Hypothesis ${idx + 1}>\n`
+                : '';
+        })
+        .filter(Boolean)
+        .join('\n');
+    return `<Full Information Packet>\n${entries}</Full Information Packet>`;
 }
 
 /**
@@ -307,59 +235,27 @@ export async function solutionCritiqueAgent(
     systemPrompt: string,
     userPromptTemplate: string,
     context: AgentExecutionContext,
-    images: Array<{ base64: string, mimeType: string }> = []
+    images: ImageInput = []
 ): Promise<AgentResponse> {
-    try {
+    return wrapAgent(async () => {
         const results = await Promise.all(
             executionIds.map(async (id) => {
                 const execution = executionsData.get(id);
-                if (!execution) {
-                    return { id, success: false, error: 'Execution not found' };
-                }
+                if (!execution) return { id, success: false, error: 'Execution not found' };
 
-                const userPrompt = userPromptTemplate
-                    .replace('{{originalProblemText}}', question)
-                    .replace('{{assignedStrategy}}', execution.strategy)
-                    .replace('{{solutionAttempt}}', execution.execution);
-
-                const finalUserPrompt = specialContext
-                    ? `${userPrompt}\n\n<Special Context>\n${specialContext}\n</Special Context>`
-                    : userPrompt;
-
-                const promptParts: Part[] = [{ text: finalUserPrompt }];
-                images.slice().reverse().forEach(img => {
-                    promptParts.unshift({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
-                });
-
-                const response = await context.callAI(
-                    promptParts,
-                    context.getSelectedTemperature(),
-                    context.getSelectedModel(),
-                    systemPrompt,
-                    false,
-                    context.getSelectedTopP()
+                const prompt = appendContext(
+                    userPromptTemplate
+                        .replace('{{originalProblemText}}', question)
+                        .replace('{{assignedStrategy}}', execution.strategy)
+                        .replace('{{solutionAttempt}}', execution.execution),
+                    specialContext
                 );
-
-                const critiqueResult = context.cleanOutputByType(response.text || '');
-
-                return {
-                    id,
-                    success: true,
-                    critique: critiqueResult
-                };
+                const critique = await callAgent(prompt, images, context, systemPrompt, false);
+                return { id, success: true, critique };
             })
         );
-
-        return {
-            success: true,
-            data: { results }
-        };
-    } catch (error) {
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
-        };
-    }
+        return { success: true, data: { results } };
+    });
 }
 
 /**
@@ -374,58 +270,26 @@ export async function correctedSolutionsAgent(
     systemPrompt: string,
     userPromptTemplate: string,
     context: AgentExecutionContext,
-    images: Array<{ base64: string, mimeType: string }> = []
+    images: ImageInput = []
 ): Promise<AgentResponse> {
-    try {
+    return wrapAgent(async () => {
         const results = await Promise.all(
             executionIds.map(async (id) => {
                 const execution = executionsData.get(id);
                 const critique = critiquesData.get(id);
+                if (!execution || !critique) return { id, success: false, error: 'Execution or critique not found' };
 
-                if (!execution || !critique) {
-                    return { id, success: false, error: 'Execution or critique not found' };
-                }
-
-                const userPrompt = userPromptTemplate
+                const prompt = userPromptTemplate
                     .replace('{{originalProblemText}}', question)
                     .replace('{{assignedStrategy}}', execution.strategy)
                     .replace('{{solutionAttempt}}', execution.execution)
                     .replace('{{solutionCritique}}', critique.critique);
-
-                const promptParts: Part[] = [{ text: userPrompt }];
-                images.slice().reverse().forEach(img => {
-                    promptParts.unshift({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
-                });
-
-                const response = await context.callAI(
-                    promptParts,
-                    context.getSelectedTemperature(),
-                    context.getSelectedModel(),
-                    systemPrompt,
-                    false,
-                    context.getSelectedTopP()
-                );
-
-                const correctedResult = context.cleanOutputByType(response.text || '');
-
-                return {
-                    id,
-                    success: true,
-                    correctedSolution: correctedResult
-                };
+                const correctedSolution = await callAgent(prompt, images, context, systemPrompt, false);
+                return { id, success: true, correctedSolution };
             })
         );
-
-        return {
-            success: true,
-            data: { results }
-        };
-    } catch (error) {
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
-        };
-    }
+        return { success: true, data: { results } };
+    });
 }
 
 /**
@@ -439,50 +303,23 @@ export async function selectBestSolutionAgent(
     systemPrompt: string,
     userPromptTemplate: string,
     context: AgentExecutionContext,
-    images: Array<{ base64: string, mimeType: string }> = []
+    images: ImageInput = []
 ): Promise<AgentResponse> {
-    try {
-        // Build all solutions for comparison
-        let allSolutions = '';
-        solutionIds.forEach((id, idx) => {
-            const solution = solutionsData.get(id);
-            if (solution) {
-                allSolutions += `<Solution ${idx + 1} ID: ${id}>\n`;
-                allSolutions += `Strategy: ${solution.strategy}\n\n`;
-                allSolutions += `Corrected Solution:\n${solution.correctedSolution}\n`;
-                allSolutions += `</Solution ${idx + 1}>\n\n`;
-            }
-        });
+    return wrapAgent(async () => {
+        const allSolutions = solutionIds
+            .map((id, idx) => {
+                const s = solutionsData.get(id);
+                return s
+                    ? `<Solution ${idx + 1} ID: ${id}>\nStrategy: ${s.strategy}\n\nCorrected Solution:\n${s.correctedSolution}\n</Solution ${idx + 1}>\n`
+                    : '';
+            })
+            .filter(Boolean)
+            .join('\n');
 
-        const userPrompt = userPromptTemplate
+        const prompt = userPromptTemplate
             .replace('{{originalProblemText}}', question)
             .replace('{{allSolutions}}', allSolutions);
-
-        const promptParts: Part[] = [{ text: userPrompt }];
-        images.slice().reverse().forEach(img => {
-            promptParts.unshift({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
-        });
-
-        const response = await context.callAI(
-            promptParts,
-            context.getSelectedTemperature(),
-            context.getSelectedModel(),
-            systemPrompt,
-            false,
-            context.getSelectedTopP()
-        );
-
-        const selectionResult = context.cleanOutputByType(response.text || '');
-
-        return {
-            success: true,
-            data: { selection: selectionResult },
-            rawResponse: selectionResult
-        };
-    } catch (error) {
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
-        };
-    }
+        const selection = await callAgent(prompt, images, context, systemPrompt, false);
+        return { success: true, data: { selection }, rawResponse: selection };
+    });
 }

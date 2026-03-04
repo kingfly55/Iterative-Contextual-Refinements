@@ -1,5 +1,27 @@
 
-import { IterationData } from '../Core/Types';
+import { IterationData, EvolutionMode } from '../Core/Types';
+import { globalState } from '../Core/State';
+
+export function getEvolutionModeDescription(mode: EvolutionMode): string {
+    switch (mode) {
+        case 'off':
+            return 'Standard refinement. Each iteration builds directly on the previous one.';
+        case 'novelty':
+            return 'Explores different approaches. If an iteration is too similar to previous ones, it retries with higher temperature.';
+        case 'quality':
+            return "Ensures improvement. If an iteration doesn't improve the score, it retries with higher temperature.";
+    }
+}
+
+export function setEvolutionMode(mode: EvolutionMode) {
+    globalState.currentEvolutionMode = mode;
+    window.dispatchEvent(new CustomEvent('refine:evolution-mode-changed', { detail: { mode } }));
+}
+
+export function updateEvolutionModeDescription(mode: EvolutionMode) {
+    const el = document.getElementById('evolution-mode-description');
+    if (el) el.textContent = getEvolutionModeDescription(mode);
+}
 
 export function getEmptyStateMessage(status: IterationData['status'] | string, contentType: string): string {
     switch (status) {
@@ -78,6 +100,21 @@ export async function copyCodeBlock(codeId: string) {
     }
 }
 
+// Handle image preview globally
+export function previewImage(element: HTMLElement) {
+    if (element && !element.classList.contains('exec-image-error-item')) {
+        const src = element.dataset.src || (element.querySelector('img') as HTMLImageElement)?.src;
+        const format = element.dataset.format || 'PNG';
+
+        if (src) {
+            window.dispatchEvent(new CustomEvent('exec-image-preview', {
+                detail: { src, alt: 'Generated Figure', format }
+            }));
+        }
+    }
+}
+
 // Attach to window for HTML onclick handlers
 (window as any).toggleCodeBlock = toggleCodeBlock;
 (window as any).copyCodeBlock = copyCodeBlock;
+(window as any).previewImage = previewImage;

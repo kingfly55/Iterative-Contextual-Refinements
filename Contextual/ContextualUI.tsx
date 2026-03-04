@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { ContextualState, ContextualMessage } from './ContextualCore';
-import { renderMathContent, useHighlighting } from '../Styles/Components/RenderMathMarkdown';
+import RenderMathMarkdown from '../Styles/Components/RenderMathMarkdown';
 import { openEmbeddedModal } from '../Styles/Components/EmbeddedModal';
 import { FaRobot, FaStop, FaDatabase, FaSearch } from 'react-icons/fa';
 import { MdOutlineTaskAlt } from 'react-icons/md';
@@ -21,9 +21,9 @@ interface ContextualUIProps {
     onStop: () => void;
 }
 
-function ContextualUI({ state, onStop }: ContextualUIProps) {
+export function ContextualUI({ state, onStop }: ContextualUIProps) {
     // Update evolution viewer when content history changes
-    React.useEffect(() => {
+    useEffect(() => {
         const updateViewer = async () => {
             const { updateEvolutionViewerIfOpen } = await import('../Styles/Components/DiffModal/EvolutionViewer');
             updateEvolutionViewerIfOpen(state.id, state.contentHistory);
@@ -52,33 +52,28 @@ function ContextualUI({ state, onStop }: ContextualUIProps) {
     );
 }
 
-// Left Panel - Current Best Generation
-const CurrentBestGenerationPanel: React.FC<{ content: string; originalContent: string; state: ContextualState }> = ({ content, state }) => {
-    const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+// Hook to encapsulate vanilla DOM sidebar interaction
+function useSidebar() {
+    const [isCollapsed, setIsCollapsed] = useState(false);
 
-    // Subscribe to highlighting updates
-    useHighlighting();
-
-    // Check sidebar state on mount and listen for changes
-    React.useEffect(() => {
+    useEffect(() => {
         const checkSidebarState = () => {
             const sidebar = document.getElementById('controls-sidebar');
-            setSidebarCollapsed(sidebar?.classList.contains('collapsed') || false);
+            setIsCollapsed(sidebar?.classList.contains('collapsed') || false);
         };
 
         checkSidebarState();
 
-        // Listen for sidebar state changes
-        const observer = new MutationObserver(checkSidebarState);
         const sidebar = document.getElementById('controls-sidebar');
-        if (sidebar) {
-            observer.observe(sidebar, { attributes: true, attributeFilter: ['class'] });
-        }
+        if (!sidebar) return;
+
+        const observer = new MutationObserver(checkSidebarState);
+        observer.observe(sidebar, { attributes: true, attributeFilter: ['class'] });
 
         return () => observer.disconnect();
     }, []);
 
-    const handleExpandSidebar = () => {
+    const expandSidebar = useCallback(() => {
         const sidebar = document.getElementById('controls-sidebar');
         const expandButton = document.getElementById('sidebar-expand-button');
         if (sidebar) {
@@ -87,7 +82,14 @@ const CurrentBestGenerationPanel: React.FC<{ content: string; originalContent: s
                 expandButton.style.display = 'none';
             }
         }
-    };
+    }, []);
+
+    return { isCollapsed, expandSidebar };
+}
+
+// Left Panel - Current Best Generation
+const CurrentBestGenerationPanel: React.FC<{ content: string; originalContent: string; state: ContextualState }> = ({ content, state }) => {
+    const { isCollapsed: sidebarCollapsed, expandSidebar } = useSidebar();
 
     const renderContent = () => {
         if (!content) {
@@ -99,7 +101,7 @@ const CurrentBestGenerationPanel: React.FC<{ content: string; originalContent: s
             );
         }
 
-        return <div dangerouslySetInnerHTML={{ __html: renderMathContent(content) }} />;
+        return <RenderMathMarkdown content={content} />;
     };
 
     return (
@@ -113,7 +115,7 @@ const CurrentBestGenerationPanel: React.FC<{ content: string; originalContent: s
                     {sidebarCollapsed && (
                         <>
                             <button
-                                onClick={handleExpandSidebar}
+                                onClick={expandSidebar}
                                 title="Expand Sidebar"
                                 style={{
                                     background: 'none',
@@ -204,7 +206,7 @@ const CurrentBestGenerationPanel: React.FC<{ content: string; originalContent: s
                                     icon.textContent = 'check';
 
                                     setTimeout(() => {
-                                        icon.textContent = originalIcon;
+                                        icon.textContent = originalIcon || 'content_copy';
                                     }, 1500);
                                 }
                             } catch (err) {
@@ -227,10 +229,10 @@ const CurrentBestGenerationPanel: React.FC<{ content: string; originalContent: s
 
 // Right Panel - Agent Activity
 const AgentActivityPanel: React.FC<{ state: ContextualState; onStop: () => void }> = ({ state, onStop }) => {
-    const messagesContainerRef = React.useRef<HTMLDivElement>(null);
-    const [isUserScrolledUp, setIsUserScrolledUp] = React.useState(false);
+    const messagesContainerRef = useRef<HTMLDivElement>(null);
+    const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
 
-    const handleScroll = React.useCallback(() => {
+    const handleScroll = useCallback(() => {
         const el = messagesContainerRef.current;
         if (el) {
             const { scrollTop, scrollHeight, clientHeight } = el;
@@ -239,7 +241,7 @@ const AgentActivityPanel: React.FC<{ state: ContextualState; onStop: () => void 
         }
     }, []);
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (!isUserScrolledUp && messagesContainerRef.current) {
             const el = messagesContainerRef.current;
             el.scrollTop = el.scrollHeight;
@@ -252,7 +254,7 @@ const AgentActivityPanel: React.FC<{ state: ContextualState; onStop: () => void 
         }
     }, [state.messages, isUserScrolledUp]);
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (state.isProcessing && messagesContainerRef.current) {
             const el = messagesContainerRef.current;
             el.scrollTop = el.scrollHeight;
@@ -295,10 +297,7 @@ const AgentActivityPanel: React.FC<{ state: ContextualState; onStop: () => void 
 
 // Minimal Message Card (similar to verification report in Agentic mode)
 const MinimalMessageCard: React.FC<{ message: ContextualMessage; allMessages: ContextualMessage[] }> = ({ message, allMessages }) => {
-    const [expanded, setExpanded] = React.useState(false);
-
-    // Subscribe to highlighting updates
-    useHighlighting();
+    const [expanded, setExpanded] = useState(false);
 
     const getRoleLabel = (role: string) => {
         switch (role) {
@@ -361,7 +360,7 @@ const MinimalMessageCard: React.FC<{ message: ContextualMessage; allMessages: Co
                 </button>
             </div>
             <div className="minimal-card-content">
-                <div dangerouslySetInnerHTML={{ __html: renderMathContent(preview) }} />
+                <RenderMathMarkdown content={preview} />
                 {needsCollapse && (
                     <>
                         {!expanded && (
@@ -449,11 +448,24 @@ export function renderIterativeCorrectionsUI(
     });
 
     // Build content history from iterations for the evolution viewer
-    const contentHistory = safeIterations.map((iter, index) => ({
-        content: iter.correctedSolution,
-        title: `Iteration ${iter.iterationNumber} - Corrected Solution`,
-        timestamp: iter.timestamp || (Date.now() + index * 1000)
-    }));
+    // Start with the original solution as the first entry
+    const contentHistory: Array<{ content: string; title: string; timestamp: number }> = [];
+
+    if (originalSolution) {
+        contentHistory.push({
+            content: originalSolution,
+            title: 'Original Solution (Iteration 0)',
+            timestamp: safeIterations[0]?.timestamp ? safeIterations[0].timestamp - 1000 : Date.now() - 1000
+        });
+    }
+
+    safeIterations.forEach((iter, index) => {
+        contentHistory.push({
+            content: iter.correctedSolution,
+            title: `Iteration ${iter.iterationNumber} - Corrected Solution`,
+            timestamp: iter.timestamp || (Date.now() + index * 1000)
+        });
+    });
 
     // Add final solution if different from last iteration
     if (finalSolution && (safeIterations.length === 0 || finalSolution !== safeIterations[safeIterations.length - 1]?.correctedSolution)) {
@@ -499,5 +511,3 @@ export function renderIterativeCorrectionsUI(
 
     return root;
 }
-
-// Note: Modal functions removed - now using openEmbeddedModal from Styles/Components/EmbeddedModal.ts

@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { App } from '../../Core/App';
+import '../../UI/CommonUI'; // Ensure global window handlers are registered
+import { GlobalImagePreviewModal } from './RenderMathMarkdown';
 
 export const AppInitializer: React.FC = () => {
     const initialized = useRef(false);
@@ -12,5 +14,9 @@ export const AppInitializer: React.FC = () => {
         }
     }, []);
 
-    return null;
+    return (
+        <>
+            <GlobalImagePreviewModal />
+        </>
+    );
 };

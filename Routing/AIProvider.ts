@@ -34,7 +34,7 @@ export interface AIProvider {
         systemInstruction?: string,
         isJsonOutput?: boolean,
         topP?: number,
-        thinkingConfig?: ThinkingConfig
+        thinkingConfig?: any
     ): Promise<GenerateContentResponse>;
     isInitialized(): boolean;
     getProviderName(): string;
@@ -78,7 +78,7 @@ export class GoogleAIProvider implements AIProvider {
         systemInstruction?: string,
         isJsonOutput: boolean = false,
         topP?: number,
-        thinkingConfig?: ThinkingConfig
+        thinkingConfig?: any
     ): Promise<GenerateContentResponse> {
         if (!this.client) throw new Error("Google AI client not initialized.");
 
@@ -233,7 +233,7 @@ export class OpenAIProvider implements AIProvider {
         systemInstruction?: string,
         isJsonOutput: boolean = false,
         topP?: number,
-        thinkingConfig?: ThinkingConfig  // Not used by OpenAI but maintained for interface consistency
+        thinkingConfig?: any  // Not used by OpenAI but maintained for interface consistency
     ): Promise<GenerateContentResponse> {
         if (!this.client) throw new Error("OpenAI client not initialized.");
 
@@ -352,7 +352,7 @@ export class OpenRouterProvider implements AIProvider {
         systemInstruction?: string,
         isJsonOutput: boolean = false,
         topP?: number,
-        thinkingConfig?: ThinkingConfig
+        thinkingConfig?: any
     ): Promise<GenerateContentResponse> {
         if (!this.client) throw new Error("OpenRouter client not initialized.");
 
@@ -437,7 +437,7 @@ export class AnthropicProvider implements AIProvider {
         systemInstruction?: string,
         isJsonOutput: boolean = false,
         topP?: number,
-        thinkingConfig?: ThinkingConfig
+        thinkingConfig?: any
     ): Promise<GenerateContentResponse> {
         if (!this.client) throw new Error("Anthropic client not initialized.");
 
@@ -584,7 +584,7 @@ export class LocalModelsProvider implements AIProvider {
         systemInstruction?: string,
         isJsonOutput: boolean = false,
         topP?: number,
-        thinkingConfig?: ThinkingConfig
+        thinkingConfig?: any
     ): Promise<GenerateContentResponse> {
         if (!this.client) throw new Error("Local Models client not initialized.");
 

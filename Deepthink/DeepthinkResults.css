@@ -583,8 +583,8 @@
     background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(22, 163, 74, 0.05));
     border: 2px solid rgba(34, 197, 94, 0.3);
     border-radius: var(--border-radius-lg);
-    padding: 1.5rem;
-    margin: 1rem 0;
+    padding: 2.5rem 1.5rem 1.5rem 1.5rem; /* Increased top padding to accommodate the absolute tag */
+    margin: 2rem 0; /* Increased margin to prevent clipping against outer containers */
     position: relative;
 }
 

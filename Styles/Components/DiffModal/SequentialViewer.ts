@@ -1,978 +1,111 @@
 import * as Diff from 'diff';
-import { SequentialState } from './types';
 
-// Sequential Animation Viewer
-let sequentialState: SequentialState | null = null;
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-// Extended state for internal use
-interface SequentialViewerState extends SequentialState {
-    targetScrollTop: number;
-    currentScrollTop: number;
-    isAutoScrolling: boolean;
+export interface ContentEntry {
+    title: string;
+    content: string;
 }
 
-export function openSequentialViewer(contentStates: Array<{ title: string; content: string }>) {
-    if (contentStates.length === 0) return;
-
-    // Initialize state
-    sequentialState = {
-        contentStates,
-        currentIteration: 0,
-        isPlaying: false,
-        speed: 200, // Default to 200ms per line for better readability
-        animationFrame: null,
-        currentLineIndex: 0,
-        viewMode: 'split', // Default to split view
-        // Internal state
-        targetScrollTop: 0,
-        currentScrollTop: 0,
-        isAutoScrolling: false
-    } as SequentialViewerState;
-
-    // Create overlay
-    const existing = document.getElementById('sequential-viewer-overlay');
-    if (existing) existing.remove();
-
-    const overlay = document.createElement('div');
-    overlay.id = 'sequential-viewer-overlay';
-    overlay.className = 'sequential-viewer-overlay';
-
-    const container = document.createElement('div');
-    container.className = 'sequential-viewer-container';
-
-    // Header with controls
-    const header = createSequentialHeader();
-    container.appendChild(header);
-
-    // Content display area
-    const contentArea = document.createElement('div');
-    contentArea.className = 'sequential-content-area';
-    contentArea.id = 'sequential-content-area';
-    container.appendChild(contentArea);
-
-    // Progress bar
-    const progressBar = createProgressBar();
-    container.appendChild(progressBar);
-
-    // Controls footer
-    const controls = createSequentialControls();
-    container.appendChild(controls);
-
-    overlay.appendChild(container);
-    document.body.appendChild(overlay);
-
-    // Initialize with first iteration
-    renderSequentialContent();
-
-    // Show with animation
-    requestAnimationFrame(() => {
-        overlay.classList.add('visible');
-    });
-
-    // Keyboard handlers
-    const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') {
-            closeSequentialViewer();
-        } else if (e.key === ' ') {
-            e.preventDefault();
-            togglePlayback();
-        } else if (e.key === 'ArrowRight') {
-            nextIteration();
-        } else if (e.key === 'ArrowLeft') {
-            previousIteration();
-        }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    (overlay as any).cleanup = () => {
-        document.removeEventListener('keydown', handleKeyDown);
-        if (sequentialState?.animationFrame) {
-            cancelAnimationFrame(sequentialState.animationFrame);
-        }
-    };
+export interface LineEntry {
+    text: string;
+    type: 'added' | 'removed' | 'unchanged';
+    side: 'left' | 'right' | 'both';
+    isSpacer?: boolean;
 }
 
-function createSequentialHeader(): HTMLElement {
-    const header = document.createElement('div');
-    header.className = 'sequential-viewer-header';
-    header.innerHTML = `
-        <div class="sequential-header-content">
-            <span class="material-symbols-outlined sequential-icon">subscriptions</span>
-            <div class="sequential-title-group">
-                <h2 class="sequential-title">Sequential Evolution Playback</h2>
-                <span class="sequential-subtitle" id="iteration-indicator">Iteration 1</span>
-            </div>
-        </div>
-        <div class="sequential-header-actions">
-            <button class="sequential-view-toggle-button" id="sequential-view-toggle-btn" title="Toggle View Mode">
-                <span class="material-symbols-outlined">view_column</span>
-                <span class="button-text">Unified View</span>
-            </button>
-            <button class="sequential-close-button" id="sequential-close-btn">
-                <span class="material-symbols-outlined">close</span>
-            </button>
-        </div>
-    `;
-
-    setTimeout(() => {
-        const closeBtn = document.getElementById('sequential-close-btn');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', closeSequentialViewer);
-        }
-
-        const toggleBtn = document.getElementById('sequential-view-toggle-btn');
-        if (toggleBtn) {
-            toggleBtn.addEventListener('click', toggleViewMode);
-        }
-    }, 0);
-
-    return header;
+export interface SplitDiffResult {
+    leftLines: LineEntry[];
+    rightLines: LineEntry[];
 }
 
-function createProgressBar(): HTMLElement {
-    const container = document.createElement('div');
-    container.className = 'sequential-progress-container';
-    container.innerHTML = `
-        <div class="sequential-progress-bar">
-            <div class="sequential-progress-fill" id="sequential-progress-fill"></div>
-        </div>
-    `;
-    return container;
-}
+// ─── Diff Computation ─────────────────────────────────────────────────────────
 
-function createSequentialControls(): HTMLElement {
-    const controls = document.createElement('div');
-    controls.className = 'sequential-controls';
-    controls.innerHTML = `
-        <div class="sequential-controls-left">
-            <button class="sequential-control-btn" id="seq-prev-btn" title="Previous Iteration (←)">
-                <span class="material-symbols-outlined">skip_previous</span>
-            </button>
-            <button class="sequential-control-btn sequential-play-btn" id="seq-play-btn" title="Play/Pause (Space)">
-                <span class="material-symbols-outlined">play_arrow</span>
-            </button>
-            <button class="sequential-control-btn" id="seq-next-btn" title="Next Iteration (→)">
-                <span class="material-symbols-outlined">skip_next</span>
-            </button>
-        </div>
-        <div class="sequential-controls-right">
-            <span class="speed-label">Speed:</span>
-            <button class="sequential-speed-btn" data-speed="400" title="0.5x">0.5x</button>
-            <button class="sequential-speed-btn active" data-speed="200" title="1x">1x</button>
-            <button class="sequential-speed-btn" data-speed="100" title="2x">2x</button>
-            <button class="sequential-speed-btn" data-speed="50" title="4x">4x</button>
-            <button class="sequential-speed-btn" data-speed="25" title="8x">8x</button>
-        </div>
-    `;
+export function computeUnifiedDiffLines(prevContent: string, currentContent: string): LineEntry[] {
+    const diffs = Diff.diffLines(prevContent, currentContent);
+    const lines: LineEntry[] = [];
 
-    setTimeout(() => {
-        document.getElementById('seq-prev-btn')?.addEventListener('click', previousIteration);
-        document.getElementById('seq-play-btn')?.addEventListener('click', togglePlayback);
-        document.getElementById('seq-next-btn')?.addEventListener('click', nextIteration);
-
-        document.querySelectorAll('.sequential-speed-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const speed = parseInt((e.currentTarget as HTMLElement).dataset.speed || '200');
-                setPlaybackSpeed(speed);
+    for (const part of diffs) {
+        const partLines = part.value.split('\n');
+        partLines.forEach((line, idx) => {
+            if (line === '' && idx === partLines.length - 1) return;
+            lines.push({
+                text: line || ' ',
+                type: part.added ? 'added' : part.removed ? 'removed' : 'unchanged',
+                side: 'both'
             });
         });
-    }, 0);
-
-    return controls;
-}
-
-function renderSequentialContent() {
-    if (!sequentialState) return;
-
-    const contentArea = document.getElementById('sequential-content-area');
-    if (!contentArea) return;
-
-    const currentState = sequentialState.contentStates[sequentialState.currentIteration];
-    const prevState = sequentialState.currentIteration > 0
-        ? sequentialState.contentStates[sequentialState.currentIteration - 1]
-        : null;
-
-    // Update iteration indicator
-    const indicator = document.getElementById('iteration-indicator');
-    if (indicator) {
-        indicator.textContent = currentState.title || `Iteration ${sequentialState.currentIteration + 1}`;
     }
 
-    // Update progress bar
-    const progressFill = document.getElementById('sequential-progress-fill');
-    if (progressFill) {
-        const progress = ((sequentialState.currentIteration + 1) / sequentialState.contentStates.length) * 100;
-        progressFill.style.width = `${progress}%`;
-    }
-
-    // Clear content area
-    contentArea.innerHTML = '';
-
-    if (sequentialState.viewMode === 'split') {
-        renderSplitView(contentArea, currentState, prevState);
-    } else {
-        renderUnifiedView(contentArea, currentState, prevState);
-    }
+    return lines;
 }
 
-function renderSplitView(contentArea: HTMLElement, currentState: any, prevState: any) {
-    // Create split diff view
-    const splitContainer = document.createElement('div');
-    splitContainer.className = 'sequential-split-container';
-
-    // Left side (previous state)
-    const leftSide = document.createElement('div');
-    leftSide.className = 'sequential-split-side left';
-
-    const leftHeader = document.createElement('div');
-    leftHeader.className = 'sequential-split-header';
-    leftHeader.innerHTML = `
-        <h3 class="sequential-split-title">
-            <span class="material-symbols-outlined">history</span>
-            ${prevState ? prevState.title : 'Initial State'}
-        </h3>
-    `;
-    leftSide.appendChild(leftHeader);
-
-    const leftContent = document.createElement('div');
-    leftContent.className = 'sequential-split-content';
-    leftContent.id = 'sequential-left-content';
-    leftSide.appendChild(leftContent);
-
-    // Right side (current state)
-    const rightSide = document.createElement('div');
-    rightSide.className = 'sequential-split-side right';
-
-    const rightHeader = document.createElement('div');
-    rightHeader.className = 'sequential-split-header';
-    rightHeader.innerHTML = `
-        <h3 class="sequential-split-title">
-            <span class="material-symbols-outlined">auto_awesome</span>
-            ${currentState.title}
-        </h3>
-    `;
-    rightSide.appendChild(rightHeader);
-
-    const rightContent = document.createElement('div');
-    rightContent.className = 'sequential-split-content';
-    rightContent.id = 'sequential-right-content';
-    rightSide.appendChild(rightContent);
-
-    splitContainer.appendChild(leftSide);
-    splitContainer.appendChild(rightSide);
-    contentArea.appendChild(splitContainer);
-
-    // Render content in both sides
-    if (prevState) {
-        renderSplitDiffContent(prevState.content || '', currentState.content || '', leftContent, rightContent);
-    } else {
-        // First iteration - show empty on left, content on right
-        renderInitialContent(currentState.content || '', leftContent, rightContent);
-    }
-
-    // Set up synchronized scrolling
-    setupSynchronizedScrolling(leftContent, rightContent);
-}
-
-function renderUnifiedView(contentArea: HTMLElement, currentState: any, prevState: any) {
-    // Original unified view - single column with diff highlighting
-    const contentDisplay = document.createElement('div');
-    contentDisplay.className = 'sequential-content-display sequential-unified-view';
-    contentDisplay.id = 'sequential-content-display';
-
-    if (prevState) {
-        // Show diff between previous and current
-        const prevContent = prevState.content || '';
-        const currentContent = currentState.content || '';
-
-        try {
-            const diffs = Diff.diffLines(prevContent, currentContent);
-            const pre = document.createElement('pre');
-            const code = document.createElement('code');
-
-            diffs.forEach((part) => {
-                const lines = part.value.split('\n');
-                lines.forEach((line, lineIndex) => {
-                    if (line === '' && lineIndex === lines.length - 1) return;
-
-                    const lineDiv = document.createElement('div');
-                    lineDiv.className = 'sequential-line';
-
-                    if (part.added) {
-                        lineDiv.classList.add('sequential-line-added');
-                    } else if (part.removed) {
-                        lineDiv.classList.add('sequential-line-removed');
-                    }
-
-                    const lineContent = document.createElement('span');
-                    lineContent.className = 'sequential-line-content';
-                    lineContent.textContent = line || ' ';
-                    lineDiv.appendChild(lineContent);
-                    code.appendChild(lineDiv);
-                });
-            });
-
-            pre.appendChild(code);
-            contentDisplay.appendChild(pre);
-        } catch (error) {
-            contentDisplay.innerHTML = `<div class="sequential-error">Error displaying diff</div>`;
-        }
-    } else {
-        // Show initial content
-        const pre = document.createElement('pre');
-        const code = document.createElement('code');
-        const lines = (currentState.content || '').split('\n');
-
-        lines.forEach((line: string) => {
-            const lineDiv = document.createElement('div');
-            lineDiv.className = 'sequential-line';
-
-            const lineContent = document.createElement('span');
-            lineContent.className = 'sequential-line-content';
-            lineContent.textContent = line || ' ';
-            lineDiv.appendChild(lineContent);
-            code.appendChild(lineDiv);
-        });
-
-        pre.appendChild(code);
-        contentDisplay.appendChild(pre);
-    }
-
-    contentArea.appendChild(contentDisplay);
-}
-
-function setupSynchronizedScrolling(leftContainer: HTMLElement, rightContainer: HTMLElement) {
-    let isSyncing = false;
-    let syncTimeout: number | null = null;
-    // Removed isAutoScrolling check here to allow manual override, but we will check it inside the listener
-
-    const syncScroll = (source: HTMLElement, target: HTMLElement) => {
-        // 1. If we are currently animating (playback), ignore manual scroll events or prevent sync loops
-        //    Actually, we want to allow user to override. But if the PROGRAM is creating the scroll event,
-        //    we shouldn't propagate it as a user SYNC event.
-        const state = sequentialState as SequentialViewerState;
-        if (state && (state.isPlaying || state.isAutoScrolling)) return;
-
-        if (isSyncing) return;
-
-        isSyncing = true;
-
-        if (syncTimeout) {
-            cancelAnimationFrame(syncTimeout);
-        }
-
-        syncTimeout = requestAnimationFrame(() => {
-            // Calculate percentage or exact position? Exact position is usually better for code sync
-            // unless content length differs significantly.
-            // For diffs, usually exact position matches well.
-            target.scrollTop = source.scrollTop;
-
-            requestAnimationFrame(() => {
-                isSyncing = false;
-                syncTimeout = null;
-            });
-        });
-    };
-
-    leftContainer.addEventListener('scroll', () => syncScroll(leftContainer, rightContainer), { passive: true });
-    rightContainer.addEventListener('scroll', () => syncScroll(rightContainer, leftContainer), { passive: true });
-}
-
-function renderSplitDiffContent(prevContent: string, currentContent: string, leftContainer: HTMLElement, rightContainer: HTMLElement) {
-    try {
-        const diffs = Diff.diffLines(prevContent, currentContent);
-
-        const leftPre = document.createElement('pre');
-        const leftCode = document.createElement('code');
-        const leftDisplay = document.createElement('div');
-        leftDisplay.className = 'sequential-content-display';
-
-        const rightPre = document.createElement('pre');
-        const rightCode = document.createElement('code');
-        const rightDisplay = document.createElement('div');
-        rightDisplay.className = 'sequential-content-display';
-
-        let leftLineNum = 1;
-        let rightLineNum = 1;
-
-        diffs.forEach((part) => {
-            const lines = part.value.split('\n');
-            lines.forEach((line, lineIndex) => {
-                if (line === '' && lineIndex === lines.length - 1) return;
-
-                if (part.removed) {
-                    // Show removed lines on left side with empty spacer on right
-                    const leftLineDiv = document.createElement('div');
-                    leftLineDiv.className = 'sequential-line sequential-line-removed';
-                    leftLineDiv.dataset.index = `left-${leftLineNum}`;
-                    leftLineDiv.dataset.lineNum = String(leftLineNum);
-
-                    const leftLineContent = document.createElement('span');
-                    leftLineContent.className = 'sequential-line-content';
-                    leftLineContent.textContent = line || ' ';
-                    leftLineDiv.appendChild(leftLineContent);
-                    leftCode.appendChild(leftLineDiv);
-
-                    // Add empty spacer on right to maintain alignment
-                    const rightSpacerDiv = document.createElement('div');
-                    rightSpacerDiv.className = 'sequential-line sequential-line-spacer';
-                    rightSpacerDiv.dataset.index = `right-spacer-${leftLineNum}`;
-                    const rightSpacerContent = document.createElement('span');
-                    rightSpacerContent.className = 'sequential-line-content';
-                    rightSpacerContent.innerHTML = '&nbsp;';
-                    rightSpacerDiv.appendChild(rightSpacerContent);
-                    rightCode.appendChild(rightSpacerDiv);
-
-                    leftLineNum++;
-                } else if (part.added) {
-                    // Show added lines on right side with empty spacer on left
-                    const leftSpacerDiv = document.createElement('div');
-                    leftSpacerDiv.className = 'sequential-line sequential-line-spacer';
-                    leftSpacerDiv.dataset.index = `left-spacer-${rightLineNum}`;
-                    const leftSpacerContent = document.createElement('span');
-                    leftSpacerContent.className = 'sequential-line-content';
-                    leftSpacerContent.innerHTML = '&nbsp;';
-                    leftSpacerDiv.appendChild(leftSpacerContent);
-                    leftCode.appendChild(leftSpacerDiv);
-
-                    const rightLineDiv = document.createElement('div');
-                    rightLineDiv.className = 'sequential-line sequential-line-added';
-                    rightLineDiv.dataset.index = `right-${rightLineNum}`;
-                    rightLineDiv.dataset.lineNum = String(rightLineNum);
-
-                    const rightLineContent = document.createElement('span');
-                    rightLineContent.className = 'sequential-line-content';
-                    rightLineContent.textContent = line || ' ';
-                    rightLineDiv.appendChild(rightLineContent);
-                    rightCode.appendChild(rightLineDiv);
-
-                    rightLineNum++;
-                } else {
-                    // Show unchanged lines on both sides
-                    const leftLineDiv = document.createElement('div');
-                    leftLineDiv.className = 'sequential-line';
-                    leftLineDiv.dataset.index = `left-${leftLineNum}`;
-                    leftLineDiv.dataset.lineNum = String(leftLineNum);
-
-                    const leftLineContent = document.createElement('span');
-                    leftLineContent.className = 'sequential-line-content';
-                    leftLineContent.textContent = line || ' ';
-                    leftLineDiv.appendChild(leftLineContent);
-                    leftCode.appendChild(leftLineDiv);
-
-                    const rightLineDiv = document.createElement('div');
-                    rightLineDiv.className = 'sequential-line';
-                    rightLineDiv.dataset.index = `right-${rightLineNum}`;
-                    rightLineDiv.dataset.lineNum = String(rightLineNum);
-
-                    const rightLineContent = document.createElement('span');
-                    rightLineContent.className = 'sequential-line-content';
-                    rightLineContent.textContent = line || ' ';
-                    rightLineDiv.appendChild(rightLineContent);
-                    rightCode.appendChild(rightLineDiv);
-
-                    leftLineNum++;
-                    rightLineNum++;
-                }
-            });
-        });
-
-        leftPre.appendChild(leftCode);
-        leftDisplay.appendChild(leftPre);
-        leftContainer.appendChild(leftDisplay);
-
-        rightPre.appendChild(rightCode);
-        rightDisplay.appendChild(rightPre);
-        rightContainer.appendChild(rightDisplay);
-
-    } catch (error) {
-        leftContainer.innerHTML = `<div class="sequential-error">Error displaying diff</div>`;
-        rightContainer.innerHTML = `<div class="sequential-error">Error displaying diff</div>`;
-    }
-}
-
-function renderInitialContent(content: string, leftContainer: HTMLElement, rightContainer: HTMLElement) {
-    // Left side is empty for first iteration
-    leftContainer.innerHTML = '<div class="sequential-content-display"><p style="text-align: center; color: var(--text-secondary-color); padding: 2rem;">No previous iteration</p></div>';
-
-    // Right side shows the initial content
-    const rightPre = document.createElement('pre');
-    const rightCode = document.createElement('code');
-    const rightDisplay = document.createElement('div');
-    rightDisplay.className = 'sequential-content-display';
-
-    const lines = content.split('\n');
-    lines.forEach((line: string, index: number) => {
-        const lineDiv = document.createElement('div');
-        lineDiv.className = 'sequential-line';
-        lineDiv.dataset.index = `right-${index + 1}`;
-        lineDiv.dataset.lineNum = String(index + 1);
-
-        const lineContent = document.createElement('span');
-        lineContent.className = 'sequential-line-content';
-        lineContent.textContent = line || ' ';
-        lineDiv.appendChild(lineContent);
-        rightCode.appendChild(lineDiv);
-    });
-
-    rightPre.appendChild(rightCode);
-    rightDisplay.appendChild(rightPre);
-    rightContainer.appendChild(rightDisplay);
-}
-
-function togglePlayback() {
-    if (!sequentialState) return;
-
-    sequentialState.isPlaying = !sequentialState.isPlaying;
-    const playBtn = document.getElementById('seq-play-btn');
-
-    if (sequentialState.isPlaying) {
-        playBtn?.querySelector('.material-symbols-outlined')?.replaceWith(
-            Object.assign(document.createElement('span'), {
-                className: 'material-symbols-outlined',
-                textContent: 'pause'
-            })
-        );
-        startAnimation();
-    } else {
-        playBtn?.querySelector('.material-symbols-outlined')?.replaceWith(
-            Object.assign(document.createElement('span'), {
-                className: 'material-symbols-outlined',
-                textContent: 'play_arrow'
-            })
-        );
-        if (sequentialState.animationFrame) {
-            cancelAnimationFrame(sequentialState.animationFrame);
-        }
-    }
-}
-
-function startAnimation() {
-    if (!sequentialState || !sequentialState.isPlaying) return;
-
-    if (sequentialState.viewMode === 'split') {
-        startSplitAnimation();
-    } else {
-        startUnifiedAnimation();
-    }
-}
-
-function startSplitAnimation() {
-    if (!sequentialState || !sequentialState.isPlaying) return;
-
-    const state = sequentialState as SequentialViewerState;
-    state.isAutoScrolling = true;
-
-    const leftContent = document.getElementById('sequential-left-content');
-    const rightContent = document.getElementById('sequential-right-content');
-
-    if (!leftContent || !rightContent) return;
-
-    const leftLines = leftContent.querySelectorAll('.sequential-line');
-    const rightLines = rightContent.querySelectorAll('.sequential-line');
-    const maxLines = Math.max(leftLines.length, rightLines.length);
-
-    let lastTimestamp = performance.now();
-    let accumulatedTime = 0;
-
-    // Reset scroll target to current if starting fresh
-    state.currentScrollTop = leftContent.scrollTop;
-    state.targetScrollTop = leftContent.scrollTop;
-
-    function animateNextLine(timestamp: number) {
-        if (!sequentialState || !sequentialState.isPlaying) {
-            if (sequentialState) (sequentialState as SequentialViewerState).isAutoScrolling = false;
-            return;
-        }
-
-        const deltaTime = timestamp - lastTimestamp;
-        lastTimestamp = timestamp;
-        accumulatedTime += deltaTime;
-
-        // --- 1. Line Highlighting Logic ---
-        if (accumulatedTime >= sequentialState.speed) {
-            accumulatedTime -= sequentialState.speed; // Consume time chunk
-
-            if (sequentialState.currentLineIndex < maxLines) {
-                // Highlight left
-                if (sequentialState.currentLineIndex < leftLines.length) {
-                    const leftLine = leftLines[sequentialState.currentLineIndex] as HTMLElement;
-                    leftLine.classList.add('sequential-line-animate');
-
-                    // Update target scroll to center this line
-                    // We only update target, actual scrolling happens in smooth step below
-                    const lineTop = leftLine.offsetTop;
-                    const containerHeight = leftContent?.clientHeight || 0;
-                    state.targetScrollTop = Math.max(0, lineTop - containerHeight / 2 + leftLine.offsetHeight / 2);
-                }
-
-                // Highlight right
-                if (sequentialState.currentLineIndex < rightLines.length) {
-                    const rightLine = rightLines[sequentialState.currentLineIndex] as HTMLElement;
-                    rightLine.classList.add('sequential-line-animate');
-
-                    // If left is empty/shorter, we might need to track right side scroll
-                    // But usually we sync both. Let's assume left drives the scroll if available, 
-                    // or right if left is missing (e.g. first iteration empty left).
-                    if (!leftContent?.hasChildNodes() || leftLines.length === 0) {
-                        const lineTop = rightLine.offsetTop;
-                        const containerHeight = rightContent?.clientHeight || 0;
-                        state.targetScrollTop = Math.max(0, lineTop - containerHeight / 2 + rightLine.offsetHeight / 2);
-                    }
-                }
-
-                sequentialState.currentLineIndex++;
+export function computeSplitDiffLines(prevContent: string, currentContent: string): SplitDiffResult {
+    const diffs = Diff.diffLines(prevContent, currentContent);
+    const leftLines: LineEntry[] = [];
+    const rightLines: LineEntry[] = [];
+
+    for (const part of diffs) {
+        const partLines = part.value.split('\n');
+        partLines.forEach((line, idx) => {
+            if (line === '' && idx === partLines.length - 1) return;
+
+            if (part.removed) {
+                leftLines.push({ text: line || ' ', type: 'removed', side: 'left' });
+                rightLines.push({ text: '\u00a0', type: 'unchanged', side: 'right', isSpacer: true });
+            } else if (part.added) {
+                leftLines.push({ text: '\u00a0', type: 'unchanged', side: 'left', isSpacer: true });
+                rightLines.push({ text: line || ' ', type: 'added', side: 'right' });
             } else {
-                // Iteration Complete
-                sequentialState.currentLineIndex = 0;
-
-                // Small pause at end of iteration before next
-                setTimeout(() => {
-                    if (sequentialState && sequentialState.isPlaying) {
-                        if (sequentialState.currentIteration < sequentialState.contentStates.length - 1) {
-                            nextIteration();
-                            // Give it a moment to render before restarting animation
-                            setTimeout(() => startAnimation(), 400);
-                        } else {
-                            togglePlayback(); // Done
-                        }
-                    }
-                }, 800); // Slightly longer pause at end of file
-
-                state.isAutoScrolling = false;
-                return;
+                leftLines.push({ text: line || ' ', type: 'unchanged', side: 'left' });
+                rightLines.push({ text: line || ' ', type: 'unchanged', side: 'right' });
             }
-        }
-
-        // --- 2. Smooth Scroll Logic (Frame-rate independent exponential decay) ---
-        // Use exponential smoothing that works consistently at 60fps, 120fps, 144fps, etc.
-        // Formula: smoothFactor = 1 - pow(smoothing, deltaTime / baseFrameTime)
-        // smoothing = 0.85 means ~15% towards target per 16.67ms frame
-        const smoothing = 0.85;
-        const baseFrameTime = 16.67; // 60fps reference
-        const adaptiveLerp = 1 - Math.pow(smoothing, deltaTime / baseFrameTime);
-
-        const diff = state.targetScrollTop - state.currentScrollTop;
-
-        if (Math.abs(diff) > 0.5) {
-            state.currentScrollTop += diff * adaptiveLerp;
-
-            if (leftContent) leftContent.scrollTop = state.currentScrollTop;
-            if (rightContent) rightContent.scrollTop = state.currentScrollTop;
-        }
-
-        sequentialState.animationFrame = requestAnimationFrame(animateNextLine);
+        });
     }
 
-    sequentialState.animationFrame = requestAnimationFrame(animateNextLine);
+    return { leftLines, rightLines };
 }
 
-function startUnifiedAnimation() {
-    if (!sequentialState || !sequentialState.isPlaying) return;
-
-    const state = sequentialState as SequentialViewerState;
-    state.isAutoScrolling = true;
-
-    const contentArea = document.getElementById('sequential-content-area');
-    if (!contentArea) return;
-
-    // Use a container for scrolling? In unified view, contentArea likely holds the pre/code
-    // Actually renderUnifiedView appends 'sequential-content-display' to 'contentArea'.
-    // And 'sequential-content-display' likely has overflow? Or 'sequential-content-area' has overflow?
-    // Let's check styles. Usually 'sequential-content-area' or the display inside.
-    // Based on existing code: line.scrollIntoView calls on the line inside contentDisplay.
-    // So the scrollable parent is probably 'sequential-content-area' or 'sequential-content-display'.
-    // Let's assume contentArea (the container) or check the closest scrollable.
-    // The previous code didn't set scrollTop, it used scrollIntoView.
-    // We will use scrollTop on contentArea for consistency if it is the scroll container.
-    // If not, we might need to find the scrollable. 
-    // Let's guess 'sequential-content-display' is the scrollable one if it has max-height, 
-    // or 'sequential-content-area' is.
-    // Looking at render: contentArea.appendChild(contentDisplay).
-    // Let's try controlling contentArea.scrollTop.
-
-    const lines = contentArea.querySelectorAll('.sequential-line');
-    let lastTimestamp = performance.now();
-    let accumulatedTime = 0;
-
-    // Find scrollable
-    const scrollContainer = contentArea.querySelector('.sequential-content-display') as HTMLElement || contentArea;
-
-    state.currentScrollTop = scrollContainer.scrollTop;
-    state.targetScrollTop = scrollContainer.scrollTop;
-
-    function animateNextLine(timestamp: number) {
-        if (!sequentialState || !sequentialState.isPlaying) {
-            if (sequentialState) (sequentialState as SequentialViewerState).isAutoScrolling = false;
-            return;
-        }
-
-        const deltaTime = timestamp - lastTimestamp;
-        lastTimestamp = timestamp;
-        accumulatedTime += deltaTime;
-
-        if (accumulatedTime >= sequentialState.speed) {
-            accumulatedTime -= sequentialState.speed;
-
-            if (sequentialState.currentLineIndex < lines.length) {
-                const line = lines[sequentialState.currentLineIndex] as HTMLElement;
-                line.classList.add('sequential-line-animate');
-
-                // Update target
-                const lineTop = line.offsetTop;
-                const containerHeight = scrollContainer.clientHeight;
-                state.targetScrollTop = Math.max(0, lineTop - containerHeight / 2 + line.offsetHeight / 2);
-
-                sequentialState.currentLineIndex++;
-            } else {
-                sequentialState.currentLineIndex = 0;
-                setTimeout(() => {
-                    if (sequentialState && sequentialState.isPlaying) {
-                        if (sequentialState.currentIteration < sequentialState.contentStates.length - 1) {
-                            nextIteration();
-                            setTimeout(() => startAnimation(), 400);
-                        } else {
-                            togglePlayback();
-                        }
-                    }
-                }, 800);
-
-                state.isAutoScrolling = false;
-                return;
-            }
-        }
-
-        // Smooth Scroll (Frame-rate independent)
-        const smoothing = 0.85;
-        const baseFrameTime = 16.67;
-        const adaptiveLerp = 1 - Math.pow(smoothing, deltaTime / baseFrameTime);
-        const diff = state.targetScrollTop - state.currentScrollTop;
-        if (Math.abs(diff) > 0.5) {
-            state.currentScrollTop += diff * adaptiveLerp;
-            scrollContainer.scrollTop = state.currentScrollTop;
-        }
-
-        sequentialState.animationFrame = requestAnimationFrame(animateNextLine);
-    }
-
-    sequentialState.animationFrame = requestAnimationFrame(animateNextLine);
+export function computeInitialLines(content: string): LineEntry[] {
+    return content.split('\n').map(line => ({
+        text: line || ' ',
+        type: 'unchanged' as const,
+        side: 'both' as const
+    }));
 }
 
-function nextIteration() {
-    if (!sequentialState) return;
+// ─── Smooth Scroll Math ───────────────────────────────────────────────────────
 
-    if (sequentialState.currentIteration < sequentialState.contentStates.length - 1) {
-        const wasPlaying = sequentialState.isPlaying;
-
-        // Calculate current progress percentage
-        const currentProgress = calculateProgressPercentage();
-
-        // Stop animation if playing
-        if (wasPlaying && sequentialState.animationFrame) {
-            cancelAnimationFrame(sequentialState.animationFrame);
-            sequentialState.isPlaying = false;
-        }
-
-        sequentialState.currentIteration++;
-        renderSequentialContent();
-
-        // Restore position based on progress percentage
-        restorePositionFromProgress(currentProgress);
-
-        // Resume animation if it was playing
-        if (wasPlaying) {
-            sequentialState.isPlaying = true;
-            startAnimation();
-        }
-    }
+export function computeAdaptiveLerp(deltaTime: number, smoothing = 0.5, baseFrameTime = 16.67): number {
+    return 1 - Math.pow(smoothing, deltaTime / baseFrameTime);
 }
 
-function previousIteration() {
-    if (!sequentialState) return;
-
-    if (sequentialState.currentIteration > 0) {
-        const wasPlaying = sequentialState.isPlaying;
-
-        // Calculate current progress percentage
-        const currentProgress = calculateProgressPercentage();
-
-        // Stop animation if playing
-        if (wasPlaying && sequentialState.animationFrame) {
-            cancelAnimationFrame(sequentialState.animationFrame);
-            sequentialState.isPlaying = false;
-        }
-
-        sequentialState.currentIteration--;
-        renderSequentialContent();
-
-        // Restore position based on progress percentage
-        restorePositionFromProgress(currentProgress);
-
-        // Resume animation if it was playing
-        if (wasPlaying) {
-            sequentialState.isPlaying = true;
-            startAnimation();
-        }
-    }
+export function computeTargetScrollTop(lineOffsetTop: number, lineHeight: number, containerHeight: number): number {
+    return Math.max(0, lineOffsetTop - containerHeight / 2 + lineHeight / 2);
 }
 
-function calculateProgressPercentage(): number {
-    if (!sequentialState) return 0;
+// ─── Progress Tracking ────────────────────────────────────────────────────────
 
-    // Get total lines in current view
-    let totalLines = 0;
-
-    if (sequentialState.viewMode === 'split') {
-        const leftContent = document.getElementById('sequential-left-content');
-        const rightContent = document.getElementById('sequential-right-content');
-        if (leftContent && rightContent) {
-            const leftLines = leftContent.querySelectorAll('.sequential-line').length;
-            const rightLines = rightContent.querySelectorAll('.sequential-line').length;
-            totalLines = Math.max(leftLines, rightLines);
-        }
-    } else {
-        const contentArea = document.getElementById('sequential-content-area');
-        if (contentArea) {
-            totalLines = contentArea.querySelectorAll('.sequential-line').length;
-        }
-    }
-
+export function computeProgressPercent(currentIndex: number, totalLines: number): number {
     if (totalLines === 0) return 0;
-
-    // Calculate percentage based on current line index
-    return sequentialState.currentLineIndex / totalLines;
+    return (currentIndex / totalLines) * 100;
 }
 
-function restorePositionFromProgress(progressPercentage: number) {
-    if (!sequentialState) return;
-
-    // Get total lines in new view
-    let totalLines = 0;
-
-    if (sequentialState.viewMode === 'split') {
-        const leftContent = document.getElementById('sequential-left-content');
-        const rightContent = document.getElementById('sequential-right-content');
-        if (leftContent && rightContent) {
-            const leftLines = leftContent.querySelectorAll('.sequential-line').length;
-            const rightLines = rightContent.querySelectorAll('.sequential-line').length;
-            totalLines = Math.max(leftLines, rightLines);
-        }
-    } else {
-        const contentArea = document.getElementById('sequential-content-area');
-        if (contentArea) {
-            totalLines = contentArea.querySelectorAll('.sequential-line').length;
-        }
-    }
-
-    // Calculate new line index based on progress percentage
-    sequentialState.currentLineIndex = Math.floor(totalLines * progressPercentage);
-
-    // Animate all lines up to the current position instantly
-    if (sequentialState.viewMode === 'split') {
-        const leftContent = document.getElementById('sequential-left-content');
-        const rightContent = document.getElementById('sequential-right-content');
-        if (leftContent && rightContent) {
-            const leftLines = leftContent.querySelectorAll('.sequential-line');
-            const rightLines = rightContent.querySelectorAll('.sequential-line');
-
-            for (let i = 0; i < sequentialState.currentLineIndex; i++) {
-                if (i < leftLines.length) {
-                    leftLines[i].classList.add('sequential-line-animate');
-                }
-                if (i < rightLines.length) {
-                    rightLines[i].classList.add('sequential-line-animate');
-                }
-            }
-
-            // Scroll to current position
-            if (sequentialState.currentLineIndex < leftLines.length) {
-                const line = leftLines[sequentialState.currentLineIndex] as HTMLElement;
-                const lineTop = line.offsetTop;
-                const containerHeight = leftContent.clientHeight;
-                leftContent.scrollTop = Math.max(0, lineTop - containerHeight / 2);
-            }
-        }
-    } else {
-        const contentArea = document.getElementById('sequential-content-area');
-        if (contentArea) {
-            const lines = contentArea.querySelectorAll('.sequential-line');
-
-            for (let i = 0; i < sequentialState.currentLineIndex; i++) {
-                if (i < lines.length) {
-                    lines[i].classList.add('sequential-line-animate');
-                }
-            }
-
-            // Scroll to current position
-            if (sequentialState.currentLineIndex < lines.length) {
-                const line = lines[sequentialState.currentLineIndex] as HTMLElement;
-                line.scrollIntoView({ behavior: 'auto', block: 'center' });
-            }
-        }
-    }
+export function computeRestoredLineIndex(progressPercent: number, totalLines: number): number {
+    return Math.floor(totalLines * (progressPercent / 100));
 }
 
-function setPlaybackSpeed(speed: number) {
-    if (!sequentialState) return;
+// ─── Speed Config ─────────────────────────────────────────────────────────────
 
-    sequentialState.speed = speed;
+export const SPEED_OPTIONS = [
+    { label: '0.5x', ms: 400 },
+    { label: '1x',   ms: 200 },
+    { label: '2x',   ms: 100 },
+    { label: '4x',   ms: 50  },
+    { label: '8x',   ms: 25  }
+] as const;
 
-    // Update active button
-    document.querySelectorAll('.sequential-speed-btn').forEach(btn => {
-        btn.classList.remove('active');
-        if ((btn as HTMLElement).dataset.speed === String(speed)) {
-            btn.classList.add('active');
-        }
-    });
-}
+export const DEFAULT_SPEED_MS = 200;
 
-function toggleViewMode() {
-    if (!sequentialState) return;
-
-    // Stop animation if playing
-    const wasPlaying = sequentialState.isPlaying;
-    if (wasPlaying) {
-        togglePlayback();
-    }
-
-    // Toggle view mode
-    sequentialState.viewMode = sequentialState.viewMode === 'split' ? 'unified' : 'split';
-
-    // Update button text
-    const toggleBtn = document.getElementById('sequential-view-toggle-btn');
-    if (toggleBtn) {
-        const buttonText = toggleBtn.querySelector('.button-text');
-        const icon = toggleBtn.querySelector('.material-symbols-outlined');
-        if (buttonText && icon) {
-            if (sequentialState.viewMode === 'split') {
-                buttonText.textContent = 'Unified View';
-                icon.textContent = 'view_column';
-            } else {
-                buttonText.textContent = 'Split View';
-                icon.textContent = 'view_agenda';
-            }
-        }
-    }
-
-    // Re-render content
-    renderSequentialContent();
-
-    // Resume animation if it was playing
-    if (wasPlaying) {
-        togglePlayback();
-    }
-}
-
-export function closeSequentialViewer() {
-    const overlay = document.getElementById('sequential-viewer-overlay');
-    if (overlay) {
-        if ((overlay as any).cleanup) {
-            (overlay as any).cleanup();
-        }
-        overlay.classList.remove('visible');
-        setTimeout(() => {
-            overlay.remove();
-        }, 300);
-    }
-    sequentialState = null;
-}
+// Re-export imperative portal API from the React component file
+export { openSequentialViewer, closeSequentialViewer } from './SequentialViewer.tsx';

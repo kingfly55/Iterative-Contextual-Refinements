@@ -1,169 +1,108 @@
-
 import { globalState } from '../Core/State';
-import { updateControlsState } from './Controls';
-import { renderDeepthinkConfigPanelInContainer } from '../Deepthink/DeepthinkConfigPanel';
-import { renderAgenticMode } from '../Agentic/Agentic';
-import { renderContextualMode } from '../Contextual/Contextual';
-import { renderAdaptiveDeepthinkMode } from '../AdaptiveDeepthink';
-import { activateTab, clearTabsContainer } from './Tabs';
-import { updatePipelineStatusUI, renderIteration, attachIterationEventListeners } from '../Refine/WebsiteUI';
-import { updateCodeExecutionToggleVisibility } from './setupCodeExecutionToggle';
+import { ApplicationMode } from '../Core/Types';
 
-export function updateUIAfterModeChange() {
-    const { currentMode } = globalState;
-
-    // Update radio buttons
-    const appModeRadios = document.querySelectorAll('input[name="app-mode"]');
-    appModeRadios.forEach(radio => {
-        if ((radio as HTMLInputElement).value === currentMode) {
-            (radio as HTMLInputElement).checked = true;
-        }
-    });
-
-    // Update body class for mode-specific styling
-    document.body.classList.remove('mode-website', 'mode-deepthink', 'mode-agentic', 'mode-contextual', 'mode-adaptive-deepthink');
-    document.body.classList.add(`mode-${currentMode}`);
-
-    // Update header title
-    const headerTitle = document.querySelector('.header-title h1');
-    if (headerTitle) {
-        switch (currentMode) {
-            case 'website': headerTitle.textContent = 'Iterative Studio'; break;
-            case 'deepthink': headerTitle.textContent = 'Deepthink'; break;
-            case 'agentic': headerTitle.textContent = 'Agentic Refinements'; break;
-            case 'contextual': headerTitle.textContent = 'Contextual Refinements'; break;
-            case 'adaptive-deepthink': headerTitle.textContent = 'Adaptive Deepthink'; break;
-        }
-    }
-
-    // Show/hide mode specific controls
-    const websiteControls = document.getElementById('website-mode-controls');
-    const deepthinkControls = document.getElementById('deepthink-mode-controls');
-    const agenticControls = document.getElementById('agentic-mode-controls');
-    const adaptiveDeepthinkControls = document.getElementById('adaptive-deepthink-mode-controls');
-
-    if (websiteControls) websiteControls.style.display = currentMode === 'website' ? 'block' : 'none';
-    if (deepthinkControls) deepthinkControls.style.display = currentMode === 'deepthink' ? 'block' : 'none';
-    if (agenticControls) agenticControls.style.display = currentMode === 'agentic' ? 'block' : 'none';
-    // Contextual mode controls visibility is handled by updateCodeExecutionToggleVisibility 
-    // (checks both mode AND provider for Gemini code execution toggle)
-    updateCodeExecutionToggleVisibility(currentMode);
-    if (adaptiveDeepthinkControls) adaptiveDeepthinkControls.style.display = currentMode === 'adaptive-deepthink' ? 'block' : 'none';
-
-    // Update main content area
-    const pipelinesContentContainer = document.getElementById('pipelines-content-container');
-    const tabsNavContainer = document.getElementById('tabs-nav-container');
-
-    if (pipelinesContentContainer && tabsNavContainer) {
-        if (currentMode === 'deepthink') {
-            renderDeepthinkConfigPanelInContainer(pipelinesContentContainer);
-        } else if (currentMode === 'agentic') {
-            renderAgenticMode();
-        } else if (currentMode === 'contextual') {
-            renderContextualMode();
-        } else if (currentMode === 'adaptive-deepthink') {
-            renderAdaptiveDeepthinkMode();
-        } else {
-            renderPipelines();
-        }
-    }
-
-    updateControlsState();
+export interface PipelineTabData {
+    id: number;
+    modelName: string;
+    temperature: number;
+    status: string;
+    isActive: boolean;
 }
 
-export function renderPipelines() {
-    const { currentMode, pipelinesState, activePipelineId } = globalState;
-    const tabsNavContainer = document.getElementById('tabs-nav-container');
-    const pipelinesContentContainer = document.getElementById('pipelines-content-container');
+export interface ModeConfig {
+    title: string;
+    bodyClass: string;
+}
 
-    if (currentMode !== 'website' || !tabsNavContainer || !pipelinesContentContainer) {
-        if (currentMode !== 'website' && tabsNavContainer && pipelinesContentContainer) {
-            clearTabsContainer();
-            pipelinesContentContainer.innerHTML = '';
-        }
-        return;
+const MODE_CONFIGS: Record<ApplicationMode, ModeConfig> = {
+    'website': { title: 'Iterative Studio', bodyClass: 'mode-website' },
+    'deepthink': { title: 'Deepthink', bodyClass: 'mode-deepthink' },
+    'agentic': { title: 'Agentic Refinements', bodyClass: 'mode-agentic' },
+    'contextual': { title: 'Contextual Refinements', bodyClass: 'mode-contextual' },
+    'adaptive-deepthink': { title: 'Adaptive Deepthink', bodyClass: 'mode-adaptive-deepthink' }
+};
+
+export function getCurrentModeConfig(): ModeConfig {
+    return MODE_CONFIGS[globalState.currentMode] || MODE_CONFIGS['website'];
+}
+
+export function getModeTitle(mode: ApplicationMode): string {
+    return MODE_CONFIGS[mode]?.title || 'Iterative Studio';
+}
+
+export function getModeBodyClass(mode: ApplicationMode): string {
+    return MODE_CONFIGS[mode]?.bodyClass || 'mode-website';
+}
+
+export function getPipelineTabsData(): PipelineTabData[] {
+    const { pipelinesState, activePipelineId } = globalState;
+    return pipelinesState.map(pipeline => ({
+        id: pipeline.id,
+        modelName: pipeline.modelName,
+        temperature: pipeline.temperature,
+        status: pipeline.status,
+        isActive: pipeline.id === activePipelineId
+    }));
+}
+
+export function getActivePipelineId(): number | undefined {
+    return globalState.activePipelineId ?? undefined;
+}
+
+export function isWebsiteMode(): boolean {
+    return globalState.currentMode === 'website';
+}
+
+export function getCurrentMode(): ApplicationMode {
+    return globalState.currentMode;
+}
+
+export function isGenerating(): boolean {
+    return globalState.isGenerating;
+}
+
+export function getPipelinesCount(): number {
+    return globalState.pipelinesState.length;
+}
+
+export function getModeRadioValue(): ApplicationMode {
+    return globalState.currentMode;
+}
+
+export function getHeaderTitleForMode(mode: ApplicationMode): string {
+    switch (mode) {
+        case 'website': return 'Iterative Studio';
+        case 'deepthink': return 'Deepthink';
+        case 'agentic': return 'Agentic Refinements';
+        case 'contextual': return 'Contextual Refinements';
+        case 'adaptive-deepthink': return 'Adaptive Deepthink';
+        default: return 'Iterative Studio';
     }
+}
 
-    clearTabsContainer();
-    pipelinesContentContainer.innerHTML = '';
+export function getControlVisibility(mode: ApplicationMode): {
+    website: boolean;
+    deepthink: boolean;
+    agentic: boolean;
+    adaptiveDeepthink: boolean;
+} {
+    return {
+        website: mode === 'website',
+        deepthink: mode === 'deepthink',
+        agentic: mode === 'agentic',
+        adaptiveDeepthink: mode === 'adaptive-deepthink'
+    };
+}
 
-    if (pipelinesState.length === 0) {
-        pipelinesContentContainer.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-state-icon"><span class="material-symbols-outlined">lightbulb</span></div>
-                <h3>Ready to Create</h3>
-                <p>Enter your idea above and click "Generate" to start the iterative refinement process.</p>
-            </div>
-        `;
-        return;
-    }
+export function getPipelineStatusForId(pipelineId: number): string {
+    const pipeline = globalState.pipelinesState.find(p => p.id === pipelineId);
+    return pipeline?.status || 'idle';
+}
 
-    pipelinesState.forEach(pipeline => {
-        const tabButton = document.createElement('button');
-        tabButton.id = `pipeline-tab-${pipeline.id}`;
-        tabButton.className = `tab-button status-${pipeline.status}`;
-        tabButton.innerHTML = `<span class="tab-label">Pipeline ${pipeline.id + 1}</span><span class="tab-model-badge">${pipeline.modelName}</span>`;
-        if (pipeline.id === activePipelineId) tabButton.classList.add('active');
-        tabButton.setAttribute('role', 'tab');
-        tabButton.setAttribute('aria-controls', `pipeline-content-${pipeline.id}`);
-        tabButton.setAttribute('aria-selected', (pipeline.id === activePipelineId).toString());
-        tabButton.addEventListener('click', () => activateTab(pipeline.id));
-        tabsNavContainer.appendChild(tabButton);
-        pipeline.tabButtonElement = tabButton;
+export function setActivePipelineId(id: number) {
+    globalState.activePipelineId = id;
+}
 
-        const contentPane = document.createElement('div');
-        contentPane.id = `pipeline-content-${pipeline.id}`;
-        contentPane.className = `pipeline-content ${pipeline.id === activePipelineId ? 'active' : ''}`;
-        contentPane.setAttribute('role', 'tabpanel');
-        contentPane.setAttribute('aria-labelledby', `pipeline-tab-${pipeline.id}`);
-
-        const header = document.createElement('div');
-        header.className = 'pipeline-header';
-        header.innerHTML = `
-            <div class="pipeline-info">
-                <h3>Pipeline ${pipeline.id + 1}</h3>
-                <span class="pipeline-meta">Model: ${pipeline.modelName} • Temp: ${pipeline.temperature}</span>
-            </div>
-            <div class="pipeline-actions">
-                <span id="pipeline-status-text-${pipeline.id}" class="pipeline-status status-badge status-${pipeline.status}">${pipeline.status}</span>
-                <button id="stop-btn-${pipeline.id}" class="button stop-button" style="display: none;">
-                    <span class="material-symbols-outlined">stop_circle</span>
-                    <span class="button-text">Stop</span>
-                </button>
-            </div>
-        `;
-        contentPane.appendChild(header);
-
-        const stopBtn = header.querySelector(`#stop-btn-${pipeline.id}`) as HTMLButtonElement;
-        if (stopBtn) {
-            pipeline.stopButtonElement = stopBtn;
-            stopBtn.addEventListener('click', () => {
-                if (pipeline.status === 'running') {
-                    pipeline.isStopRequested = true;
-                    pipeline.status = 'stopping';
-                    updatePipelineStatusUI(pipeline.id, 'stopping');
-                }
-            });
-        }
-
-        const iterationsList = document.createElement('ul');
-        iterationsList.className = 'iterations-list';
-        iterationsList.id = `iterations-list-${pipeline.id}`;
-        contentPane.appendChild(iterationsList);
-
-        pipeline.iterations.forEach(iter => {
-            const iterHtml = renderIteration(pipeline.id, iter);
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = iterHtml;
-            if (tempDiv.firstElementChild) {
-                iterationsList.appendChild(tempDiv.firstElementChild);
-                attachIterationEventListeners(pipeline.id, iter.iterationNumber);
-            }
-        });
-
-        pipelinesContentContainer.appendChild(contentPane);
-        pipeline.contentElement = contentPane;
-    });
-
-    updatePipelineStatusUI(globalState.activePipelineId || 0, pipelinesState.find(p => p.id === globalState.activePipelineId)?.status || 'idle');
+export function setCurrentMode(mode: ApplicationMode) {
+    globalState.currentMode = mode;
 }

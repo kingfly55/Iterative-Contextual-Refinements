@@ -23,11 +23,10 @@ export { ADAPTIVE_DEEPTHINK_SYSTEM_PROMPT } from './AdaptiveDeepthinkPrompt';
 
 // Main orchestration
 export {
-    initializeAdaptiveDeepthinkModule,
-    startAdaptiveDeepthinkSession,
-    getActiveAdaptiveDeepthinkSession,
-    stopAdaptiveDeepthinkSession,
-    clearAdaptiveDeepthinkSession
+    subscribeToAdaptiveDeepthinkState,
+    notifyAdaptiveDeepthinkListeners,
+    updateAdaptiveDeepthinkTab,
+    updateAdaptiveDeepthinkStrategyTab
 } from './AdaptiveDeepthink';
 
 // UI integration
@@ -39,3 +38,6 @@ export {
     getAdaptiveDeepthinkState,
     setAdaptiveDeepthinkStateForImport
 } from './AdaptiveDeepthinkMode';
+
+export { AdaptiveDeepthinkPromptsManager, globalAdaptiveDeepthinkPromptsManager } from './AdaptiveDeepthinkPromptsManager';
+export { AdaptivePromptsContent } from './AdaptivePromptsContent';

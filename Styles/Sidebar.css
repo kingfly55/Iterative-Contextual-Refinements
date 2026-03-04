@@ -15,8 +15,8 @@
 
 /* Shared Sidebar Button Styles */
 .sidebar-collapse-button,
-.theme-toggle-button,
-.sidebar-expand-button {
+.sidebar-expand-button,
+.theme-toggle-button {
     background: transparent;
     border: 1px solid transparent;
     border-radius: var(--border-radius-md);
@@ -70,19 +70,32 @@ body.light-mode .sidebar-collapse-button .material-symbols-outlined {
 }
 
 .sidebar-expand-button {
-    background: var(--button-bg-color);
-    border-color: var(--button-border-color);
     color: var(--text-color);
-    box-shadow: var(--shadow-md);
     margin-right: var(--space-3);
     height: fit-content;
     position: relative;
     z-index: 10;
+    transition: all var(--transition-speed-fast) ease;
 }
 
-.sidebar-expand-button:hover {
-    background: var(--button-hover-bg-color);
-    border-color: var(--button-hover-border-color);
+.sidebar-expand-button:hover,
+body.light-mode .sidebar-expand-button:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+body.light-mode .sidebar-expand-button:hover {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+.sidebar-expand-button .material-symbols-outlined {
+    font-size: 1.125rem;
+    color: var(--text-color);
+}
+
+body.light-mode .sidebar-expand-button .material-symbols-outlined {
+    color: #666666;
 }
 
 /* Ensure tabs container has proper flex layout when expand button is present */

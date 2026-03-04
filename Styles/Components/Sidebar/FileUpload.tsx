@@ -1,65 +1,30 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { globalState } from '../../../Core/State';
 import './FileUpload.css';
+import {
+    FileData,
+    ACCEPTED_FILES,
+    getFileConfig,
+    isImage,
+    isVideo,
+    isPdf,
+    isText,
+    formatFileSize,
+    calculateTotalSize,
+    isSizeWarning,
+    decodeBase64Content,
+    processFiles,
+    updateGlobalStateWithFiles,
+    clearGlobalStateFiles,
+    resetFileInput,
+} from './FileUploadLogic';
 
-// Supported file types with their icons and colors
-const FILE_TYPE_CONFIG: Record<string, { icon: string; color: string; label: string }> = {
-    // Images
-    'image/png': { icon: 'image', color: '#10b981', label: 'PNG' },
-    'image/jpeg': { icon: 'image', color: '#10b981', label: 'JPG' },
-    'image/gif': { icon: 'gif', color: '#8b5cf6', label: 'GIF' },
-    'image/webp': { icon: 'image', color: '#10b981', label: 'WEBP' },
-    // Documents
-    'application/pdf': { icon: 'picture_as_pdf', color: '#ef4444', label: 'PDF' },
-    'text/plain': { icon: 'description', color: '#6b7280', label: 'TXT' },
-    'text/html': { icon: 'code', color: '#f97316', label: 'HTML' },
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': { icon: 'description', color: '#3b82f6', label: 'DOCX' },
-    // Spreadsheets
-    'text/csv': { icon: 'table_chart', color: '#22c55e', label: 'CSV' },
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { icon: 'table_chart', color: '#22c55e', label: 'XLSX' },
-    // Code files
-    'text/x-python': { icon: 'code', color: '#3776ab', label: 'PY' },
-    'application/x-python': { icon: 'code', color: '#3776ab', label: 'PY' },
-    'text/javascript': { icon: 'javascript', color: '#f7df1e', label: 'JS' },
-    'application/javascript': { icon: 'javascript', color: '#f7df1e', label: 'JS' },
-    'text/x-c++src': { icon: 'code', color: '#00599c', label: 'CPP' },
-    'application/json': { icon: 'data_object', color: '#6b7280', label: 'JSON' },
-    // Video
-    'video/mp4': { icon: 'movie', color: '#a855f7', label: 'MP4' },
-    'video/webm': { icon: 'movie', color: '#a855f7', label: 'WEBM' },
-    'video/quicktime': { icon: 'movie', color: '#a855f7', label: 'MOV' },
-};
-
-const ACCEPTED_FILES = [
-    'image/*',
-    '.pdf', '.txt', '.html', '.docx',
-    '.csv', '.xlsx',
-    '.py', '.js', '.cpp', '.json',
-    '.mp4', '.webm', '.mov'
-].join(',');
-
-const SIZE_WARNING_THRESHOLD = 15 * 1024 * 1024;
-
-interface FileData {
-    base64: string;
-    mimeType: string;
-    name: string;
-    size: number;
-}
-
-// File Preview Modal Component
 const FilePreviewModal: React.FC<{
     file: FileData;
     onClose: () => void;
 }> = ({ file, onClose }) => {
-    const isImage = file.mimeType.startsWith('image/');
-    const isVideo = file.mimeType.startsWith('video/');
-    const isPdf = file.mimeType === 'application/pdf';
-    const isText = file.mimeType.startsWith('text/') || file.mimeType === 'application/json';
-    const config = FILE_TYPE_CONFIG[file.mimeType] || { icon: 'insert_drive_file', color: '#6b7280', label: 'FILE' };
+    const config = getFileConfig(file.mimeType);
 
-    // Keyboard handler for Escape
     React.useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
@@ -68,7 +33,6 @@ const FilePreviewModal: React.FC<{
         };
 
         document.addEventListener('keydown', handleKeyDown);
-        // Prevent body scroll when modal is open
         document.body.style.overflow = 'hidden';
 
         return () => {
@@ -77,19 +41,13 @@ const FilePreviewModal: React.FC<{
         };
     }, [onClose]);
 
-    // Decode base64 for text files
     const getTextContent = () => {
-        try {
-            return atob(file.base64);
-        } catch {
-            return 'Unable to decode file content';
-        }
+        return decodeBase64Content(file.base64);
     };
 
     return (
         <div className="file-preview-modal-overlay" onClick={onClose}>
             <div className="file-preview-modal" onClick={e => e.stopPropagation()}>
-                {/* Header */}
                 <div className="preview-modal-header">
                     <div className="preview-file-info">
                         <span
@@ -108,9 +66,8 @@ const FilePreviewModal: React.FC<{
                     </button>
                 </div>
 
-                {/* Content */}
                 <div className="preview-modal-content">
-                    {isImage && (
+                    {isImage(file.mimeType) && (
                         <div className="preview-image-container">
                             <img
                                 src={`data:${file.mimeType};base64,${file.base64}`}
@@ -120,7 +77,7 @@ const FilePreviewModal: React.FC<{
                         </div>
                     )}
 
-                    {isVideo && (
+                    {isVideo(file.mimeType) && (
                         <video
                             src={`data:${file.mimeType};base64,${file.base64}`}
                             controls
@@ -129,7 +86,7 @@ const FilePreviewModal: React.FC<{
                         />
                     )}
 
-                    {isPdf && (
+                    {isPdf(file.mimeType) && (
                         <iframe
                             src={`data:${file.mimeType};base64,${file.base64}`}
                             className="preview-pdf"
@@ -137,13 +94,13 @@ const FilePreviewModal: React.FC<{
                         />
                     )}
 
-                    {isText && (
+                    {isText(file.mimeType) && (
                         <pre className="preview-code">
                             <code>{getTextContent()}</code>
                         </pre>
                     )}
 
-                    {!isImage && !isVideo && !isPdf && !isText && (
+                    {!isImage(file.mimeType) && !isVideo(file.mimeType) && !isPdf(file.mimeType) && !isText(file.mimeType) && (
                         <div className="preview-unsupported">
                             <span className="material-symbols-outlined" style={{ fontSize: '4rem', color: config.color }}>
                                 {config.icon}
@@ -172,43 +129,25 @@ export const FileUpload: React.FC = () => {
     const [previewFile, setPreviewFile] = useState<FileData | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const processFiles = useCallback((fileList: FileList | File[]) => {
-        Array.from(fileList).forEach(file => {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const result = e.target?.result as string;
-                const matches = result.match(/^data:(.+);base64,(.+)$/);
-                if (matches) {
-                    const mimeType = matches[1];
-                    const base64 = matches[2];
-
-                    const newFile: FileData = {
-                        mimeType,
-                        base64,
-                        name: file.name,
-                        size: file.size
-                    };
-
-                    setFiles(prev => {
-                        const updated = [...prev, newFile];
-                        globalState.currentProblemImages = updated;
-                        const newTotal = updated.reduce((sum, f) => sum + f.size, 0);
-                        setTotalSize(newTotal);
-                        return updated;
-                    });
-                }
-            };
-            reader.readAsDataURL(file);
-        });
+    const handleFiles = useCallback(async (fileList: FileList | File[]) => {
+        try {
+            const newFiles = await processFiles(fileList);
+            setFiles(prev => {
+                const updated = [...prev, ...newFiles];
+                updateGlobalStateWithFiles(updated);
+                setTotalSize(calculateTotalSize(updated));
+                return updated;
+            });
+        } catch (error) {
+            console.error('Error processing files:', error);
+        }
     }, []);
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         if (event.target.files) {
-            processFiles(event.target.files);
+            handleFiles(event.target.files);
         }
-        if (fileInputRef.current) {
-            fileInputRef.current.value = '';
-        }
+        resetFileInput(fileInputRef);
     };
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -229,45 +168,31 @@ export const FileUpload: React.FC = () => {
         setIsDragging(false);
 
         if (e.dataTransfer.files?.length > 0) {
-            processFiles(e.dataTransfer.files);
+            handleFiles(e.dataTransfer.files);
         }
-    }, [processFiles]);
+    }, [handleFiles]);
 
     const removeFile = (index: number, e: React.MouseEvent) => {
         e.stopPropagation();
         setFiles(prev => {
             const updated = prev.filter((_, i) => i !== index);
-            globalState.currentProblemImages = updated;
-            const newTotal = updated.reduce((sum, f) => sum + f.size, 0);
-            setTotalSize(newTotal);
+            updateGlobalStateWithFiles(updated);
+            setTotalSize(calculateTotalSize(updated));
             return updated;
         });
     };
 
     const clearAll = () => {
         setFiles([]);
-        globalState.currentProblemImages = [];
+        clearGlobalStateFiles();
         setTotalSize(0);
     };
 
-    const getFileConfig = (mimeType: string) => {
-        return FILE_TYPE_CONFIG[mimeType] || { icon: 'insert_drive_file', color: '#6b7280', label: 'FILE' };
-    };
-
-    const isImage = (mimeType: string): boolean => mimeType.startsWith('image/');
-
-    const formatFileSize = (bytes: number): string => {
-        if (bytes < 1024) return `${bytes} B`;
-        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    };
-
-    const sizeWarning = totalSize > SIZE_WARNING_THRESHOLD;
+    const sizeWarning = isSizeWarning(totalSize);
 
     return (
         <>
             <div className="file-upload-wrapper">
-                {/* Drop Zone */}
                 <div
                     className={`file-drop-zone ${isDragging ? 'dragging' : ''} ${files.length > 0 ? 'has-files' : ''}`}
                     onDragOver={handleDragOver}
@@ -300,7 +225,6 @@ export const FileUpload: React.FC = () => {
                     )}
                 </div>
 
-                {/* File List */}
                 {files.length > 0 && (
                     <div className="file-list-container">
                         <div className="file-list-header">
@@ -375,7 +299,6 @@ export const FileUpload: React.FC = () => {
                 )}
             </div>
 
-            {/* Preview Modal - rendered to body via portal for true fullscreen */}
             {previewFile && createPortal(
                 <FilePreviewModal
                     file={previewFile}

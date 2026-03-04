@@ -16,7 +16,7 @@ import {
     restoreSolutionPoolVersions
 } from '../../../Deepthink/SolutionPool';
 import { renderActiveDeepthinkPipeline } from '../../../Deepthink/Deepthink';
-import { activateTab } from '../../../Refine/WebsiteUI';
+import { activateTab } from '../../AppRouter';
 
 /**
  * Extended state that includes solution pool versions for evolution view.

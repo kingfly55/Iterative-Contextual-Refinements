@@ -8,7 +8,7 @@
 import type { ModeStateHandler } from '../ModeStateHandler';
 import type { PipelineState } from '../../Types';
 import { globalState } from '../../State';
-import { renderPipelines } from '../../../Refine/WebsiteUI';
+import { renderActiveMode } from '../../AppRouter';
 
 /**
  * Website mode state includes multiple pipelines.
@@ -40,6 +40,6 @@ export const websiteModeStateHandler: ModeStateHandler<WebsiteModeExportState> =
     },
 
     renderAfterImport(): void {
-        renderPipelines();
+        renderActiveMode();
     },
 };
