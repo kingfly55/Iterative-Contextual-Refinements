@@ -45,6 +45,12 @@ The pipeline runs Track A (Strategic Solver) and Track B (Hypothesis Explorer) c
 - The `QuotaBackoffManager` must be re-entrant-safe: multiple concurrent calls to `recordQuotaError()` must not trigger duplicate saves.
 - All concurrent callers must check `isPaused()` before retrying.
 
+**Note on JavaScript single-threadedness:** While JS is single-threaded (no true data races), interleaving occurs at `await` boundaries. Between the time Track A triggers the pause and Track B reaches its next `await`, Track B's current in-flight API request may still complete with a 429. The `isPaused()` check at the top of the retry loop catches this at Track B's next iteration. There is no way to abort an in-flight `fetch` retroactively, so this 1-request lag is inherent and acceptable.
+
+### Interaction with existing exponential backoff
+
+When `consecutive429Threshold` is set to N (default: 2), the first N-1 429 errors are handled by the existing exponential backoff retry logic (20s, 40s, etc.). Only after N consecutive 429s does the quota backoff manager trigger a pause. This means there is a delay of `sum(INITIAL_DELAY_MS * BACKOFF_FACTOR^i for i in 0..N-2)` before the pause kicks in (e.g., ~20s for threshold=2). This is acceptable and actually desirable — it avoids pausing on transient rate limits that resolve within seconds.
+
 ## Architecture
 
 ### State Machine
@@ -64,7 +70,7 @@ The pipeline runs Track A (Strategic Solver) and Track B (Hypothesis Explorer) c
                     +──────────────+
                     |   PAUSED     |  ── countdown UI visible, no API calls
                     +──────┬───────+
-                           │ quota reset time reached
+                           │ quota reset time reached (or manual "Resume now")
                            v
                     +──────────────+
                     |  RESUMING    |  ── calls resume entry point
@@ -78,6 +84,7 @@ The pipeline runs Track A (Strategic Solver) and Track B (Hypothesis Explorer) c
 Error paths:
   RESUMING ──(resume throws)──> RUNNING (manager resets; pipeline catch sets status='error')
   Any state ──(reset() called)──> RUNNING (manual cancel or new pipeline start)
+  SAVING ──(save throws)──> PAUSED (save failure is non-fatal; pause anyway to protect state)
 ```
 
 ### Data Flow
@@ -157,6 +164,13 @@ makeDeepthinkApiCall()                    QuotaBackoffManager
  * corrections). All calls that hit 429 will call recordQuotaError(). A re-entrant
  * guard ensures only the first caller past the threshold triggers the save/pause
  * transition. Subsequent callers see isPaused()===true and throw immediately.
+ *
+ * THREAD SAFETY NOTE:
+ * JavaScript is single-threaded. "Concurrent" here means interleaved at await
+ * boundaries, not parallel execution. There are no data races on the state or
+ * counter fields. The re-entrant guard protects against the scenario where
+ * multiple callers invoke recordQuotaError() synchronously in sequence (e.g.,
+ * when multiple promises resolve in the same microtask batch).
  */
 
 // ── Types ──
@@ -246,10 +260,20 @@ export class QuotaBackoffManager {
     onResumePipeline: () => Promise<void>;
   }): void;
 
+  /**
+   * Update config at runtime (e.g., from config panel changes).
+   * If currently paused, recomputes the next reset time and restarts
+   * the countdown timer with the new reset time.
+   */
   updateConfig(partial: Partial<QuotaBackoffConfig>): void;
 
   getConfig(): Readonly<QuotaBackoffConfig>;
 
+  /**
+   * Build a snapshot of current state. msUntilReset is computed dynamically
+   * from this.nextResetTime and this.clock.now() — it is NOT stored as a field.
+   * Returns 0 for msUntilReset when nextResetTime is null or in the past.
+   */
   getSnapshot(): QuotaBackoffSnapshot;
 
   subscribe(listener: QuotaBackoffListener): () => void;
@@ -279,7 +303,8 @@ export class QuotaBackoffManager {
 
   /**
    * Force-reset to 'running' state. Used when pipeline is manually stopped
-   * or a new pipeline starts. Does NOT reset cycleCount (only full reset does).
+   * or a new pipeline starts. Does NOT reset cycleCount (only fullReset does).
+   * Stops all timers. Does NOT clear listeners (they persist across resets).
    */
   reset(): void;
 
@@ -293,6 +318,13 @@ export class QuotaBackoffManager {
    * meaning no API calls should be attempted.
    */
   isPaused(): boolean;
+
+  /**
+   * Public entry point for "Resume now" button. Bypasses countdown timer
+   * and triggers resume immediately. Ignores the autoResumeEnabled flag
+   * (manual resume is always allowed). No-op if not in 'paused' state.
+   */
+  resumeNow(): void;
 
   // ── Internal Methods ──
 
@@ -309,6 +341,12 @@ export class QuotaBackoffManager {
    * NOTE: Uses absolute millisecond offsets for cycle computation (5h = 18_000_000ms)
    * rather than "add 5 to the hour field" to avoid DST edge cases where clocks
    * spring forward/back.
+   *
+   * DST CAVEAT: The base time (firstResetTime parsed as today's local time) IS
+   * affected by DST. If the user sets firstResetTime=02:30 and DST springs forward
+   * at 02:00, the base may land at 03:30. This is acceptable because the Claude API
+   * quota resets at absolute intervals (not wall-clock-aligned), and a 1-hour shift
+   * in the displayed reset time is tolerable for a ~5-hour wait.
    */
   private computeNextResetTime(): Date | null;
 
@@ -338,6 +376,9 @@ export class QuotaBackoffManager {
   /**
    * Trigger the resume. Called when countdown reaches 0 or manually via "Resume now".
    * Handles resume failures by resetting manager state.
+   *
+   * IMPORTANT: When called from a setTimeout/setInterval callback, the returned
+   * promise is handled with .catch() to prevent unhandled rejections.
    */
   private async triggerResume(): Promise<void>;
 
@@ -376,7 +417,7 @@ recordQuotaError(): boolean {
   if (this.consecutive429Count >= this.config.consecutive429Threshold) {
     // Check cycle limit to prevent infinite pause/resume loops
     if (this.cycleCount >= this.config.maxCyclesPerSession) {
-      console.error(`[QuotaBackoff] Max pause/resume cycles (${this.config.maxCyclesPerSession}) reached. Not pausing — will let normal retry logic handle.`);
+      console.error(`[QuotaBackoff] Max pause/resume cycles (${this.config.maxCyclesPerSession}) reached. Not pausing — will let normal retry logic handle (which will eventually exhaust retries and fail with data loss). This is a deliberate fail-open to prevent infinite loops from misconfigured reset times.`);
       return false;
     }
 
@@ -396,21 +437,63 @@ recordQuotaError(): boolean {
     if (this.onSaveSession) {
       this.onSaveSession(this.savedFilename)
         .then(() => {
+          // Guard: if reset() was called while save was in-flight, don't transition
+          if (this.state !== 'saving') return;
           this.transitionTo('paused');
           this.startCountdown();
         })
         .catch((err) => {
           console.error('[QuotaBackoff] Save failed, pausing anyway:', err);
+          if (this.state !== 'saving') return;
           this.transitionTo('paused');
           this.startCountdown();
         });
     } else {
+      console.warn('[QuotaBackoff] No onSaveSession callback set — session will NOT be saved. Call setCallbacks() during initialization.');
       this.transitionTo('paused');
       this.startCountdown();
     }
     return true;
   }
   return false;
+}
+```
+
+**`getSnapshot(): QuotaBackoffSnapshot`**
+```typescript
+getSnapshot(): QuotaBackoffSnapshot {
+  const now = this.clock.now();
+  const msUntilReset = this.nextResetTime
+    ? Math.max(0, this.nextResetTime.getTime() - now)
+    : 0;
+
+  return {
+    state: this.state,
+    consecutive429Count: this.consecutive429Count,
+    nextResetTime: this.nextResetTime,
+    msUntilReset,
+    savedFilename: this.savedFilename,
+    cycleCount: this.cycleCount,
+    maxCyclesPerSession: this.config.maxCyclesPerSession,
+  };
+}
+```
+
+**`updateConfig(partial): void`**
+```typescript
+updateConfig(partial: Partial<QuotaBackoffConfig>): void {
+  this.config = { ...this.config, ...partial };
+
+  // If currently paused, recompute reset time and restart countdown
+  // so config changes take effect immediately.
+  if (this.state === 'paused') {
+    const newResetTime = this.computeNextResetTime();
+    if (newResetTime?.getTime() !== this.nextResetTime?.getTime()) {
+      this.nextResetTime = newResetTime;
+      this.startCountdown(); // restarts timers with new reset time
+    }
+    this.notify();
+  }
 }
 ```
 
@@ -432,12 +515,19 @@ private startCountdown(): void {
   const msUntilReset = this.nextResetTime.getTime() - this.clock.now();
   if (msUntilReset <= 0) {
     // Reset time already passed — resume immediately
-    this.triggerResume();
+    // Use .catch() to prevent unhandled promise rejection from timer callback
+    this.triggerResume().catch(err => {
+      console.error('[QuotaBackoff] Immediate resume failed:', err);
+    });
     return;
   }
 
   this.resumeTimerId = this.clock.setTimeout(() => {
-    this.triggerResume();
+    // IMPORTANT: .catch() here prevents unhandled promise rejection.
+    // triggerResume() is async but this callback is sync (from setTimeout).
+    this.triggerResume().catch(err => {
+      console.error('[QuotaBackoff] Scheduled resume failed:', err);
+    });
   }, msUntilReset);
 }
 ```
@@ -445,6 +535,13 @@ private startCountdown(): void {
 **`triggerResume(): void`**
 ```typescript
 private async triggerResume(): Promise<void> {
+  // Guard: only resume from 'paused' state. Prevents double-resume if
+  // both the timer fires and the user clicks "Resume now" simultaneously.
+  if (this.state !== 'paused') {
+    console.warn(`[QuotaBackoff] triggerResume called in state '${this.state}', ignoring.`);
+    return;
+  }
+
   if (!this.config.autoResumeEnabled) {
     console.log('[QuotaBackoff] Auto-resume disabled. Waiting for manual resume.');
     return;
@@ -457,6 +554,8 @@ private async triggerResume(): Promise<void> {
   try {
     if (this.onResumePipeline) {
       await this.onResumePipeline();
+    } else {
+      console.warn('[QuotaBackoff] No onResumePipeline callback set. Cannot auto-resume.');
     }
     this.transitionTo('running');
   } catch (err: any) {
@@ -468,6 +567,40 @@ private async triggerResume(): Promise<void> {
     this.nextResetTime = null;
     this.notify();
   }
+}
+```
+
+**`resumeNow(): void`**
+```typescript
+resumeNow(): void {
+  if (this.state !== 'paused') {
+    console.warn(`[QuotaBackoff] resumeNow called in state '${this.state}', ignoring.`);
+    return;
+  }
+
+  // Manual resume — bypass autoResumeEnabled check.
+  this.stopTimers();
+  this.consecutive429Count = 0;
+  this.transitionTo('resuming');
+
+  const doResume = async () => {
+    try {
+      if (this.onResumePipeline) {
+        await this.onResumePipeline();
+      }
+      this.transitionTo('running');
+    } catch (err: any) {
+      console.error('[QuotaBackoff] Manual resume failed:', err);
+      this.state = 'running';
+      this.consecutive429Count = 0;
+      this.nextResetTime = null;
+      this.notify();
+    }
+  };
+
+  doResume().catch(err => {
+    console.error('[QuotaBackoff] Unhandled error in resumeNow:', err);
+  });
 }
 ```
 
@@ -553,6 +686,9 @@ reset(): void {
   this.consecutive429Count = 0;
   this.nextResetTime = null;
   this.savedFilename = null;
+  // NOTE: listeners are NOT cleared. They persist across resets (the UI
+  // listener needs to stay subscribed to show/hide the overlay).
+  // NOTE: cycleCount is NOT cleared. Use fullReset() for that.
   this.notify();
 }
 ```
@@ -584,7 +720,10 @@ const OVERLAY_ID = 'deepthink-quota-countdown-overlay';
 /**
  * Mount the countdown UI and subscribe to the manager.
  * Returns an unsubscribe/cleanup function that MUST be called on
- * module teardown (SPA navigation) to remove the DOM element.
+ * module teardown (SPA navigation) to remove the DOM element and
+ * unsubscribe from manager notifications.
+ *
+ * Safe to call multiple times — removes existing overlay first (idempotent).
  */
 export function mountQuotaCountdownUI(): () => void;
 export function unmountQuotaCountdownUI(): void;
@@ -596,6 +735,7 @@ function createOverlayElement(): HTMLDivElement;
 /**
  * Formats milliseconds into "Xh Ym Zs" string.
  * Returns "0s" for zero or negative values (never shows negative durations).
+ * Handles NaN by returning "—" (e.g., if nextResetTime computation failed).
  */
 export function formatCountdown(ms: number): string;
 
@@ -651,7 +791,9 @@ function updateOverlayContent(
 - Overlay is hidden when `snapshot.state === 'running'`.
 - When `snapshot.nextResetTime === null`, hide the timer and reset-time elements, show the "no reset time configured" warning, and make the "Resume now" button prominent.
 - The "Cancel & stop pipeline" button calls `manager.reset()` and sets `currentProcess.isStopRequested = true`.
-- The "Resume now" button calls `manager.triggerResume()` directly (bypasses countdown), allowing manual resume before the timer expires or when no reset time is configured.
+- The "Resume now" button calls `manager.resumeNow()` (public method, bypasses autoResumeEnabled check and countdown), allowing manual resume before the timer expires or when no reset time is configured.
+- `formatCountdown` handles `NaN` gracefully (shows "—" instead of garbage).
+- The overlay removes itself on cleanup (SPA navigation) to prevent DOM leaks.
 
 ### 3. New Error Class in `Deepthink/DeepthinkCore.ts`
 
@@ -666,6 +808,10 @@ Add after `PipelineStopRequestedError` (line ~217):
  * PROPAGATION: This error must propagate through all inner try/catch blocks
  * (trackA, trackB, individual agent catches). All inner catches that re-throw
  * PipelineStopRequestedError must also re-throw PipelineQuotaPausedError.
+ *
+ * SPECIAL HANDLING WITH Promise.allSettled: Since allSettled swallows rejections,
+ * every call site that uses allSettled MUST check isPaused() immediately after
+ * allSettled returns and throw PipelineQuotaPausedError if true.
  */
 export class PipelineQuotaPausedError extends Error {
   constructor(message: string = 'Pipeline paused due to quota exceeded') {
@@ -704,9 +850,10 @@ for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     // ── 429 Quota Detection ──
     // Check for HTTP 429 (model_cooldown) from cliproxyapi.
     // error.status is set by the Anthropic SDK's RateLimitError.
+    // Use word-boundary \b429\b to avoid false positives on port numbers or other numerics.
     const is429 = error?.status === 429
       || error?.error?.type === 'model_cooldown'
-      || (error?.message && /429|rate.?limit|model_cooldown/i.test(error.message));
+      || (error?.message && /\b429\b|rate.?limit|model_cooldown/i.test(error.message));
 
     if (is429) {
       const manager = getQuotaBackoffManager();
@@ -717,7 +864,8 @@ for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         render();
         throw new PipelineQuotaPausedError();
       }
-      // If threshold not met, fall through to normal retry logic below
+      // If threshold not met, fall through to normal retry logic below.
+      // The existing exponential backoff handles the delay before next attempt.
     }
     // NOTE: Do NOT call recordSuccess() on non-429 errors.
     // A network error between two 429s should not reset the consecutive counter —
@@ -769,10 +917,21 @@ The pipeline has several inner `try/catch` blocks that catch errors from API cal
 
 **Location 3 — Individual agent error catches within `Promise.allSettled`** (e.g., correction promises at line ~2710):
 
-These are inside `.catch()` handlers within promises passed to `Promise.allSettled`. Since `allSettled` swallows rejections (reporting them as `{status: 'rejected'}`), we must check for quota pause AFTER `allSettled` returns:
+These are inside `.catch()` handlers within promises passed to `Promise.allSettled`. Since `allSettled` swallows rejections (reporting them as `{status: 'rejected'}`), we must:
 
+1. Ensure `.catch()` handlers inside correction promises **re-throw** `PipelineQuotaPausedError` (so it becomes a rejection reason in allSettled results):
 ```typescript
-await Promise.allSettled(correctionPromises);
+// Inside correction promise .catch() handler:
+.catch((error: any) => {
+    if (error instanceof PipelineQuotaPausedError) throw error; // ← re-throw so allSettled sees it
+    if (error instanceof PipelineStopRequestedError) throw error;
+    // ... existing error handling (log, set status, etc.) ...
+})
+```
+
+2. Check for quota pause AFTER `allSettled` returns:
+```typescript
+const results = await Promise.allSettled(correctionPromises);
 
 // Check if any correction triggered a quota pause.
 // Promise.allSettled doesn't propagate rejections, so we check explicitly.
@@ -780,10 +939,17 @@ if (getQuotaBackoffManager().isPaused()) {
     throw new PipelineQuotaPausedError();
 }
 
+// Also check for PipelineStopRequestedError in rejected results
+for (const result of results) {
+    if (result.status === 'rejected' && result.reason instanceof PipelineStopRequestedError) {
+        throw result.reason;
+    }
+}
+
 console.log(`[Resume] All corrections completed for iteration ${iterNum}`);
 ```
 
-This pattern must be applied at **every** `Promise.allSettled` call site in the pipeline.
+This pattern must be applied at **every** `Promise.allSettled` call site in the pipeline. Search for all `Promise.allSettled` usages and audit each one.
 
 **Location 4 — Final judging catch** (line ~2220):
 ```typescript
@@ -836,6 +1002,7 @@ The resumed API call function (line ~2325) has its own retry loop. Apply the ide
 - Re-throw `PipelineQuotaPausedError` and `PipelineStopRequestedError` immediately in catch (before retry logic)
 - Add `recordSuccess()` after successful response (line ~2360)
 - Do NOT call `recordSuccess()` on non-429 errors
+- Use the same `\b429\b` word-boundary regex for message matching
 
 ### 8. Apply the same pattern to `runFinalJudge()` retry loop
 
@@ -859,10 +1026,11 @@ for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         throw new Error("Empty response from API");
     } catch (error: any) {
         if (error instanceof PipelineQuotaPausedError) throw error;  // ← ADD
+        if (error instanceof PipelineStopRequestedError) throw error;  // ← ADD (was missing)
 
         const is429 = error?.status === 429
           || error?.error?.type === 'model_cooldown'
-          || (error?.message && /429|rate.?limit|model_cooldown/i.test(error.message));
+          || (error?.message && /\b429\b|rate.?limit|model_cooldown/i.test(error.message));
 
         if (is429) {
           const manager = getQuotaBackoffManager();
@@ -915,6 +1083,8 @@ const makeDeepthinkApiCallWithTimeout = async (
 
 Apply the identical fix to `makeResumedApiCallWithTimeout` (line ~2382).
 
+**NOTE:** The `clearTimeout(timeoutId!)` in the catch block is critical. Without it, every `PipelineQuotaPausedError` leaves a dangling timer that will fire minutes later, calling `reject()` on an already-settled promise. While this doesn't crash (the reject is a no-op on a settled promise), it's a resource leak and produces confusing console warnings in some environments.
+
 ### 10. Modifications to `DeepthinkSession.ts`
 
 Add two new exports:
@@ -927,10 +1097,17 @@ Add two new exports:
  *
  * Used by QuotaBackoffManager for auto-save on quota exceeded.
  *
- * NOTE: The <a download> click trick may be blocked by some browsers if
- * there is no recent user gesture. As a fallback, we always save to
- * localStorage first (which is synchronous and reliable), and the file
- * download is best-effort.
+ * SAVE STRATEGY (defense in depth):
+ * 1. localStorage (synchronous, reliable, no user gesture needed) — PRIMARY
+ * 2. File download via <a download> click — SECONDARY/BEST-EFFORT
+ *
+ * The <a download> click trick may be blocked by some browsers if:
+ * - There is no recent user gesture (common in background tabs)
+ * - The browser's popup blocker intercepts it
+ * - The tab is not visible (Page Visibility API)
+ *
+ * The localStorage-first approach ensures state is ALWAYS persisted, even
+ * when the file download is silently blocked.
  */
 export async function saveSessionToFileAutomatic(filename: string): Promise<void> {
     // Always save to localStorage first (reliable, no user gesture needed)
@@ -958,12 +1135,17 @@ export async function saveSessionToFileAutomatic(filename: string): Promise<void
 
     // Delay revokeObjectURL so the browser has time to start the download.
     // The click() triggers an async download; revoking immediately can cancel it.
+    // 5s is conservative; most downloads start within 100ms.
     setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
 /**
  * Immediately flush session state to localStorage (bypasses 2s debounce).
  * Used before quota pause to ensure state is persisted synchronously.
+ *
+ * Clears any pending debounced auto-save timer to prevent a stale save
+ * from overwriting this immediate save. The next auto-save after resume
+ * will re-arm normally.
  */
 export function saveToLocalStorageImmediate(): void {
     if (autoSaveTimer) {
@@ -1064,6 +1246,9 @@ public setQuotaMaxCyclesPerSession(max: number): void {
 
 /**
  * Push current config values to the QuotaBackoffManager singleton.
+ * This is called on every setter so config changes take effect immediately.
+ * If the manager is currently paused, updateConfig() will recompute the
+ * next reset time and restart the countdown with updated parameters.
  */
 private syncQuotaBackoffConfig(): void {
     const manager = getQuotaBackoffManager();
@@ -1167,6 +1352,7 @@ const QuotaBackoffSection: React.FC<{
                 />
                 <span className="input-hint">
                     Leave empty to disable auto-resume (pause + save still works).
+                    The browser time picker always produces 24h "HH:MM" values regardless of AM/PM display.
                 </span>
             </div>
 
@@ -1297,17 +1483,20 @@ export function initQuotaBackoff(): void {
             const pipeline = getActiveDeepthinkPipeline();
             if (!pipeline) {
                 console.error('[QuotaBackoff] No active pipeline to resume.');
-                return;
+                // Throw so the manager transitions back to 'running' via error handler
+                throw new Error('No active pipeline to resume');
             }
 
             // Auto-resume only works for the iterative corrections phase.
-            // If the pipeline hasn't reached iterations yet, log a warning.
+            // If the pipeline hasn't reached iterations yet, we can't resume
+            // into the middle of strategy generation or hypothesis testing.
             const hasIterations = pipeline.initialStrategies.some(s =>
                 s.subStrategies[0] && (s.subStrategies[0] as any).iterativeCorrections
             );
             if (!hasIterations) {
                 console.warn('[QuotaBackoff] Auto-resume is only supported during the iterative corrections phase. The saved session can be manually resumed after quota resets.');
-                return;
+                // Throw so the manager knows resume failed and doesn't stay in 'resuming' state
+                throw new Error('Cannot auto-resume: pipeline has not reached iterative corrections phase');
             }
 
             const depth = deps.getIterativeDepth();
@@ -1319,15 +1508,20 @@ export function initQuotaBackoff(): void {
     quotaUICleanup = mountQuotaCountdownUI();
 }
 
-// Call on module teardown (SPA navigation away from Deepthink)
+// Call on module teardown (SPA navigation away from Deepthink).
+// IMPORTANT: This must be wired into the SPA router's cleanup/unmount hook.
+// Without this, the overlay DOM element and setInterval timer leak.
 export function cleanupQuotaBackoff(): void {
     if (quotaUICleanup) {
         quotaUICleanup();
         quotaUICleanup = null;
     }
+    // Also reset the manager to stop any countdown timers
+    getQuotaBackoffManager().reset();
 }
 
-// Expose for debugging (read-only snapshot, no mutation surface)
+// Expose for debugging (read-only snapshot, no mutation surface).
+// Development/debugging only — not part of public API.
 if (typeof window !== 'undefined') {
     (window as any).__deepthinkQuota = () => getQuotaBackoffManager().getSnapshot();
 }
@@ -1338,11 +1532,27 @@ if (typeof window !== 'undefined') {
 In `startDeepthinkAnalysisProcess()` (line ~550, near the beginning of the function), add:
 
 ```typescript
-// Reset quota backoff state from any previous pipeline run
+// Reset quota backoff state from any previous pipeline run.
+// fullReset clears both consecutive429Count AND cycleCount,
+// ensuring a fresh state for the new pipeline.
 getQuotaBackoffManager().fullReset();
 ```
 
 This ensures a fresh counter and cycle count for each new pipeline, and prevents stale pause state from a previous run from interfering.
+
+### 16. Wire `cleanupQuotaBackoff` into SPA navigation
+
+The `cleanupQuotaBackoff()` function must be called when the user navigates away from the Deepthink view. Locate the existing SPA navigation teardown logic (likely in the router or view controller) and add:
+
+```typescript
+// In the route change handler or view unmount:
+import { cleanupQuotaBackoff } from './Deepthink/Deepthink';
+
+// When leaving the Deepthink view:
+cleanupQuotaBackoff();
+```
+
+Without this, the `setInterval` timer and overlay DOM element leak when the user navigates to a different view.
 
 ## Testing Strategy
 
@@ -1393,6 +1603,9 @@ export class FakeClock implements QuotaClock {
     /**
      * Advance time by `ms` milliseconds, firing all timers that fall within the window.
      * Fires timers in chronological order. Interval timers re-arm automatically.
+     *
+     * NOTE: This only handles synchronous timer callbacks. For callbacks that
+     * trigger async operations, use advanceAsync() instead.
      */
     advance(ms: number): void {
         const targetTime = this._now + ms;
@@ -1424,6 +1637,9 @@ export class FakeClock implements QuotaClock {
      * Use this when timer callbacks trigger async operations (onSaveSession,
      * onResumePipeline). Without this, Promise.resolve() flushes in tests
      * may not catch all microtask queue entries.
+     *
+     * Flushes 4 microtask rounds per timer firing to handle chains like:
+     * save callback → .then() → transitionTo('paused') → startCountdown()
      */
     async advanceAsync(ms: number): Promise<void> {
         const targetTime = this._now + ms;
@@ -1446,9 +1662,11 @@ export class FakeClock implements QuotaClock {
                 this.timers.delete(earliest.id);
             }
             fn();
-            // Flush microtask queue (Promise callbacks, then chains)
-            await new Promise(resolve => resolve(undefined));
-            await new Promise(resolve => resolve(undefined));
+            // Flush microtask queue (Promise callbacks, then chains).
+            // 4 rounds handles: resolve → .then() → .then() → .then()
+            for (let i = 0; i < 4; i++) {
+                await new Promise(resolve => resolve(undefined));
+            }
         }
     }
 }
@@ -1464,6 +1682,7 @@ describe('QuotaBackoffManager', () => {
     test('recordQuotaError increments consecutive count', () => {
         const clock = new FakeClock();
         const mgr = new QuotaBackoffManager({ consecutive429Threshold: 3 }, clock);
+        mgr.setCallbacks({ onSaveSession: async () => {}, onResumePipeline: async () => {} });
         expect(mgr.recordQuotaError()).toBe(false); // 1/3
         expect(mgr.getSnapshot().consecutive429Count).toBe(1);
         expect(mgr.recordQuotaError()).toBe(false); // 2/3
@@ -1474,6 +1693,7 @@ describe('QuotaBackoffManager', () => {
     test('recordSuccess resets consecutive count', () => {
         const clock = new FakeClock();
         const mgr = new QuotaBackoffManager({ consecutive429Threshold: 2 }, clock);
+        mgr.setCallbacks({ onSaveSession: async () => {}, onResumePipeline: async () => {} });
         mgr.recordQuotaError(); // 1/2
         mgr.recordSuccess();
         expect(mgr.getSnapshot().consecutive429Count).toBe(0);
@@ -1485,6 +1705,7 @@ describe('QuotaBackoffManager', () => {
         // A network timeout between two 429s should not reset it.
         const clock = new FakeClock();
         const mgr = new QuotaBackoffManager({ consecutive429Threshold: 2 }, clock);
+        mgr.setCallbacks({ onSaveSession: async () => {}, onResumePipeline: async () => {} });
         mgr.recordQuotaError(); // 1/2
         // Simulate non-429 error: we do NOT call recordSuccess()
         // (matching the actual catch block behavior)
@@ -1547,8 +1768,8 @@ describe('QuotaBackoffManager', () => {
         expect(states).toContain('saving');
 
         saveResolve!();
-        await Promise.resolve(); // flush microtask
-        await Promise.resolve(); // flush then() chain
+        // Flush enough microtask rounds for the full chain
+        for (let i = 0; i < 4; i++) await Promise.resolve();
         expect(states).toContain('paused');
 
         // Advance clock past reset time
@@ -1556,19 +1777,40 @@ describe('QuotaBackoffManager', () => {
         expect(states).toContain('resuming');
 
         resumeResolve!();
-        await Promise.resolve();
-        await Promise.resolve();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
         expect(states).toContain('running');
     });
 
     test('invalid state transitions are ignored with warning', () => {
         const clock = new FakeClock();
         const mgr = new QuotaBackoffManager({ consecutive429Threshold: 100 }, clock);
+        mgr.setCallbacks({ onSaveSession: async () => {}, onResumePipeline: async () => {} });
         // Manager is in 'running' state. Can't go directly to 'paused'.
         // Since transitionTo is private, we test indirectly via reset()
         // which uses direct assignment (bypasses validation).
         mgr.reset();
         expect(mgr.getSnapshot().state).toBe('running');
+    });
+
+    test('reset() called during saving state prevents transition to paused', async () => {
+        const clock = new FakeClock();
+        let saveResolve: () => void;
+        const mgr = new QuotaBackoffManager({ consecutive429Threshold: 1 }, clock);
+        mgr.setCallbacks({
+            onSaveSession: () => new Promise<void>(r => { saveResolve = r; }),
+            onResumePipeline: async () => {},
+        });
+        mgr.recordQuotaError(); // transitions to 'saving'
+        expect(mgr.getSnapshot().state).toBe('saving');
+
+        // Reset while save is in-flight
+        mgr.reset();
+        expect(mgr.getSnapshot().state).toBe('running');
+
+        // Now resolve the save — should NOT transition to paused (guard in .then())
+        saveResolve!();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+        expect(mgr.getSnapshot().state).toBe('running'); // stays running
     });
 
     // ── Countdown Math ──
@@ -1656,7 +1898,7 @@ describe('QuotaBackoffManager', () => {
         expect(mgr.getSnapshot().nextResetTime?.getDate()).toBe(22); // today
     });
 
-    test('msUntilReset decrements as clock advances', () => {
+    test('msUntilReset is computed dynamically from clock.now()', () => {
         const clock = new FakeClock(Date.parse('2026-03-22T10:00:00'));
         const mgr = new QuotaBackoffManager(
             { firstResetTime: '15:00', cyclicResetEnabled: false, consecutive429Threshold: 1 },
@@ -1670,6 +1912,27 @@ describe('QuotaBackoffManager', () => {
         clock.advance(3600 * 1000); // +1 hour
         const snap2 = mgr.getSnapshot();
         expect(snap2.msUntilReset).toBeCloseTo(4 * 3600 * 1000, -3);
+    });
+
+    test('msUntilReset returns 0 when nextResetTime is null', () => {
+        const clock = new FakeClock();
+        const mgr = new QuotaBackoffManager({ firstResetTime: '', consecutive429Threshold: 1 }, clock);
+        mgr.setCallbacks({ onSaveSession: async () => {}, onResumePipeline: async () => {} });
+        mgr.recordQuotaError();
+        expect(mgr.getSnapshot().msUntilReset).toBe(0);
+    });
+
+    test('msUntilReset never goes negative (clamped to 0)', () => {
+        const clock = new FakeClock(Date.parse('2026-03-22T14:50:00'));
+        const mgr = new QuotaBackoffManager(
+            { firstResetTime: '14:59', cyclicResetEnabled: false, consecutive429Threshold: 1, autoResumeEnabled: false },
+            clock,
+        );
+        mgr.setCallbacks({ onSaveSession: async () => {}, onResumePipeline: async () => {} });
+        mgr.recordQuotaError();
+        // Advance well past the reset time
+        clock.advance(60 * 60 * 1000); // +1 hour
+        expect(mgr.getSnapshot().msUntilReset).toBe(0); // clamped, not negative
     });
 
     // ── Save Trigger ──
@@ -1695,9 +1958,20 @@ describe('QuotaBackoffManager', () => {
             onResumePipeline: async () => {},
         });
         mgr.recordQuotaError();
-        await Promise.resolve();
-        await Promise.resolve();
+        // Flush enough microtask rounds for .catch → transitionTo chain
+        for (let i = 0; i < 4; i++) await Promise.resolve();
         expect(mgr.getSnapshot().state).toBe('paused');
+    });
+
+    test('logs warning when onSaveSession is not set', () => {
+        const clock = new FakeClock();
+        const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const mgr = new QuotaBackoffManager({ consecutive429Threshold: 1 }, clock);
+        // Do NOT call setCallbacks
+        mgr.recordQuotaError();
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('No onSaveSession callback'));
+        expect(mgr.getSnapshot().state).toBe('paused'); // still pauses
+        warnSpy.mockRestore();
     });
 
     // ── Auto-Resume Invocation ──
@@ -1714,8 +1988,9 @@ describe('QuotaBackoffManager', () => {
             onResumePipeline: async () => { resumed = true; },
         });
         mgr.recordQuotaError();
-        await Promise.resolve(); // save resolves
-        await Promise.resolve(); // paused transition
+        // Flush microtasks for save → paused → startCountdown chain
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+        expect(mgr.getSnapshot().state).toBe('paused');
 
         // Advance 10 minutes (past 14:59)
         await clock.advanceAsync(10 * 60 * 1000);
@@ -1735,8 +2010,7 @@ describe('QuotaBackoffManager', () => {
             onResumePipeline: async () => { resumed = true; },
         });
         mgr.recordQuotaError();
-        await Promise.resolve();
-        await Promise.resolve();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
         await clock.advanceAsync(10 * 60 * 1000);
         expect(resumed).toBe(false);
         expect(mgr.getSnapshot().state).toBe('paused'); // stays paused
@@ -1753,12 +2027,60 @@ describe('QuotaBackoffManager', () => {
             onResumePipeline: async () => { throw new Error('Resume exploded'); },
         });
         mgr.recordQuotaError();
-        await Promise.resolve();
-        await Promise.resolve();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
         await clock.advanceAsync(10 * 60 * 1000);
         // Manager should be back to running (reset), not stuck in 'resuming'
         expect(mgr.getSnapshot().state).toBe('running');
         expect(mgr.getSnapshot().consecutive429Count).toBe(0);
+    });
+
+    // ── resumeNow ──
+
+    test('resumeNow triggers resume even when autoResumeEnabled is false', async () => {
+        const clock = new FakeClock(Date.parse('2026-03-22T14:50:00'));
+        let resumed = false;
+        const mgr = new QuotaBackoffManager(
+            { firstResetTime: '14:59', consecutive429Threshold: 1, autoResumeEnabled: false },
+            clock,
+        );
+        mgr.setCallbacks({
+            onSaveSession: async () => {},
+            onResumePipeline: async () => { resumed = true; },
+        });
+        mgr.recordQuotaError();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+        expect(mgr.getSnapshot().state).toBe('paused');
+
+        mgr.resumeNow();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+        expect(resumed).toBe(true);
+        expect(mgr.getSnapshot().state).toBe('running');
+    });
+
+    test('resumeNow is no-op when not paused', () => {
+        const clock = new FakeClock();
+        const mgr = new QuotaBackoffManager({ consecutive429Threshold: 2 }, clock);
+        mgr.setCallbacks({ onSaveSession: async () => {}, onResumePipeline: async () => {} });
+        mgr.resumeNow(); // should not throw or change state
+        expect(mgr.getSnapshot().state).toBe('running');
+    });
+
+    test('double resumeNow only triggers one resume', async () => {
+        const clock = new FakeClock();
+        let resumeCount = 0;
+        const mgr = new QuotaBackoffManager({ consecutive429Threshold: 1 }, clock);
+        mgr.setCallbacks({
+            onSaveSession: async () => {},
+            onResumePipeline: async () => { resumeCount++; },
+        });
+        mgr.recordQuotaError();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+        expect(mgr.getSnapshot().state).toBe('paused');
+
+        mgr.resumeNow(); // transitions to 'resuming'
+        mgr.resumeNow(); // state is 'resuming', should be no-op
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+        expect(resumeCount).toBe(1);
     });
 
     // ── Max Cycles ──
@@ -1818,8 +2140,7 @@ describe('QuotaBackoffManager', () => {
             onResumePipeline: async () => { resumed = true; },
         });
         mgr.recordQuotaError();
-        await Promise.resolve();
-        await Promise.resolve();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
         // Reset before countdown fires
         mgr.reset();
         await clock.advanceAsync(20 * 60 * 1000); // advance well past 14:59
@@ -1861,14 +2182,46 @@ describe('QuotaBackoffManager', () => {
             onResumePipeline: async () => { resumed = true; },
         });
         mgr.recordQuotaError();
-        await Promise.resolve();
-        await Promise.resolve();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
         expect(mgr.getSnapshot().state).toBe('paused');
         expect(mgr.getSnapshot().nextResetTime).toBeNull();
         // Advance time — should NOT auto-resume (no reset time)
         await clock.advanceAsync(10 * 60 * 60 * 1000); // 10 hours
         expect(resumed).toBe(false);
         expect(mgr.getSnapshot().state).toBe('paused'); // still paused, manual resume needed
+    });
+
+    // ── updateConfig during pause ──
+
+    test('updateConfig while paused recomputes reset time and restarts countdown', async () => {
+        const clock = new FakeClock(Date.parse('2026-03-22T10:00:00'));
+        const mgr = new QuotaBackoffManager(
+            { firstResetTime: '15:00', cyclicResetEnabled: false, consecutive429Threshold: 1, autoResumeEnabled: true },
+            clock,
+        );
+        mgr.setCallbacks({ onSaveSession: async () => {}, onResumePipeline: async () => {} });
+        mgr.recordQuotaError();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+        expect(mgr.getSnapshot().nextResetTime?.getHours()).toBe(15);
+
+        // User changes reset time while paused
+        mgr.updateConfig({ firstResetTime: '12:00' });
+        expect(mgr.getSnapshot().nextResetTime?.getHours()).toBe(12);
+    });
+
+    // ── Listener lifecycle ──
+
+    test('subscribe returns unsubscribe function that prevents further notifications', () => {
+        const clock = new FakeClock();
+        const mgr = new QuotaBackoffManager({ consecutive429Threshold: 2 }, clock);
+        mgr.setCallbacks({ onSaveSession: async () => {}, onResumePipeline: async () => {} });
+        let callCount = 0;
+        const unsub = mgr.subscribe(() => { callCount++; });
+        mgr.recordQuotaError(); // triggers notify (count changes)
+        const countAfterFirst = callCount;
+        unsub();
+        mgr.recordQuotaError(); // would trigger notify, but we unsubscribed
+        expect(callCount).toBe(countAfterFirst); // no additional calls
     });
 });
 ```
@@ -1926,8 +2279,8 @@ describe('Quota Backoff Integration', () => {
 
         // Call 2: 429
         expect(mgr.recordQuotaError()).toBe(true); // 2/2, pause triggered
-        await Promise.resolve(); // save completes
-        await Promise.resolve(); // paused transition
+        // Flush microtasks for save → paused chain
+        for (let i = 0; i < 4; i++) await Promise.resolve();
 
         expect(saveCount).toBe(1);
         expect(mgr.getSnapshot().state).toBe('paused');
@@ -2008,16 +2361,14 @@ describe('Quota Backoff Integration', () => {
 
         // First pause/resume cycle
         mgr.recordQuotaError();
-        await Promise.resolve();
-        await Promise.resolve();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
         await clock.advanceAsync(11 * 60 * 1000); // past 10:00
         expect(resumeCount).toBe(1);
         expect(mgr.getSnapshot().state).toBe('running');
 
         // Second quota hit — next cycle reset at 15:00
         mgr.recordQuotaError();
-        await Promise.resolve();
-        await Promise.resolve();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
         expect(mgr.getSnapshot().state).toBe('paused');
         expect(mgr.getSnapshot().cycleCount).toBe(2);
     });
@@ -2038,6 +2389,33 @@ describe('Quota Backoff Integration', () => {
         // (this is the check at the top of the retry loop)
         expect(mgr.isPaused()).toBe(true); // should throw PipelineQuotaPausedError
     });
+
+    /**
+     * Verifies that Promise.all with Track A/B handles PipelineQuotaPausedError
+     * from both tracks without causing unhandled rejections.
+     */
+    test('simulated Promise.all rejects with first PipelineQuotaPausedError', async () => {
+        // This tests the pattern, not the actual pipeline code
+        class PipelineQuotaPausedError extends Error {
+            constructor() { super('paused'); this.name = 'PipelineQuotaPausedError'; }
+        }
+
+        const clock = new FakeClock();
+        const mgr = new QuotaBackoffManager({ consecutive429Threshold: 1 }, clock);
+        mgr.setCallbacks({ onSaveSession: async () => {}, onResumePipeline: async () => {} });
+
+        const trackA = async () => {
+            mgr.recordQuotaError(); // triggers pause
+            throw new PipelineQuotaPausedError();
+        };
+        const trackB = async () => {
+            // Simulate Track B checking isPaused at next await boundary
+            await Promise.resolve();
+            if (mgr.isPaused()) throw new PipelineQuotaPausedError();
+        };
+
+        await expect(Promise.all([trackA(), trackB()])).rejects.toThrow('paused');
+    });
 });
 ```
 
@@ -2045,10 +2423,21 @@ describe('Quota Backoff Integration', () => {
 
 Tests use the project's existing test framework (Vitest, based on the Vite toolchain). No special configuration needed beyond the existing `vitest.config.ts`. The `FakeClock` class is self-contained and has no external dependencies.
 
+**Note on test spies:** Use `vi.spyOn` (Vitest's spy API), not `jest.spyOn`. The tests above use `vi.spyOn` in the "logs warning when onSaveSession is not set" test.
+
 Run all quota-related tests:
 ```bash
 npx vitest run Deepthink/QuotaBackoff
 ```
+
+### Test Coverage Gaps (acknowledged)
+
+The following are intentionally NOT unit-tested and should be verified manually during integration testing:
+
+1. **`saveSessionToFileAutomatic` file download** — The `<a download>` click trick cannot be reliably tested in a jsdom/happy-dom environment. Manual verification: trigger a quota pause and confirm the `.json` file appears in the browser's download folder.
+2. **Background tab throttling** — Cannot simulate browser tab throttling in tests. Manual verification: switch to another tab during a pause and confirm resume still fires within ~60s of the expected time.
+3. **SPA navigation cleanup** — Verify that navigating away from the Deepthink view removes the overlay DOM element and stops timers.
+4. **`is429` regex matching** — The word-boundary `\b429\b` regex should be tested against known error message formats from the Anthropic SDK to ensure no false negatives. Add a dedicated test if specific message formats are discovered during development.
 
 ## Rollout Notes
 
@@ -2071,9 +2460,9 @@ npx vitest run Deepthink/QuotaBackoff
 |-------|---------|-----------|
 | `quotaResetTime` | `''` (empty) | Feature is opt-in for auto-resume. Pause + save triggers automatically on 429s even without configuration, to protect against data loss. |
 | `quotaCyclicResetEnabled` | `true` | Claude API quotas always reset on 5h cycles, so this is the expected mode. |
-| `quotaConsecutive429Threshold` | `2` | A single transient 429 could be a fluke; 2 consecutive confirms quota exhaustion. |
+| `quotaConsecutive429Threshold` | `2` | A single transient 429 could be a fluke; 2 consecutive confirms quota exhaustion. Between the first and second 429, the existing exponential backoff adds a ~20s delay, which is desirable as a "cooling off" period. |
 | `quotaAutoResumeEnabled` | `true` | The whole point of the feature is unattended operation. |
-| `quotaMaxCyclesPerSession` | `5` | Prevents infinite pause/resume loops if the reset time is misconfigured. 5 cycles = up to 25 hours of coverage. |
+| `quotaMaxCyclesPerSession` | `5` | Prevents infinite pause/resume loops if the reset time is misconfigured. 5 cycles = up to 25 hours of coverage. When exceeded, the manager deliberately fails open (returns false from recordQuotaError), letting normal retry logic exhaust and fail. This is a last-resort safety valve. |
 
 ### Feature Flag
 
@@ -2089,7 +2478,7 @@ No feature flag needed. The 429 detection and pause/save behavior is always acti
 
 ### 2. Multiple quota resets in one session (infinite loop prevention)
 
-**Decision:** Allow up to `maxCyclesPerSession` (default 5) pause/resume cycles. After that, `recordQuotaError()` returns `false` and lets the normal retry logic handle it (which will eventually exhaust retries and fail). This prevents infinite loops from misconfigured reset times. The cycle count is displayed in the countdown UI. `fullReset()` clears the cycle count when a new pipeline starts.
+**Decision:** Allow up to `maxCyclesPerSession` (default 5) pause/resume cycles. After that, `recordQuotaError()` returns `false` and lets the normal retry logic handle it (which will eventually exhaust retries and fail with data loss — this is the deliberate fail-open behavior). This prevents infinite loops from misconfigured reset times. The cycle count is displayed in the countdown UI. `fullReset()` clears the cycle count when a new pipeline starts.
 
 ### 3. Save mechanism
 
@@ -2100,7 +2489,7 @@ No feature flag needed. The 429 detection and pause/save behavior is always acti
 **Decision:** The pause/save mechanism works for **all** pipeline phases (it operates at the `makeDeepthinkApiCall` level, which is used everywhere). Auto-resume only restores into the **iteration loop** via `resumeSolutionPoolIterations()`.
 
 If quota is exceeded during strategy generation or hypothesis testing (before iterations start), the pipeline pauses and saves state, but:
-- The `onResumePipeline` callback detects this case and logs a warning.
+- The `onResumePipeline` callback detects this case, logs a warning, and **throws an error** so the manager transitions back to 'running' cleanly (not stuck in 'resuming').
 - The countdown UI still shows, with a "Resume now" button for manual resume.
 - The user can manually resume by loading the saved session file after the quota resets.
 
@@ -2123,6 +2512,26 @@ This is acceptable because page reloads during a multi-hour pipeline are excepti
 
 **Decision:** The `QuotaBackoffManager` uses a re-entrant guard: only the first call that pushes the count past the threshold while `state === 'running'` triggers the save/pause transition. All subsequent calls (from concurrent Track A, Track B, or `Promise.allSettled` corrections) see `state !== 'running'` and return `true` immediately, telling the caller to throw `PipelineQuotaPausedError`. An `isPaused()` check at the top of each retry loop prevents doomed API calls from even being attempted after another concurrent call has triggered the pause.
 
+**Limitation:** One additional API request may be in-flight when the pause triggers (the request that was already sent before the `isPaused()` check). This is inherent — `fetch` cannot be aborted retroactively without an `AbortController`, which would require invasive changes to the SDK call pattern. The single wasted request is acceptable.
+
+### 8. 429 detection regex
+
+**Decision:** Use word-boundary `\b429\b` in the message regex to prevent false positives on strings like port numbers ("localhost:8429") or other numeric substrings. The primary detection path is `error.status === 429` (numeric comparison, no regex needed); the regex is a fallback for error objects that only expose the status in their message string.
+
+### 9. `triggerResume` from timer callbacks
+
+**Decision:** `triggerResume()` is `async` but timer callbacks (`setTimeout`/`setInterval`) are synchronous. All timer callback invocations of `triggerResume()` chain `.catch()` to prevent unhandled promise rejections. The catch handler logs the error; the `triggerResume()` method itself also has an internal try/catch that resets the manager state on failure. Both layers are needed: the internal catch handles expected failures (resume callback throws), while the external `.catch()` is a safety net for unexpected synchronous throws.
+
+### 10. Config changes during pause
+
+**Decision:** `updateConfig()` checks if the manager is currently in the 'paused' state. If so, it recomputes `nextResetTime` from the new config and restarts the countdown timer. This allows the user to correct a misconfigured reset time without having to cancel and re-run the pipeline. The timer restart is idempotent (`startCountdown` calls `stopTimers` first).
+
+### 11. `reset()` called during 'saving' state
+
+**Decision:** If `reset()` is called while an async save is in-flight (state === 'saving'), the reset sets state to 'running' immediately via direct assignment. When the save's `.then()` or `.catch()` callback eventually fires, it checks `this.state !== 'saving'` and bails out, preventing a stale transition to 'paused'. This handles the edge case where the user clicks "Cancel" during the brief saving window.
+
 ## Open Questions
 
 1. **Notification** — Should we fire a browser `Notification` (requires permission) or play an audio tone when the pipeline auto-resumes, so the user knows it's running again if they've switched to another task? (Low priority — can be added as a follow-up without architectural changes.)
+
+2. **Pipeline status indicator** — The main pipeline status area shows "Processing..." during a pause with no visual distinction from normal processing. Consider adding a `'quota_paused'` status value to `currentProcess.status` so the pipeline UI can show an amber "Paused — waiting for quota" indicator independently of the floating overlay. (Low priority — the overlay provides sufficient visibility for now.)
