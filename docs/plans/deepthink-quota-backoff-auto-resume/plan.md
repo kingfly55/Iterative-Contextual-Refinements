@@ -147,6 +147,21 @@ makeDeepthinkApiCall()                    QuotaBackoffManager
 
 ## Detailed Implementation
 
+### Milestones
+
+| # | Milestone | Status |
+|---|-----------|--------|
+| 1 | [QuotaBackoffManager Core + Tests](./milestone-01-quota-backoff-manager.md) | PENDING |
+| 2 | [Session Save Helpers](./milestone-02-session-save-helpers.md) | PENDING |
+| 3 | [Config Persistence Layer](./milestone-03-config-persistence.md) | PENDING |
+| 4 | [Config Panel UI](./milestone-04-config-panel-ui.md) | PENDING |
+| 5 | [Countdown Overlay UI](./milestone-05-countdown-ui.md) | PENDING |
+| 6 | [Wire 429 Detection into DeepthinkCore Retry Loops](./milestone-06-core-429-wiring.md) | PENDING |
+| 7 | [Module Wiring, Initialization, and SPA Cleanup](./milestone-07-module-wiring-cleanup.md) | PENDING |
+
+<details>
+<summary>Original Detailed Implementation (preserved for reference)</summary>
+
 ### 1. New File: `Deepthink/QuotaBackoffManager.ts`
 
 ```typescript
@@ -1553,6 +1568,8 @@ cleanupQuotaBackoff();
 ```
 
 Without this, the `setInterval` timer and overlay DOM element leak when the user navigates to a different view.
+
+</details>
 
 ## Testing Strategy
 
