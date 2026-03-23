@@ -155,7 +155,7 @@ makeDeepthinkApiCall()                    QuotaBackoffManager
 | 2 | [Session Save Helpers](./milestone-02-session-save-helpers.md) | ✅ COMPLETED |
 | 3 | [Config Persistence Layer](./milestone-03-config-persistence.md) | ✅ COMPLETED |
 | 4 | [Config Panel UI](./milestone-04-config-panel-ui.md) | ✅ COMPLETED |
-| 5 | [Countdown Overlay UI](./milestone-05-countdown-ui.md) | PENDING |
+| 5 | [Countdown Overlay UI](./milestone-05-countdown-ui.md) | ✅ COMPLETED |
 | 6 | [Wire 429 Detection into DeepthinkCore Retry Loops](./milestone-06-core-429-wiring.md) | PENDING |
 | 7 | [Module Wiring, Initialization, and SPA Cleanup](./milestone-07-module-wiring-cleanup.md) | PENDING |
 
