@@ -151,7 +151,7 @@ makeDeepthinkApiCall()                    QuotaBackoffManager
 
 | # | Milestone | Status |
 |---|-----------|--------|
-| 1 | [QuotaBackoffManager Core + Tests](./milestone-01-quota-backoff-manager.md) | PENDING |
+| 1 | [QuotaBackoffManager Core + Tests](./milestone-01-quota-backoff-manager.md) | ✅ COMPLETED |
 | 2 | [Session Save Helpers](./milestone-02-session-save-helpers.md) | PENDING |
 | 3 | [Config Persistence Layer](./milestone-03-config-persistence.md) | PENDING |
 | 4 | [Config Panel UI](./milestone-04-config-panel-ui.md) | PENDING |
