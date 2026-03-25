@@ -7,7 +7,8 @@ import { globalState } from './State';
 import { routingManager } from '../Routing';
 import {
     renderActiveDeepthinkPipeline,
-    activateDeepthinkStrategyTab
+    activateDeepthinkStrategyTab,
+    cleanupQuotaBackoff
 } from '../Deepthink/Deepthink';
 import { renderDeepthinkConfigPanelInContainer } from '../Deepthink/DeepthinkConfigPanel';
 import { renderAgenticMode, cleanupAgenticMode } from '../Agentic/AgenticUI_Bridge';
@@ -106,6 +107,11 @@ export function updateUIAfterModeChange() {
         } else if (globalState.currentMode === 'adaptive-deepthink') {
             cleanupAdaptiveDeepthinkMode();
         }
+    }
+
+    // Clean up quota backoff resources when navigating away from Deepthink
+    if (globalState.currentMode !== 'deepthink') {
+        cleanupQuotaBackoff();
     }
 
     renderActiveMode();

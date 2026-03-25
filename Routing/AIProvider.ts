@@ -557,16 +557,26 @@ export class LocalModelsProvider implements AIProvider {
             // Format: "endpoint_url|model1,model2,model3"
             const [endpoint] = configString.split('|');
 
-            // Ensure the endpoint has the /v1 suffix for OpenAI compatibility
-            // LM Studio and similar tools expect this format
-            this.endpointUrl = endpoint.endsWith('/v1')
-                ? endpoint
-                : endpoint.endsWith('/')
-                    ? endpoint + 'v1'
-                    : endpoint + '/v1';
+            // In dev mode, use the Vite proxy to avoid CORS issues.
+            // The proxy at /cliproxy forwards to the actual endpoint.
+            // OpenAI SDK v5 uses new URL(baseURL + path), which requires an absolute URL.
+            const isCliProxy = import.meta.env.VITE_CLIPROXY_BASE_URL &&
+                endpoint.startsWith(import.meta.env.VITE_CLIPROXY_BASE_URL);
+            if (isCliProxy && import.meta.env.DEV) {
+                this.endpointUrl = `${window.location.origin}/cliproxy/v1`;
+            } else {
+                this.endpointUrl = endpoint.endsWith('/v1')
+                    ? endpoint
+                    : endpoint.endsWith('/')
+                        ? endpoint + 'v1'
+                        : endpoint + '/v1';
+            }
+
+            // Use CLI Proxy API key if available, otherwise default for local models
+            const apiKey = import.meta.env.VITE_CLIPROXY_API_KEY || 'not-needed';
 
             this.client = new OpenAI({
-                apiKey: 'not-needed', // Local models typically don't need API keys
+                apiKey,
                 baseURL: this.endpointUrl,
                 dangerouslyAllowBrowser: true
             });
@@ -630,9 +640,53 @@ export class LocalModelsProvider implements AIProvider {
         // Don't use response_format for local models as many don't support it
         // Instead rely on prompt instruction for JSON output
 
-        const response = await this.client.chat.completions.create(requestOptions);
+        console.log(`%c[LocalModels] %c${modelToUse}%c ← ${messages.length} message(s), temp=${temperature}`,
+            'color: #8b5cf6; font-weight: bold', 'color: #f59e0b', 'color: inherit');
+
+        const requestBody = JSON.stringify(requestOptions);
+        const requestSizeKB = (requestBody.length / 1024).toFixed(1);
+        console.log(`%c[LocalModels] %cRequest → baseURL=${this.endpointUrl}, model=${modelToUse}, payload=${requestSizeKB}KB`,
+            'color: #8b5cf6; font-weight: bold', 'color: #6b7280');
+
+        const t0 = performance.now();
+        let response;
+        try {
+            response = await this.client.chat.completions.create(requestOptions);
+        } catch (apiError: any) {
+            const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+            console.error(`%c[LocalModels] %cAPI call failed after ${elapsed}s:`, 'color: #8b5cf6; font-weight: bold', 'color: #ef4444');
+            console.error(`%c[LocalModels] %cStatus: ${apiError?.status}, Code: ${apiError?.code}, Type: ${apiError?.type}`,
+                'color: #8b5cf6; font-weight: bold', 'color: #ef4444');
+            console.error(`%c[LocalModels] %cMessage: ${apiError?.message}`,
+                'color: #8b5cf6; font-weight: bold', 'color: #ef4444');
+            console.error(`%c[LocalModels] %cRequest size: ${requestSizeKB}KB`,
+                'color: #8b5cf6; font-weight: bold', 'color: #ef4444');
+            // Try to extract response body from various SDK error shapes
+            const errorBody = apiError?.error || apiError?.response?.body || apiError?.body;
+            if (errorBody) {
+                console.error(`%c[LocalModels] %cError body:`, 'color: #8b5cf6; font-weight: bold', 'color: #ef4444',
+                    typeof errorBody === 'string' ? errorBody : JSON.stringify(errorBody));
+            }
+            // Log headers if available
+            if (apiError?.headers) {
+                const headers: Record<string, string> = {};
+                try { apiError.headers.forEach((v: string, k: string) => { headers[k] = v; }); } catch { /* ignore */ }
+                if (Object.keys(headers).length > 0) {
+                    console.error(`%c[LocalModels] %cResponse headers:`, 'color: #8b5cf6; font-weight: bold', 'color: #ef4444', headers);
+                }
+            }
+            throw apiError;
+        }
+        const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
 
         const content = response.choices[0]?.message?.content || '';
+        const usage = (response as any).usage;
+        const tokenInfo = usage
+            ? ` | ${usage.prompt_tokens}→${usage.completion_tokens} tokens (${usage.total_tokens} total)`
+            : '';
+
+        console.log(`%c[LocalModels] %c${modelToUse}%c → ${content.length} chars in ${elapsed}s${tokenInfo}`,
+            'color: #8b5cf6; font-weight: bold', 'color: #22c55e', 'color: inherit');
 
         // Convert response to Gemini-like format
         const mockResponse = {

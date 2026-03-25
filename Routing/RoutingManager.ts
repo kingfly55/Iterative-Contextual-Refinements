@@ -12,6 +12,8 @@ import { ProviderManager } from './ProviderManager';
 import { ProviderManagementUI } from './ProviderManagementUI';
 import { setApiKeyManager } from './AIService';
 import { DeepthinkConfigController } from './DeepthinkConfigController';
+import { getAPIRequestController } from './APIRequestController';
+import { isCliProxyConfigured, fetchConfig, discoverModels } from './CLIProxyManagementClient';
 
 export class RoutingManager {
     private apiKeyManager: ApiKeyManager;
@@ -56,11 +58,33 @@ export class RoutingManager {
         // Update available models from provider manager
         this.updateAvailableModels();
 
+        // Wire APIRequestController's model→provider resolver
+        const controller = getAPIRequestController();
+        controller.setModelToProviderResolver((modelId: string) => {
+            return this.modelConfigManager.resolveModelProvider(modelId);
+        });
+
         // Initialize model selection UI
         this.modelSelectionUI.initialize();
+
+        // Fire-and-forget: dynamically discover models from CLIProxy at startup
+        if (isCliProxyConfigured()) {
+            this.discoverCliProxyModels();
+        }
     }
 
-
+    private async discoverCliProxyModels(): Promise<void> {
+        try {
+            const config = await fetchConfig();
+            const models = discoverModels(config);
+            if (models.length > 0) {
+                this.providerManager.updateLocalModels(models);
+                this.updateAvailableModels();
+            }
+        } catch (err) {
+            console.warn('[RoutingManager] CLIProxy model discovery failed:', err);
+        }
+    }
 
     private updateAvailableModels(): void {
         const allModels = this.providerManager.getAllModels();

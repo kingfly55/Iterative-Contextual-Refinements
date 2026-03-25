@@ -1,6 +1,7 @@
 import React from 'react';
 import { ApplicationMode } from '../../../Core/Types';
 import { App } from '../../../Core/App';
+import { loadAndRestoreSessionFromFile } from '../../../Deepthink/Deepthink';
 
 interface SidebarFooterProps {
     currentMode: ApplicationMode;
@@ -50,14 +51,26 @@ export const SidebarFooter: React.FC<SidebarFooterProps> = ({ currentMode }) => 
                     info
                 </span>
             </div>
-            <button
-                id="generate-button"
-                className="button primary-action"
-                type="button"
-                onClick={handleGenerateClick}
-            >
-                <span className="button-text" id="generate-button-text">{getButtonText()}</span>
-            </button>
+            <div className="sidebar-footer-actions">
+                {(currentMode === 'deepthink' || currentMode === 'adaptive-deepthink') && (
+                    <button
+                        className="button session-load-btn"
+                        type="button"
+                        title="Load saved session"
+                        onClick={(e) => { e.preventDefault(); loadAndRestoreSessionFromFile(); }}
+                    >
+                        <span className="material-symbols-outlined">upload_file</span>
+                    </button>
+                )}
+                <button
+                    id="generate-button"
+                    className="button primary-action"
+                    type="button"
+                    onClick={handleGenerateClick}
+                >
+                    <span className="button-text" id="generate-button-text">{getButtonText()}</span>
+                </button>
+            </div>
         </footer>
     );
 };

@@ -26,6 +26,11 @@ export interface ModelParameters {
     provideAllSolutionsToCorrectors: boolean;
     postQualityFilterEnabled: boolean;
     deepthinkCodeExecutionEnabled: boolean;
+    quotaBackoffDurationHours: number;
+    quotaCyclicResetEnabled: boolean;
+    quotaConsecutive429Threshold: number;
+    quotaAutoResumeEnabled: boolean;
+    quotaMaxCyclesPerSession: number;
 }
 
 export const AVAILABLE_MODELS: ModelOption[] = [
@@ -49,7 +54,12 @@ export const DEFAULT_MODEL_PARAMETERS: ModelParameters = {
     iterativeDepth: 3,
     provideAllSolutionsToCorrectors: false,
     postQualityFilterEnabled: false,
-    deepthinkCodeExecutionEnabled: false
+    deepthinkCodeExecutionEnabled: false,
+    quotaBackoffDurationHours: 0,
+    quotaCyclicResetEnabled: true,
+    quotaConsecutive429Threshold: 2,
+    quotaAutoResumeEnabled: true,
+    quotaMaxCyclesPerSession: 5
 };
 
 export class ModelConfigManager {
@@ -164,5 +174,14 @@ export class ModelConfigManager {
 
     public getAvailableModels(): ModelOption[] {
         return [...this.availableModels];
+    }
+
+    /**
+     * Resolve a model ID to its provider name.
+     * Used by APIRequestController for per-provider throttling.
+     */
+    public resolveModelProvider(modelId: string): string | null {
+        const model = this.availableModels.find(m => m.value === modelId);
+        return model?.provider || null;
     }
 }

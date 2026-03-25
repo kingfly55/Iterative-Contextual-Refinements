@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { callAI } from '../Routing';
+import { getAPIRequestController } from '../Routing';
 import { VERIFIER_SYSTEM_PROMPT } from './AgenticModePrompt';
 import { searchArxiv, formatPaperForDisplay } from './ArxivAPI';
 
@@ -857,7 +857,14 @@ export async function executeToolCall(
                 fullPrompt += `\n\n<current_content>\n${content}\n</current_content>`;
 
                 // Call the verifier with the full context
-                const verifierResponse = await callAI(fullPrompt, 0.2, modelName || '', VERIFIER_SYSTEM_PROMPT, false);
+                const verifierController = getAPIRequestController();
+                const verifierResponse = await verifierController.request({
+                    promptOrParts: fullPrompt,
+                    temperature: 0.2,
+                    model: modelName || '',
+                    systemInstruction: VERIFIER_SYSTEM_PROMPT,
+                    label: 'Verifier',
+                });
                 const verifierText = extractTextFromAny(verifierResponse);
 
                 if (!verifierText || !verifierText.trim()) {
@@ -981,10 +988,7 @@ export function getVerifierHistory(sessionId: string): VerifierHistoryEntry[] | 
     return verifierHistoryMap.get(sessionId);
 }
 
-// Constants for retry logic
 const MAX_RETRIES = 3;
-const INITIAL_DELAY_MS = 20000;
-const BACKOFF_FACTOR = 2;
 
 function newMsgId(prefix: string = 'msg'): string {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1108,21 +1112,22 @@ export class AgenticEngine {
                 let responseText = '';
                 let lastError: Error | null = null;
 
-                for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-                    if (this.abortController?.signal.aborted) throw new Error('Process stopped by user');
-                    try {
-                        if (attempt > 0) await new Promise(r => setTimeout(r, INITIAL_DELAY_MS * Math.pow(BACKOFF_FACTOR, attempt - 1)));
-                        response = await callAI(strMsgs, temperature, modelName, systemPrompt, false, topP);
-
-                        // We use the imported extractTextFromAny method or a local equivalent.
-                        // Wait, extractTextFromAny is currently from AgenticCoreLangchain. We can import it.
-                        responseText = (await import('./AgenticCoreLangchain')).extractTextFromAny(response);
-                        if (responseText) break;
-                        throw new Error('Provider returned empty response');
-                    } catch (error) {
-                        lastError = error instanceof Error ? error : new Error(String(error));
-                        if (attempt === MAX_RETRIES) break;
-                    }
+                try {
+                    const controller = getAPIRequestController();
+                    response = await controller.request({
+                        promptOrParts: strMsgs,
+                        temperature,
+                        model: modelName,
+                        systemInstruction: systemPrompt,
+                        isJsonOutput: false,
+                        topP,
+                        maxRetries: MAX_RETRIES,
+                        signal: this.abortController?.signal,
+                        label: 'Agentic chat',
+                    });
+                    responseText = (await import('./AgenticCoreLangchain')).extractTextFromAny(response);
+                } catch (error) {
+                    lastError = error instanceof Error ? error : new Error(String(error));
                 }
 
                 if (!responseText) {

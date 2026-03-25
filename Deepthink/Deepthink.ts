@@ -23,6 +23,16 @@ import {
     openCurrentSolutionPool,
 } from './SolutionPool.tsx';
 import { parseJsonSafe } from "../Core/JsonParser";
+import {
+    saveSessionToFile,
+    saveSessionToFileAutomatic,
+    loadSessionFromFile,
+    loadSessionFromLocalStorage,
+    restoreSession,
+} from './DeepthinkSession';
+import { initQuotaBackoffManager, getQuotaBackoffManager } from './QuotaBackoffManager';
+import { mountQuotaCountdownUI, unmountQuotaCountdownUI } from './QuotaCountdownUI';
+import { showSessionResumeOverlay } from './SessionResumeUI';
 
 // React component imports
 import {
@@ -53,7 +63,9 @@ import {
     getActiveDeepthinkPipeline,
     setActiveDeepthinkPipelineForImport,
     initializeDeepthinkCore,
-    startDeepthinkAnalysisProcess
+    startDeepthinkAnalysisProcess,
+    resumeSolutionPoolIterations,
+    runFinalJudge
 } from './DeepthinkCore';
 
 // ============================================================================ 
@@ -74,8 +86,11 @@ export type {
 export {
     startDeepthinkAnalysisProcess,
     getActiveDeepthinkPipeline,
-    setActiveDeepthinkPipelineForImport
+    setActiveDeepthinkPipelineForImport,
+    resumeSolutionPoolIterations
 };
+
+export { saveSessionToFile, loadSessionFromFile, loadSessionFromLocalStorage };
 
 // ============================================================================ 
 // Module State
@@ -173,6 +188,120 @@ export function initializeDeepthinkModule(dependencies: {
         ...dependencies,
         renderActiveDeepthinkPipeline
     });
+
+    // Initialize quota backoff manager, callbacks, and countdown UI
+    initQuotaBackoff();
+
+    // Attempt to restore last auto-saved session from localStorage
+    tryRestoreAutoSave();
+}
+
+function tryRestoreAutoSave(): void {
+    const session = loadSessionFromLocalStorage();
+    if (!session) return;
+
+    // Only restore if no pipeline is already active
+    if (getActiveDeepthinkPipeline()) return;
+
+    console.log(`[DeepthinkSession] Found auto-saved session "${session.label}" (${session.savedAt})`);
+    restoreSession(session, renderActiveDeepthinkPipeline);
+}
+
+/** Load a session from a user-selected file, restore it, then show the resume overlay */
+export async function loadAndRestoreSessionFromFile(): Promise<boolean> {
+    const session = await loadSessionFromFile();
+    if (!session) return false;
+
+    restoreSession(session, renderActiveDeepthinkPipeline);
+    console.log(`[DeepthinkSession] Restored session "${session.label}" from file`);
+
+    showSessionResumeOverlay(session, (backoffDurationHours, targetDepth) => {
+        if (backoffDurationHours > 0) {
+            getQuotaBackoffManager().updateConfig({ backoffDurationHours });
+        }
+        resumeSolutionPoolIterations(targetDepth);
+    });
+
+    return true;
+}
+
+/** Resume solution pool iterations from current loaded state. Exposed on window for console use. */
+export async function resumeFromConsole(targetDepth: number = 10): Promise<void> {
+    const p = getActiveDeepthinkPipeline();
+    if (!p) {
+        console.error('No pipeline loaded. Load a session file first via the UI button.');
+        return;
+    }
+    console.log(`[Resume] Pipeline "${p.id}" found. Starting resume to depth ${targetDepth}...`);
+    await resumeSolutionPoolIterations(targetDepth);
+}
+
+// Expose on window so console calls use the same module instance as the app
+(window as any).__deepthinkResume = resumeFromConsole;
+(window as any).__deepthinkLoadAndResume = loadAndRestoreSessionFromFile;
+
+// ============================================================================
+// Quota Backoff Initialization & SPA Cleanup
+// ============================================================================
+
+/**
+ * Initialize the QuotaBackoffManager singleton, set save/resume callbacks,
+ * mount the countdown overlay UI, and expose a debug helper on window.
+ */
+export function initQuotaBackoff(): void {
+    const manager = initQuotaBackoffManager();
+
+    manager.setCallbacks({
+        onSaveSession: async (filename: string) => {
+            saveSessionToFileAutomatic(filename);
+        },
+        onResumePipeline: async () => {
+            await resumeSolutionPoolIterations();
+        },
+    });
+
+    mountQuotaCountdownUI();
+
+    // Console helpers — accessible from the browser devtools:
+    //   __deepthinkQuota          → current snapshot (state, msUntilReset, etc.)
+    //   __deepthinkQuotaManager   → full manager (updateConfig, resumeNow, etc.)
+    //   __deepthinkForceJudge()   → skip to final judge with solutions collected so far
+    Object.defineProperty(window, '__deepthinkQuota', {
+        get: () => getQuotaBackoffManager().getSnapshot(),
+        configurable: true,
+    });
+    Object.defineProperty(window, '__deepthinkQuotaManager', {
+        get: () => getQuotaBackoffManager(),
+        configurable: true,
+    });
+    (window as any).__deepthinkForceJudge = () => {
+        const pipeline = getActiveDeepthinkPipeline();
+        if (!pipeline) {
+            console.warn('[ForceJudge] No active pipeline found.');
+            return;
+        }
+        if (pipeline.isResumeActive) {
+            // resumeSolutionPoolIterations is actively running — set flags and let it abort
+            console.log('[ForceJudge] Resume in progress — stopping in-flight work and jumping to final judge...');
+            pipeline.skipToFinalJudgeRequested = true;
+            pipeline.isStopRequested = true;
+        } else {
+            // Nothing running (loaded from file, idle, paused, etc.) — call judge directly
+            console.log('[ForceJudge] No active resume — running final judge directly with available solutions...');
+            runFinalJudge(pipeline, pipeline.challengeText).catch(err => {
+                console.error('[ForceJudge] Final judge failed:', err);
+            });
+        }
+    };
+}
+
+/**
+ * Tear down quota backoff resources to prevent DOM/timer leaks during SPA
+ * navigation away from the Deepthink view.
+ */
+export function cleanupQuotaBackoff(): void {
+    unmountQuotaCountdownUI();
+    getQuotaBackoffManager().fullReset();
 }
 
 // ============================================================================ 
@@ -616,6 +745,17 @@ export function renderActiveDeepthinkPipeline() {
         });
         moduleState.tabsNavContainer!.appendChild(btn);
     });
+
+    // Session save button (always visible when pipeline exists)
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'tab-button deepthink-mode-tab deepthink-session-btn align-right';
+    saveBtn.title = 'Save session to file';
+    saveBtn.innerHTML = '<span class="material-symbols-outlined">download</span>';
+    saveBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        saveSessionToFile();
+    });
+    moduleState.tabsNavContainer!.appendChild(saveBtn);
 
     // Mount or update React content root
     const contentContainer = moduleState.pipelinesContentContainer!;

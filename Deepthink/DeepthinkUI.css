@@ -66,6 +66,21 @@
     margin-right: 0 !important;
 }
 
+.deepthink-session-btn {
+    min-width: unset !important;
+    padding: var(--space-2) var(--space-3) !important;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+}
+
+.deepthink-session-btn:hover {
+    opacity: 1;
+}
+
+.deepthink-session-btn .material-symbols-outlined {
+    margin-right: 0 !important;
+}
+
 /* --------------------------------------------------------------------------
    4. TAB BUTTONS & STATUS STYLES
    -------------------------------------------------------------------------- */

@@ -20,7 +20,8 @@ import {
     callAI,
     getSelectedModel,
     getSelectedTemperature,
-    getSelectedTopP
+    getSelectedTopP,
+    getAPIRequestController
 } from '../Routing';
 import { updateControlsState } from '../UI/Controls';
 import { globalState } from '../Core/State';
@@ -50,8 +51,6 @@ let abortController: AbortController | null = null;
 const listeners = new Set<(state: AdaptiveDeepthinkStoreState | null) => void>();
 
 const MAX_RETRIES = 3;
-const INITIAL_DELAY_MS = 20000;
-const BACKOFF_FACTOR = 2;
 
 export function subscribeToAdaptiveDeepthinkState(listener: (state: AdaptiveDeepthinkStoreState | null) => void) {
     listeners.add(listener);
@@ -456,42 +455,31 @@ async function startAdaptiveDeepthinkSession(
             let responseText = '';
             let lastError: Error | null = null;
 
-            for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-                if (abortController?.signal.aborted) {
-                    throw new Error('Process stopped by user');
-                }
-
-                try {
-                    if (attempt > 0) {
-                        const delay = INITIAL_DELAY_MS * Math.pow(BACKOFF_FACTOR, attempt - 1);
-                        await new Promise(resolve => setTimeout(resolve, delay));
-                    }
-
-                    const promptParts: any[] = [{ text: prompt }];
-                    images.slice().reverse().forEach(img => {
-                        promptParts.unshift({
-                            inlineData: { mimeType: img.mimeType, data: img.base64 }
-                        });
+            try {
+                const promptParts: any[] = [{ text: prompt }];
+                images.slice().reverse().forEach(img => {
+                    promptParts.unshift({
+                        inlineData: { mimeType: img.mimeType, data: img.base64 }
                     });
+                });
 
-                    const response = await callAI(
-                        promptParts,
-                        temperature,
-                        modelName,
-                        systemPrompt,
-                        false,
-                        topP
-                    );
+                const controller = getAPIRequestController();
+                const response = await controller.request({
+                    promptOrParts: promptParts,
+                    temperature,
+                    model: modelName,
+                    systemInstruction: systemPrompt,
+                    isJsonOutput: false,
+                    topP,
+                    maxRetries: MAX_RETRIES,
+                    signal: abortController?.signal,
+                    label: 'Adaptive Deepthink',
+                });
 
-                    responseText = response.text || '';
-                    if (responseText) break;
-
-                    throw new Error('Provider returned empty response');
-                } catch (error) {
-                    lastError = error instanceof Error ? error : new Error(String(error));
-                    console.warn(`Adaptive Deepthink AI call attempt ${attempt + 1}/${MAX_RETRIES + 1} failed:`, lastError.message);
-                    if (attempt === MAX_RETRIES) break;
-                }
+                responseText = response.text || '';
+            } catch (error) {
+                lastError = error instanceof Error ? error : new Error(String(error));
+                console.warn(`Adaptive Deepthink AI call failed:`, lastError.message);
             }
 
             if (!responseText) {

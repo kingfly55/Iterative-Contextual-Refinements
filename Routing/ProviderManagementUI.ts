@@ -4,6 +4,8 @@
  */
 
 import { ProviderManager, ProviderConfig } from './ProviderManager';
+import { getAPIRequestController, FallbackRule } from './APIRequestController';
+import { isCliProxyConfigured, fetchQuotaExceededSettings, setQuotaSwitchProject, setQuotaSwitchPreviewModel, fetchConfig, discoverModels } from './CLIProxyManagementClient';
 
 export class ProviderManagementUI {
     private providerManager: ProviderManager;
@@ -162,12 +164,19 @@ export class ProviderManagementUI {
             <div class="provider-cards-grid">
                 ${providers.map(provider => this.renderProviderCard(provider)).join('')}
             </div>
+            ${this.renderFallbackSection()}
+            ${isCliProxyConfigured() ? this.renderCliProxySection() : ''}
         `;
 
         // Add event listeners for each provider card
         providers.forEach(provider => {
             this.attachProviderCardListeners(provider);
         });
+        this.attachFallbackListeners();
+        if (isCliProxyConfigured()) {
+            this.attachCliProxyListeners();
+            void this.loadCliProxySettings();
+        }
     }
 
     private renderProviderCard(provider: ProviderConfig): string {
@@ -541,6 +550,296 @@ export class ProviderManagementUI {
         if (this.onModelsChangedCallback) {
             this.onModelsChangedCallback();
         }
+    }
+
+    // ── Fallback Chain UI ──
+
+    private renderFallbackSection(): string {
+        const controller = getAPIRequestController();
+        const config = controller.getFallbackConfig();
+        const allModels = this.providerManager.getAllModels();
+
+        const modelOptions = allModels.map(m =>
+            `<option value="${m.id}">${m.id} (${m.provider})</option>`
+        ).join('');
+
+        return `
+            <div class="fallback-section">
+                <div class="fallback-header">
+                    <div class="fallback-title-row">
+                        <h3 class="fallback-title">
+                            <span class="material-symbols-outlined">swap_horiz</span>
+                            Rate Limit Fallback Rules
+                        </h3>
+                        <label class="fallback-toggle">
+                            <input type="checkbox" id="fallback-enabled-toggle" ${config.enabled ? 'checked' : ''}>
+                            <span class="fallback-toggle-label">${config.enabled ? 'Enabled' : 'Disabled'}</span>
+                        </label>
+                    </div>
+                    <p class="fallback-description">
+                        When a model hits a rate limit (429), requests automatically fall back to the next model in the chain.
+                    </p>
+                </div>
+
+                <div class="fallback-rules-list" id="fallback-rules-list">
+                    ${config.rules.length === 0
+                        ? '<div class="fallback-empty">No fallback rules configured. Add one below.</div>'
+                        : config.rules.map((rule, idx) => this.renderFallbackRule(rule, idx)).join('')}
+                </div>
+
+                <div class="fallback-add-form">
+                    <div class="fallback-add-row">
+                        <div class="fallback-field">
+                            <label>Primary Model</label>
+                            <select id="fallback-primary-select" class="fallback-select">
+                                <option value="">Select model...</option>
+                                ${modelOptions}
+                            </select>
+                        </div>
+                        <div class="fallback-arrow">
+                            <span class="material-symbols-outlined">arrow_forward</span>
+                        </div>
+                        <div class="fallback-field">
+                            <label>Fallback Model(s)</label>
+                            <input type="text"
+                                   id="fallback-models-input"
+                                   class="fallback-input"
+                                   placeholder="model-slug-1, model-slug-2, ...">
+                            <small class="input-help">Comma-separated. Tried in order when primary is rate-limited.</small>
+                        </div>
+                        <button id="fallback-add-btn" class="fallback-add-btn">
+                            <span class="material-symbols-outlined">add</span>
+                            Add Rule
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    private renderFallbackRule(rule: FallbackRule, _idx: number): string {
+        return `
+            <div class="fallback-rule" data-primary="${rule.primary}">
+                <div class="fallback-rule-primary">
+                    <span class="fallback-model-badge primary">${rule.primary}</span>
+                </div>
+                <span class="material-symbols-outlined fallback-rule-arrow">arrow_forward</span>
+                <div class="fallback-rule-chain">
+                    ${rule.fallbacks.map(fb => `<span class="fallback-model-badge fallback">${fb}</span>`).join('<span class="fallback-chain-separator">then</span>')}
+                </div>
+                <button class="fallback-rule-remove" data-primary="${rule.primary}">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+        `;
+    }
+
+    private attachFallbackListeners(): void {
+        if (!this.elements.content) return;
+
+        // Toggle
+        const toggle = this.elements.content.querySelector('#fallback-enabled-toggle') as HTMLInputElement;
+        if (toggle) {
+            toggle.addEventListener('change', () => {
+                const controller = getAPIRequestController();
+                const config = controller.getFallbackConfig();
+                config.enabled = toggle.checked;
+                controller.setFallbackConfig(config);
+                // Update label
+                const label = toggle.parentElement?.querySelector('.fallback-toggle-label');
+                if (label) label.textContent = toggle.checked ? 'Enabled' : 'Disabled';
+            });
+        }
+
+        // Add rule
+        const addBtn = this.elements.content.querySelector('#fallback-add-btn');
+        if (addBtn) {
+            addBtn.addEventListener('click', () => this.handleAddFallbackRule());
+        }
+
+        // Enter key on input
+        const input = this.elements.content.querySelector('#fallback-models-input') as HTMLInputElement;
+        if (input) {
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') this.handleAddFallbackRule();
+            });
+        }
+
+        // Remove rule buttons
+        const removeBtns = this.elements.content.querySelectorAll('.fallback-rule-remove');
+        removeBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const target = (e.target as HTMLElement).closest('.fallback-rule-remove') as HTMLElement;
+                const primary = target?.dataset.primary;
+                if (primary) {
+                    getAPIRequestController().removeFallbackRule(primary);
+                    this.renderProviderCards();
+                }
+            });
+        });
+    }
+
+    private handleAddFallbackRule(): void {
+        if (!this.elements.content) return;
+        const primarySelect = this.elements.content.querySelector('#fallback-primary-select') as HTMLSelectElement;
+        const modelsInput = this.elements.content.querySelector('#fallback-models-input') as HTMLInputElement;
+
+        const primary = primarySelect?.value?.trim();
+        const fallbacks = modelsInput?.value
+            .split(',')
+            .map(m => m.trim())
+            .filter(m => m.length > 0);
+
+        if (!primary) {
+            this.showFallbackError('Select a primary model');
+            return;
+        }
+        if (!fallbacks || fallbacks.length === 0) {
+            this.showFallbackError('Enter at least one fallback model');
+            return;
+        }
+
+        getAPIRequestController().addFallbackRule({ primary, fallbacks });
+        this.renderProviderCards();
+    }
+
+    private showFallbackError(message: string): void {
+        if (!this.elements.content) return;
+        const section = this.elements.content.querySelector('.fallback-section');
+        if (!section) return;
+        const existing = section.querySelector('.error-message');
+        if (existing) existing.remove();
+
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.textContent = message;
+        section.appendChild(errorDiv);
+        setTimeout(() => errorDiv.remove(), 3000);
+    }
+
+    // ── CLIProxy Settings UI ──
+
+    private renderCliProxySection(): string {
+        return `
+            <div class="cliproxy-section">
+                <div class="cliproxy-header">
+                    <div class="cliproxy-title-row">
+                        <h3 class="cliproxy-title">
+                            <span class="material-symbols-outlined">router</span>
+                            CLIProxy Settings
+                        </h3>
+                        <span id="cliproxy-models-status" class="cliproxy-models-status"></span>
+                    </div>
+                    <p class="cliproxy-description">
+                        Control how CLIProxy handles quota-exceeded conditions across providers.
+                    </p>
+                </div>
+
+                <div class="cliproxy-toggle-row">
+                    <input type="checkbox" id="cliproxy-switch-project" disabled>
+                    <label for="cliproxy-switch-project" class="cliproxy-status">Switch Project on Quota Exceeded</label>
+                </div>
+
+                <div class="cliproxy-toggle-row">
+                    <input type="checkbox" id="cliproxy-switch-preview-model" disabled>
+                    <label for="cliproxy-switch-preview-model" class="cliproxy-status">Switch Preview Model on Quota Exceeded</label>
+                </div>
+
+                <div class="cliproxy-notice" style="display: none;">
+                    <span class="material-symbols-outlined">warning</span>
+                    <span>CLIProxy unreachable — settings cannot be loaded</span>
+                </div>
+            </div>
+        `;
+    }
+
+    private attachCliProxyListeners(): void {
+        if (!this.elements.content) return;
+
+        const switchProjectCheckbox = this.elements.content.querySelector('#cliproxy-switch-project') as HTMLInputElement;
+        if (switchProjectCheckbox) {
+            switchProjectCheckbox.addEventListener('change', async () => {
+                const newValue = switchProjectCheckbox.checked;
+                const success = await setQuotaSwitchProject(newValue);
+                if (!success) {
+                    switchProjectCheckbox.checked = !newValue;
+                    this.showCliProxyError('Failed to update switch-project setting');
+                }
+            });
+        }
+
+        const switchPreviewModelCheckbox = this.elements.content.querySelector('#cliproxy-switch-preview-model') as HTMLInputElement;
+        if (switchPreviewModelCheckbox) {
+            switchPreviewModelCheckbox.addEventListener('change', async () => {
+                const newValue = switchPreviewModelCheckbox.checked;
+                const success = await setQuotaSwitchPreviewModel(newValue);
+                if (!success) {
+                    switchPreviewModelCheckbox.checked = !newValue;
+                    this.showCliProxyError('Failed to update switch-preview-model setting');
+                }
+            });
+        }
+    }
+
+    private async loadCliProxySettings(): Promise<void> {
+        if (!this.elements.content) return;
+
+        const [config, settings] = await Promise.all([fetchConfig(), fetchQuotaExceededSettings()]);
+
+        if (!this.elements.content) return;
+
+        const notice = this.elements.content.querySelector('.cliproxy-notice') as HTMLElement;
+        const switchProjectCheckbox = this.elements.content.querySelector('#cliproxy-switch-project') as HTMLInputElement;
+        const switchPreviewModelCheckbox = this.elements.content.querySelector('#cliproxy-switch-preview-model') as HTMLInputElement;
+        const modelsStatus = this.elements.content.querySelector('#cliproxy-models-status') as HTMLElement;
+
+        if (settings === null) {
+            // Proxy unreachable — show notice, keep checkboxes disabled
+            // Do not update #cliproxy-models-status — the unreachable notice already communicates the problem
+            if (notice) {
+                notice.style.display = 'flex';
+            }
+            return;
+        }
+
+        // Success — enable checkboxes and set state
+        if (switchProjectCheckbox) {
+            switchProjectCheckbox.disabled = false;
+            switchProjectCheckbox.checked = settings.switchProject;
+        }
+        if (switchPreviewModelCheckbox) {
+            switchPreviewModelCheckbox.disabled = false;
+            switchPreviewModelCheckbox.checked = settings.switchPreviewModel;
+        }
+
+        // Discover models from proxy config and update local provider model list
+        const models = discoverModels(config);
+        if (models.length > 0) {
+            this.providerManager.updateLocalModels(models);
+            this.notifyModelsChanged();
+            if (modelsStatus) {
+                modelsStatus.textContent = `${models.length} model(s) discovered from proxy`;
+            }
+        } else {
+            // Empty discovery — preserve env-var fallback, don't call updateLocalModels
+            if (modelsStatus) {
+                modelsStatus.textContent = 'Using models from environment';
+            }
+        }
+    }
+
+    private showCliProxyError(message: string): void {
+        if (!this.elements.content) return;
+        const section = this.elements.content.querySelector('.cliproxy-section');
+        if (!section) return;
+        const existing = section.querySelector('.error-message');
+        if (existing) existing.remove();
+
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.textContent = message;
+        section.appendChild(errorDiv);
+        setTimeout(() => errorDiv.remove(), 3000);
     }
 
     public openPromptsModal(): void {

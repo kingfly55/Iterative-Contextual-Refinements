@@ -214,6 +214,33 @@ body.light-mode .sidebar-expand-button .material-symbols-outlined {
     height: 43.2px;
 }
 
+.sidebar-footer-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.session-load-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 43.2px;
+    height: 43.2px;
+    padding: 0;
+    flex-shrink: 0;
+    border-radius: var(--border-radius-md);
+    background: var(--sub-panel-bg);
+    border: 1px solid var(--sub-panel-border-color);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.session-load-btn:hover {
+    background: var(--hover-bg);
+    color: var(--text-primary);
+}
+
 .flow-canvas-wrapper {
     flex-grow: 1;
     background-color: transparent;

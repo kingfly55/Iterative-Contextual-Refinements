@@ -11,6 +11,7 @@
  */
 
 import { ModelConfigManager } from './ModelConfig';
+import { getQuotaBackoffManager } from '../Deepthink/QuotaBackoffManager';
 
 export interface DeepthinkConfigState {
     strategiesCount: number;
@@ -28,6 +29,11 @@ export interface DeepthinkConfigState {
     temperature: number;
     topP: number;
     codeExecutionEnabled: boolean;
+    quotaBackoffDurationHours: number;
+    quotaCyclicResetEnabled: boolean;
+    quotaConsecutive429Threshold: number;
+    quotaAutoResumeEnabled: boolean;
+    quotaMaxCyclesPerSession: number;
 }
 
 export type DeepthinkConfigChangeEvent = CustomEvent<{
@@ -68,7 +74,12 @@ export class DeepthinkConfigController extends EventTarget {
             provideAllSolutionsEnabled: params.provideAllSolutionsToCorrectors,
             temperature: params.temperature,
             topP: params.topP,
-            codeExecutionEnabled: params.deepthinkCodeExecutionEnabled
+            codeExecutionEnabled: params.deepthinkCodeExecutionEnabled,
+            quotaBackoffDurationHours: params.quotaBackoffDurationHours,
+            quotaCyclicResetEnabled: params.quotaCyclicResetEnabled,
+            quotaConsecutive429Threshold: params.quotaConsecutive429Threshold,
+            quotaAutoResumeEnabled: params.quotaAutoResumeEnabled,
+            quotaMaxCyclesPerSession: params.quotaMaxCyclesPerSession
         };
     }
 
@@ -126,6 +137,26 @@ export class DeepthinkConfigController extends EventTarget {
 
     public isCodeExecutionEnabled(): boolean {
         return this.modelConfig.isDeepthinkCodeExecutionEnabled();
+    }
+
+    public getQuotaBackoffDurationHours(): number {
+        return this.modelConfig.getParameters().quotaBackoffDurationHours;
+    }
+
+    public isQuotaCyclicResetEnabled(): boolean {
+        return this.modelConfig.getParameters().quotaCyclicResetEnabled;
+    }
+
+    public getQuotaConsecutive429Threshold(): number {
+        return this.modelConfig.getParameters().quotaConsecutive429Threshold;
+    }
+
+    public isQuotaAutoResumeEnabled(): boolean {
+        return this.modelConfig.getParameters().quotaAutoResumeEnabled;
+    }
+
+    public getQuotaMaxCyclesPerSession(): number {
+        return this.modelConfig.getParameters().quotaMaxCyclesPerSession;
     }
 
     // ========== SETTERS WITH BUSINESS LOGIC ==========
@@ -351,6 +382,73 @@ export class DeepthinkConfigController extends EventTarget {
     public setCodeExecutionEnabled(enabled: boolean): void {
         this.modelConfig.updateParameter('deepthinkCodeExecutionEnabled', enabled);
         this.emitChange('codeExecutionEnabled');
+    }
+
+    // ========== QUOTA BACKOFF SETTERS ==========
+
+    /**
+     * Set quota backoff duration in hours (0 = no auto-resume).
+     * Clamped to [0, 168] (0 to 1 week).
+     */
+    public setQuotaBackoffDurationHours(hours: number): void {
+        const clamped = Math.max(0, Math.min(hours, 168));
+        this.modelConfig.updateParameter('quotaBackoffDurationHours', clamped);
+        this.syncQuotaBackoffConfig();
+        this.emitChange('quotaBackoffDurationHours');
+    }
+
+    /**
+     * Set cyclic reset enabled.
+     */
+    public setQuotaCyclicResetEnabled(enabled: boolean): void {
+        this.modelConfig.updateParameter('quotaCyclicResetEnabled', enabled);
+        this.syncQuotaBackoffConfig();
+        this.emitChange('quotaCyclicResetEnabled');
+    }
+
+    /**
+     * Set consecutive 429 threshold. Clamped to [1, 10].
+     */
+    public setQuotaConsecutive429Threshold(threshold: number): void {
+        const clamped = Math.max(1, Math.min(threshold, 10));
+        this.modelConfig.updateParameter('quotaConsecutive429Threshold', clamped);
+        this.syncQuotaBackoffConfig();
+        this.emitChange('quotaConsecutive429Threshold');
+    }
+
+    /**
+     * Set auto-resume enabled.
+     */
+    public setQuotaAutoResumeEnabled(enabled: boolean): void {
+        this.modelConfig.updateParameter('quotaAutoResumeEnabled', enabled);
+        this.syncQuotaBackoffConfig();
+        this.emitChange('quotaAutoResumeEnabled');
+    }
+
+    /**
+     * Set max cycles per session. Clamped to [1, 20].
+     */
+    public setQuotaMaxCyclesPerSession(max: number): void {
+        const clamped = Math.max(1, Math.min(max, 20));
+        this.modelConfig.updateParameter('quotaMaxCyclesPerSession', clamped);
+        this.syncQuotaBackoffConfig();
+        this.emitChange('quotaMaxCyclesPerSession');
+    }
+
+    // ========== QUOTA BACKOFF SYNC ==========
+
+    /**
+     * Push current quota backoff config to the QuotaBackoffManager singleton.
+     */
+    private syncQuotaBackoffConfig(): void {
+        const params = this.modelConfig.getParameters();
+        getQuotaBackoffManager().updateConfig({
+            backoffDurationHours: params.quotaBackoffDurationHours,
+            cyclicResetEnabled: params.quotaCyclicResetEnabled,
+            consecutive429Threshold: params.quotaConsecutive429Threshold,
+            autoResumeEnabled: params.quotaAutoResumeEnabled,
+            maxCyclesPerSession: params.quotaMaxCyclesPerSession,
+        });
     }
 
     // ========== EVENT EMISSION ==========

@@ -153,6 +153,18 @@ export class ProviderManager {
             config.apiKey = openrouterKey;
             config.isConfigured = true;
         }
+
+        // Check for CLI Proxy API (local models via OpenAI-compatible proxy)
+        const cliproxyUrl = import.meta.env.VITE_CLIPROXY_BASE_URL;
+        const cliproxyModels = import.meta.env.VITE_CLIPROXY_MODELS;
+        if (cliproxyUrl) {
+            const config = this.providers.get('local')!;
+            config.apiKey = cliproxyUrl;
+            config.isConfigured = true;
+            if (cliproxyModels) {
+                config.models = cliproxyModels.split(',').map(m => m.trim()).filter(Boolean);
+            }
+        }
     }
 
     private initializeConfiguredProviders(): void {
@@ -317,5 +329,12 @@ export class ProviderManager {
             return true;
         }
         return false;
+    }
+
+    public updateLocalModels(models: string[]): void {
+        const config = this.providers.get('local');
+        if (!config) return;
+        config.models = models;
+        // Intentionally transient — discovered models are never persisted to localStorage
     }
 }

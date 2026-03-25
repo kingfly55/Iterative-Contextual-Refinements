@@ -18,6 +18,8 @@ export { type AIProvider, createAIProvider } from './AIProvider';
 export { ProviderManager, type ProviderConfig, type ModelInfo } from './ProviderManager';
 export { ProviderManagementUI } from './ProviderManagementUI';
 export { callAI, callGemini } from './AIService';
+export { APIRequestController, getAPIRequestController, type APIRequestOptions, type FallbackRule, type FallbackConfig } from './APIRequestController';
+export { isCliProxyConfigured, fetchQuotaExceededSettings, fetchConfig, discoverModels, getQuotaSwitchProject, setQuotaSwitchProject, getQuotaSwitchPreviewModel, setQuotaSwitchPreviewModel, getManagementBaseURL, getAuthHeaders, type QuotaExceededSettings, type CLIProxyConfig, type CLIProxyOpenAICompatEntry, type CLIProxyClaudeEntry, type CLIProxyModelEntry } from './CLIProxyManagementClient';
 
 
 // Global routing manager instance - initialized lazily

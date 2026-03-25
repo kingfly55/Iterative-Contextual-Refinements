@@ -14,6 +14,9 @@ import { SolutionCritiqueHistoryManager, SolutionCorrectionHistoryManager, Struc
 import { addSolutionPoolVersion } from './SolutionPool';
 import { extractPartsInOrder, formatPartsForDisplay } from '../Routing/ResponseParser';
 import { nanoid } from 'nanoid';
+import { captureSessionConfig, scheduleAutoSave } from './DeepthinkSession';
+import { PipelineQuotaPausedError, getQuotaBackoffManager } from './QuotaBackoffManager';
+import { getAPIRequestController } from '../Routing/APIRequestController';
 
 // ========== TYPE DEFINITIONS ==========
 
@@ -165,6 +168,8 @@ export interface DeepthinkPipelineState {
     activeTabId: string;
     activeStrategyTab?: number;
     isStopRequested?: boolean;
+    skipToFinalJudgeRequested?: boolean;
+    isResumeActive?: boolean;
     retryAttempt?: number;
     requestPromptInitialStrategyGen?: string;
     initialStrategies: DeepthinkMainStrategyData[];
@@ -219,6 +224,10 @@ export class PipelineStopRequestedError extends Error {
 // ========== STATE MANAGEMENT ==========
 
 export let activeDeepthinkPipeline: DeepthinkPipelineState | null = null;
+
+/** Persists the intended target depth across auto-resume cycles so the
+ *  QuotaBackoffManager callback doesn't fall back to the live UI slider. */
+let lastResumeTargetDepth: number | undefined;
 let setActiveDeepthinkPipeline: ((pipeline: DeepthinkPipelineState | null) => void) | null = null;
 
 /** No-op default so call sites never need null-checks */
@@ -256,8 +265,6 @@ let deps: DeepthinkCoreDeps = null!;
 // ========== CONSTANTS ==========
 
 const MAX_RETRIES = 3;
-const INITIAL_DELAY_MS = 20000;
-const BACKOFF_FACTOR = 2;
 const STRUCTURED_SOLUTION_POOL_TIMEOUT_MS = 900000;
 
 /** Model routing: maps step description keywords to prompt-state model keys */
@@ -301,7 +308,10 @@ export function initializeDeepthinkCore(dependencies: DeepthinkCoreDeps & {
     const { setActiveDeepthinkPipeline: setFn, renderActiveDeepthinkPipeline: renderFn, ...coreDeps } = dependencies;
     deps = coreDeps as DeepthinkCoreDeps;
     setActiveDeepthinkPipeline = setFn;
-    render = renderFn;
+    render = () => {
+        renderFn();
+        scheduleAutoSave();
+    };
 }
 
 // Export for external use
@@ -534,6 +544,9 @@ export async function runConsolidatedRedTeamAnalysis(
 // ========== MAIN PIPELINE FUNCTION ==========
 
 export async function startDeepthinkAnalysisProcess(challengeText: string, imageBase64?: string | null, imageMimeType?: string | null) {
+    // Reset quota backoff state for the new pipeline run
+    getQuotaBackoffManager().fullReset();
+
     const currentAIProvider = deps.getAIProvider();
     if (!currentAIProvider) {
         alert("AI provider not initialized. Please check your API key configuration.");
@@ -544,6 +557,8 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
         id: `deepthink-${nanoid(12)}`,
         challenge: challengeText,
         challengeText: challengeText,
+        challengeImageBase64: imageBase64 ?? undefined,
+        challengeImageMimeType: imageMimeType ?? undefined,
         initialStrategies: [],
         hypotheses: [],
         solutionCritiques: [],
@@ -561,6 +576,26 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
         finalJudgingStatus: 'pending',
         structuredSolutionPoolEnabled: false
     };
+
+    // Capture config snapshot for session save/resume
+    captureSessionConfig({
+        model: deps.getSelectedModel(),
+        temperature: deps.getSelectedTemperature(),
+        topP: deps.getSelectedTopP(),
+        strategiesCount: deps.getSelectedStrategiesCount(),
+        subStrategiesCount: deps.getSelectedSubStrategiesCount(),
+        hypothesisCount: deps.getSelectedHypothesisCount(),
+        redTeamAggressiveness: deps.getSelectedRedTeamAggressiveness(),
+        refinementEnabled: deps.getRefinementEnabled(),
+        skipSubStrategies: deps.getSkipSubStrategies(),
+        dissectedObservationsEnabled: deps.getDissectedObservationsEnabled(),
+        iterativeCorrectionsEnabled: deps.getIterativeCorrectionsEnabled(),
+        iterativeDepth: deps.getIterativeDepth(),
+        provideAllSolutionsToCorrectors: deps.getProvideAllSolutionsToCorrectors(),
+        postQualityFilterEnabled: deps.getPostQualityFilterEnabled(),
+        codeExecutionEnabled: deps.getDeepthinkCodeExecutionEnabled(),
+        modelProvider: deps.getModelProvider(),
+    }, deps.customPromptsDeepthinkState);
 
     if (setActiveDeepthinkPipeline) {
         setActiveDeepthinkPipeline(activeDeepthinkPipeline);
@@ -580,72 +615,43 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
         retryAttemptField: 'retryAttempt' | 'selfImprovementRetryAttempt' | 'testerRetryAttempt' | 'hypothesisGenRetryAttempt' | 'solutionCritiqueRetryAttempt' | 'dissectedSynthesisRetryAttempt'
     ): Promise<string> => {
         if (!currentProcess || currentProcess.isStopRequested) throw new PipelineStopRequestedError(`Stop requested before API call: ${stepDescription}`);
-        let responseText = "";
 
-        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-            if (currentProcess.isStopRequested) throw new PipelineStopRequestedError(`Stop requested during retry for: ${stepDescription}`);
+        // Route to per-agent model via MODEL_MAP lookup
+        const matched = MODEL_MAP.find(([key]) => stepDescription.includes(key));
+        const agentModel = matched
+            ? (deps.customPromptsDeepthinkState[matched[1]] as string) || deps.getSelectedModel()
+            : deps.getSelectedModel();
 
-            try {
-                (targetStatusField as any)[retryAttemptField] = attempt;
-                render();
+        // Check code execution eligibility
+        const isCodeExecutionAgent = [...CODE_EXEC_AGENTS].some(agent => stepDescription.includes(agent));
+        const isGeminiProvider = deps.getModelProvider() === 'gemini';
+        const shouldEnableCodeExecution = isCodeExecutionAgent && isGeminiProvider && deps.getDeepthinkCodeExecutionEnabled();
+        const thinkingConfig: ThinkingConfig | undefined = shouldEnableCodeExecution
+            ? { codeExecution: true }
+            : undefined;
 
-                // Route to per-agent model via MODEL_MAP lookup
-                const matched = MODEL_MAP.find(([key]) => stepDescription.includes(key));
-                const agentModel = matched
-                    ? (deps.customPromptsDeepthinkState[matched[1]] as string) || deps.getSelectedModel()
-                    : deps.getSelectedModel();
+        (targetStatusField as any)[retryAttemptField] = 0;
+        render();
 
-                // Check code execution eligibility
-                const isCodeExecutionAgent = [...CODE_EXEC_AGENTS].some(agent => stepDescription.includes(agent));
-                const isGeminiProvider = deps.getModelProvider() === 'gemini';
-                const shouldEnableCodeExecution = isCodeExecutionAgent && isGeminiProvider && deps.getDeepthinkCodeExecutionEnabled();
+        const controller = getAPIRequestController();
+        const strategyResponse = await controller.request({
+            promptOrParts: parts,
+            temperature: deps.getSelectedTemperature(),
+            model: agentModel,
+            systemInstruction,
+            isJsonOutput: isJson,
+            topP: deps.getSelectedTopP(),
+            thinkingConfig,
+            maxRetries: MAX_RETRIES,
+            label: stepDescription,
+        });
 
-                const thinkingConfig: ThinkingConfig | undefined = shouldEnableCodeExecution
-                    ? { codeExecution: true }
-                    : undefined;
-
-                const strategyResponse = await deps.callGemini(parts, deps.getSelectedTemperature(), agentModel, systemInstruction, isJson, deps.getSelectedTopP(), thinkingConfig);
-
-                // Handle code execution responses specially to preserve code blocks and output
-                if (shouldEnableCodeExecution && strategyResponse?.candidates?.[0]?.content?.parts) {
-                    const orderedParts = extractPartsInOrder(strategyResponse);
-                    responseText = formatPartsForDisplay(orderedParts);
-                } else {
-                    responseText = strategyResponse.text || "";
-                }
-
-                if (responseText && responseText.trim() !== "") {
-                    break;
-                } else {
-                    throw new Error("Empty response from API");
-                }
-            } catch (error: any) {
-                if (attempt === MAX_RETRIES) {
-                    throw error;
-                } else {
-                    if ('status' in targetStatusField) {
-                        (targetStatusField as any).status = 'retrying';
-                    }
-                    (targetStatusField as any)[retryAttemptField] = attempt + 1;
-                    render();
-
-                    const delay = INITIAL_DELAY_MS * Math.pow(BACKOFF_FACTOR, attempt);
-                    console.log(`[Deepthink] ${stepDescription} failed (attempt ${attempt + 1}/${MAX_RETRIES + 1}). Retrying in ${delay / 1000}s...`);
-
-                    const chunks = Math.ceil(delay / 500);
-                    for (let i = 0; i < chunks; i++) {
-                        if (currentProcess.isStopRequested) {
-                            throw new PipelineStopRequestedError(`Stop requested during retry delay for: ${stepDescription}`);
-                        }
-                        await new Promise(resolve => setTimeout(resolve, Math.min(500, delay - i * 500)));
-                    }
-
-                    if ('status' in targetStatusField) {
-                        (targetStatusField as any).status = 'processing';
-                    }
-                    render();
-                }
-            }
+        // Handle code execution responses specially to preserve code blocks and output
+        let responseText: string;
+        if (shouldEnableCodeExecution && strategyResponse?.candidates?.[0]?.content?.parts) {
+            responseText = formatPartsForDisplay(extractPartsInOrder(strategyResponse));
+        } else {
+            responseText = strategyResponse.text || "";
         }
 
         return responseText;
@@ -728,6 +734,7 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
 
                         render();
                     } catch (error: any) {
+                        if (error instanceof PipelineQuotaPausedError) throw error;
                         hypothesis.testerStatus = 'error';
                         hypothesis.testerError = error.message || "Hypothesis testing failed";
                         render();
@@ -735,6 +742,7 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                 });
 
                 await Promise.allSettled(hypothesisTestingPromises);
+                if (getQuotaBackoffManager().isPaused()) throw new PipelineQuotaPausedError('Quota paused after hypothesis testing');
 
                 let knowledgePacket = "<Full Information Packet>\n";
 
@@ -752,7 +760,7 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                 render();
 
             } catch (error: any) {
-                if (!(error instanceof PipelineStopRequestedError)) {
+                if (!(error instanceof PipelineStopRequestedError) && !(error instanceof PipelineQuotaPausedError)) {
                     currentProcess.hypothesisGenStatus = 'error';
                     currentProcess.hypothesisGenError = `Hypothesis exploration failed: ${error.message}`;
                     render();
@@ -872,11 +880,13 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                             }
 
                         } catch (error: any) {
+                            if (error instanceof PipelineQuotaPausedError) throw error;
                             mainStrategy.status = 'error';
                             mainStrategy.error = error.message || "Sub-strategy generation failed";
                             render();
                         }
                     }));
+                    if (getQuotaBackoffManager().isPaused()) throw new PipelineQuotaPausedError('Quota paused after sub-strategy generation');
                 }
 
                 if (currentProcess.isStopRequested) throw new PipelineStopRequestedError("Stopped after sub-strategy generation.");
@@ -972,6 +982,7 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                             subStrategy.status = 'completed';
                             render();
                         } catch (error: any) {
+                            if (error instanceof PipelineQuotaPausedError) throw error;
                             subStrategy.status = 'error';
                             subStrategy.error = error.message || "Solution attempt failed";
                             render();
@@ -979,6 +990,7 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                     });
 
                     await Promise.allSettled(subStrategyExecutions);
+                    if (getQuotaBackoffManager().isPaused()) throw new PipelineQuotaPausedError('Quota paused after solution attempts');
 
                     if (!iterativeCorrectionsEnabled && refinementEnabled) {
                         const completedSubStrategies = mainStrategy.subStrategies.filter(
@@ -1037,6 +1049,7 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                                     critiqueData.status = 'completed';
                                     render();
                                 } catch (error: any) {
+                                    if (error instanceof PipelineQuotaPausedError) throw error;
                                     critiqueData.status = 'error';
                                     critiqueData.error = error.message || "Solution critique failed";
 
@@ -1056,11 +1069,13 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
 
                 console.log('[Deepthink] Waiting for all solution executions to complete...');
                 await Promise.allSettled(strategyExecutionPromises);
+                if (getQuotaBackoffManager().isPaused()) throw new PipelineQuotaPausedError('Quota paused after strategy executions');
                 console.log('[Deepthink] All solution executions complete.');
 
                 if (!iterativeCorrectionsEnabled && refinementEnabled && dissectedObservationsEnabled) {
                     console.log('[Deepthink] Dissected observations enabled - waiting for all critiques to complete...');
                     await Promise.allSettled(critiquePromisesPerStrategy);
+                    if (getQuotaBackoffManager().isPaused()) throw new PipelineQuotaPausedError('Quota paused after critiques per strategy');
                     currentProcess.solutionCritiquesStatus = 'completed';
                     render();
                     console.log('[Deepthink] All critiques complete.');
@@ -1118,6 +1133,7 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                                     directSub.solutionCritiqueStatus = 'completed';
                                     render();
                                 } catch (error: any) {
+                                    if (error instanceof PipelineQuotaPausedError) throw error;
                                     directSub.solutionCritiqueStatus = 'error';
                                     directSub.solutionCritiqueError = error.message || "Initial critique failed";
                                     console.error(`[Deepthink] Initial critique failed for ${mainStrategy.id}:`, error.message);
@@ -1129,6 +1145,7 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                         });
 
                         await Promise.allSettled(initialCritiquePromises);
+                        if (getQuotaBackoffManager().isPaused()) throw new PipelineQuotaPausedError('Quota paused after initial critiques');
                         console.log('[Deepthink] Initial critiques complete');
 
                         // Only run PostQualityFilter if enabled
@@ -1408,6 +1425,7 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                                             render();
 
                                         } catch (error: any) {
+                                            if (error instanceof PipelineQuotaPausedError) throw error;
                                             directSub.status = 'error';
                                             directSub.error = error.message || 'Solution execution failed';
                                             render();
@@ -1415,6 +1433,7 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                                     });
 
                                     await Promise.allSettled(updatedStrategyExecutionPromises);
+                                    if (getQuotaBackoffManager().isPaused()) throw new PipelineQuotaPausedError('Quota paused after updated strategy executions');
                                     console.log(`[Deepthink] Completed re-execution for updated strategies`);
 
                                     // CRITICAL: Mark updated strategies so PQF re-evaluates them with new executions
@@ -1424,6 +1443,7 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                                     render();
 
                                 } catch (error: any) {
+                                    if (error instanceof PipelineQuotaPausedError) throw error;
                                     pqfAgent.status = 'error';
                                     pqfAgent.error = error.message || 'PostQualityFilter failed';
                                     console.error(`[Deepthink] PostQualityFilter error:`, error.message);
@@ -1531,13 +1551,18 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                             targetStatusField: any,
                             retryAttemptField: 'retryAttempt' | 'selfImprovementRetryAttempt' | 'testerRetryAttempt' | 'hypothesisGenRetryAttempt' | 'solutionCritiqueRetryAttempt' | 'dissectedSynthesisRetryAttempt'
                         ): Promise<string> => {
-                            return Promise.race([
-                                makeDeepthinkApiCall(parts, systemInstruction, isJson, stepDescription, targetStatusField, retryAttemptField),
-                                new Promise<string>((_, reject) =>
-                                    setTimeout(() => reject(new Error(`Timeout after ${STRUCTURED_SOLUTION_POOL_TIMEOUT_MS / 1000 / 60} minutes`)),
-                                        STRUCTURED_SOLUTION_POOL_TIMEOUT_MS)
-                                )
-                            ]);
+                            let timerId: ReturnType<typeof setTimeout> | undefined;
+                            try {
+                                return await Promise.race([
+                                    makeDeepthinkApiCall(parts, systemInstruction, isJson, stepDescription, targetStatusField, retryAttemptField),
+                                    new Promise<string>((_, reject) => {
+                                        timerId = setTimeout(() => reject(new Error(`Timeout after ${STRUCTURED_SOLUTION_POOL_TIMEOUT_MS / 1000 / 60} minutes`)),
+                                            STRUCTURED_SOLUTION_POOL_TIMEOUT_MS);
+                                    })
+                                ]);
+                            } finally {
+                                if (timerId !== undefined) clearTimeout(timerId);
+                            }
                         };
 
                         // Initialize iterative corrections for all active strategies
@@ -1675,6 +1700,7 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                                     render();
 
                                 } catch (error: any) {
+                                    if (error instanceof PipelineQuotaPausedError) throw error;
                                     directSub.solutionCritiqueStatus = 'error';
                                     directSub.solutionCritiqueError = error.message || "Critique failed";
                                     console.error(`[Deepthink] Critique failed for ${mainStrategy.id}:`, error.message);
@@ -1683,6 +1709,7 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                             });
 
                             await Promise.allSettled(critiquePromises);
+                            if (getQuotaBackoffManager().isPaused()) throw new PipelineQuotaPausedError('Quota paused after critiques');
                             console.log(`[Deepthink] All critiques completed for iteration ${iterNum}`);
 
                             // Update StructuredSolutionPool to include the new critiques
@@ -1767,6 +1794,7 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                                     render();
 
                                 } catch (error: any) {
+                                    if (error instanceof PipelineQuotaPausedError) throw error;
                                     poolAgent.status = 'error';
                                     poolAgent.error = error.message || "Solution pool generation failed";
                                     console.error(`[Deepthink] Solution pool failed for ${mainStrategy.id}:`, error.message);
@@ -1775,6 +1803,7 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                             });
 
                             await Promise.allSettled(poolPromises);
+                            if (getQuotaBackoffManager().isPaused()) throw new PipelineQuotaPausedError('Quota paused after solution pools');
                             console.log(`[Deepthink] All solution pools completed for iteration ${iterNum}`);
 
                             // Update the StructuredSolutionPool with new pool outputs
@@ -1873,6 +1902,7 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                                     render();
 
                                 } catch (error: any) {
+                                    if (error instanceof PipelineQuotaPausedError) throw error;
                                     directSub.selfImprovementStatus = 'error';
                                     directSub.selfImprovementError = error.message || "Correction failed";
                                     console.error(`[Deepthink] Correction failed for ${mainStrategy.id}:`, error.message);
@@ -1881,6 +1911,7 @@ export async function startDeepthinkAnalysisProcess(challengeText: string, image
                             });
 
                             await Promise.allSettled(correctionPromises);
+                            if (getQuotaBackoffManager().isPaused()) throw new PipelineQuotaPausedError('Quota paused after corrections');
                             console.log(`[Deepthink] All corrections completed for iteration ${iterNum}`);
 
                             // Update the StructuredSolutionPool with new corrected solutions
@@ -1975,6 +2006,7 @@ ${strategyCritique}
                             currentProcess.dissectedSynthesisStatus = 'completed';
                             render();
                         } catch (error: any) {
+                            if (error instanceof PipelineQuotaPausedError) throw error;
                             currentProcess.dissectedSynthesisStatus = 'error';
                             currentProcess.dissectedSynthesisError = error.message || "Dissected synthesis failed";
                             render();
@@ -2094,6 +2126,7 @@ ${currentProcess.dissectedObservationsSynthesis}
                                     subStrategy.selfImprovementStatus = 'completed';
                                     render();
                                 } catch (error: any) {
+                                    if (error instanceof PipelineQuotaPausedError) throw error;
                                     subStrategy.selfImprovementStatus = 'error';
                                     subStrategy.selfImprovementError = error.message || "Self-improvement failed";
                                     render();
@@ -2103,6 +2136,7 @@ ${currentProcess.dissectedObservationsSynthesis}
                     });
 
                     await Promise.allSettled(improvementPromises);
+                    if (getQuotaBackoffManager().isPaused()) throw new PipelineQuotaPausedError('Quota paused after self-improvement');
                 }
 
                 if (currentProcess.isStopRequested) throw new PipelineStopRequestedError("Stopped during self-improvement.");
@@ -2111,7 +2145,7 @@ ${currentProcess.dissectedObservationsSynthesis}
                 render();
 
             } catch (error: any) {
-                if (!(error instanceof PipelineStopRequestedError)) {
+                if (!(error instanceof PipelineStopRequestedError) && !(error instanceof PipelineQuotaPausedError)) {
                     currentProcess.status = 'error';
                     currentProcess.error = `Strategic Solver failed: ${error.message}`;
                     render();
@@ -2190,6 +2224,7 @@ ${currentProcess.dissectedObservationsSynthesis}
                 currentProcess.finalJudgingStatus = 'completed';
 
             } catch (e: any) {
+                if (e instanceof PipelineQuotaPausedError) throw e;
                 currentProcess.finalJudgingStatus = 'error';
                 currentProcess.finalJudgingError = e.message || "Failed to perform final judging.";
             }
@@ -2199,14 +2234,657 @@ ${currentProcess.dissectedObservationsSynthesis}
         render();
 
     } catch (error: any) {
-        if (error instanceof PipelineStopRequestedError) {
-            currentProcess.status = 'stopped';
+        if (error instanceof PipelineQuotaPausedError) {
+            console.log('[Deepthink] Pipeline paused due to quota exceeded — awaiting resume.');
+            // Don't mark as failed; the pipeline will be resumed by QuotaBackoffManager
+        } else if (error instanceof PipelineStopRequestedError) {
+            if (currentProcess.skipToFinalJudgeRequested) {
+                console.log('[Deepthink] Force judge requested — running final judge with available solutions.');
+                currentProcess.isStopRequested = false;
+                currentProcess.skipToFinalJudgeRequested = false;
+                await runFinalJudge(currentProcess, challengeText);
+            } else {
+                currentProcess.status = 'stopped';
+            }
         } else {
             currentProcess.status = 'error';
             currentProcess.error = error.message;
         }
         render();
     } finally {
-        deps.updateControlsState({ isGenerating: false });
+        if (!getQuotaBackoffManager().isPaused()) {
+            deps.updateControlsState({ isGenerating: false });
+        }
     }
+}
+
+// ========== RESUME SOLUTION POOL ITERATIONS ==========
+
+/**
+ * Resumes the StructuredSolutionPool iteration loop from a saved pipeline state.
+ * Determines the resume point from the saved iterativeCorrections data,
+ * reconstructs history managers, and continues the iteration loop.
+ * Runs the final judge after all iterations complete.
+ *
+ * @param targetIterativeDepth Total iterations to reach (e.g. 10)
+ */
+export async function resumeSolutionPoolIterations(targetIterativeDepth?: number): Promise<void> {
+    if (!activeDeepthinkPipeline) {
+        alert('No pipeline state loaded. Load a session file first.');
+        return;
+    }
+
+    const currentProcess = activeDeepthinkPipeline;
+    const challengeText = currentProcess.challengeText;
+    const imageBase64 = currentProcess.challengeImageBase64;
+    const imageMimeType = currentProcess.challengeImageMimeType;
+
+    if (targetIterativeDepth !== undefined) lastResumeTargetDepth = targetIterativeDepth;
+    const iterativeDepth = lastResumeTargetDepth ?? deps.getIterativeDepth();
+
+    // Determine resume point: find highest completed iteration across all strategies
+    const activeMainStrategies = currentProcess.initialStrategies.filter(s => !s.isKilledByRedTeam);
+    let maxCompletedIteration = 0;
+    let needsCorrectionForCurrentIter = false;
+
+    activeMainStrategies.forEach((ms) => {
+        const sub = ms.subStrategies[0];
+        const iterations = (sub as any)?.iterativeCorrections?.iterations || [];
+        if (iterations.length > maxCompletedIteration) {
+            maxCompletedIteration = iterations.length;
+        }
+    });
+
+    // Check if the last iteration has critiques completed but corrections missing
+    // (iteration 3 in the user's case: C✓ P✓ R✗)
+    const lastCompletedCritiqueIter = (() => {
+        let maxCritiqueIter = maxCompletedIteration;
+        currentProcess.solutionCritiques?.forEach(c => {
+            const match = c.id?.match(/critique-main\d+-iter(\d+)/);
+            if (match && c.status === 'completed') {
+                const iterNum = parseInt(match[1]);
+                if (iterNum > maxCritiqueIter) maxCritiqueIter = iterNum;
+            }
+        });
+        return maxCritiqueIter;
+    })();
+
+    if (lastCompletedCritiqueIter > maxCompletedIteration) {
+        needsCorrectionForCurrentIter = true;
+    }
+
+    const resumeIteration = needsCorrectionForCurrentIter ? lastCompletedCritiqueIter : maxCompletedIteration + 1;
+
+    console.log(`[Resume] Max completed correction iteration: ${maxCompletedIteration}`);
+    console.log(`[Resume] Last completed critique iteration: ${lastCompletedCritiqueIter}`);
+    console.log(`[Resume] Needs correction for current iter: ${needsCorrectionForCurrentIter}`);
+    console.log(`[Resume] Will resume from iteration ${resumeIteration}, target: ${iterativeDepth}`);
+
+    if (resumeIteration > iterativeDepth) {
+        console.log('[Resume] All iterations already complete. Running final judge only.');
+        await runFinalJudge(currentProcess, challengeText);
+        return;
+    }
+
+    // Reset pipeline status for processing
+    currentProcess.status = 'processing';
+    currentProcess.isStopRequested = false;
+    currentProcess.isResumeActive = true;
+    currentProcess.structuredSolutionPoolStatus = 'processing';
+    currentProcess.finalJudgingStatus = 'pending';
+    currentProcess.finalJudgedBestSolution = undefined;
+    currentProcess.finalJudgedBestStrategyId = undefined;
+
+    deps.updateControlsState({ isGenerating: true });
+    render();
+
+    const parts: Part[] = (imageBase64 && imageMimeType)
+        ? [{ inlineData: { mimeType: imageMimeType, data: imageBase64 } }]
+        : [];
+
+    // Reuse the same pattern as the main pipeline via APIRequestController
+    const makeResumedApiCall = async (
+        callParts: Part[],
+        systemInstruction: string,
+        isJson: boolean,
+        stepDescription: string,
+        targetStatusField: any,
+        retryAttemptField: 'retryAttempt' | 'selfImprovementRetryAttempt' | 'testerRetryAttempt' | 'hypothesisGenRetryAttempt' | 'solutionCritiqueRetryAttempt' | 'dissectedSynthesisRetryAttempt'
+    ): Promise<string> => {
+        if (currentProcess.isStopRequested) throw new PipelineStopRequestedError(`Stop requested: ${stepDescription}`);
+
+        const matched = MODEL_MAP.find(([key]) => stepDescription.includes(key));
+        const agentModel = matched
+            ? (deps.customPromptsDeepthinkState[matched[1]] as string) || deps.getSelectedModel()
+            : deps.getSelectedModel();
+
+        const isCodeExecutionAgent = [...CODE_EXEC_AGENTS].some(agent => stepDescription.includes(agent));
+        const isGeminiProvider = deps.getModelProvider() === 'gemini';
+        const shouldEnableCodeExecution = isCodeExecutionAgent && isGeminiProvider && deps.getDeepthinkCodeExecutionEnabled();
+        const thinkingConfig: ThinkingConfig | undefined = shouldEnableCodeExecution ? { codeExecution: true } : undefined;
+
+        (targetStatusField as any)[retryAttemptField] = 0;
+        render();
+
+        const controller = getAPIRequestController();
+        const response = await controller.request({
+            promptOrParts: callParts,
+            temperature: deps.getSelectedTemperature(),
+            model: agentModel,
+            systemInstruction,
+            isJsonOutput: isJson,
+            topP: deps.getSelectedTopP(),
+            thinkingConfig,
+            maxRetries: MAX_RETRIES,
+            label: `[Resume] ${stepDescription}`,
+        });
+
+        let responseText: string;
+        if (shouldEnableCodeExecution && response?.candidates?.[0]?.content?.parts) {
+            responseText = formatPartsForDisplay(extractPartsInOrder(response));
+        } else {
+            responseText = response.text || "";
+        }
+        return responseText;
+    };
+
+    // Timeout wrapper
+    const makeResumedApiCallWithTimeout = async (
+        callParts: Part[], systemInstruction: string, isJson: boolean,
+        stepDescription: string, targetStatusField: any, retryAttemptField: any
+    ): Promise<string> => {
+        let timerId: ReturnType<typeof setTimeout> | undefined;
+        try {
+            return await Promise.race([
+                makeResumedApiCall(callParts, systemInstruction, isJson, stepDescription, targetStatusField, retryAttemptField),
+                new Promise<string>((_, reject) => {
+                    timerId = setTimeout(() => reject(new Error(`Timeout after ${STRUCTURED_SOLUTION_POOL_TIMEOUT_MS / 1000 / 60} minutes`)), STRUCTURED_SOLUTION_POOL_TIMEOUT_MS);
+                })
+            ]);
+        } finally {
+            if (timerId !== undefined) clearTimeout(timerId);
+        }
+    };
+
+    // Replicate buildStructuredSolutionPool closure
+    const buildStructuredSolutionPool = (): string => {
+        const poolData: { strategies: any[] } = { strategies: [] };
+
+        activeMainStrategies.forEach((mainStrategy) => {
+            const directSub = mainStrategy.subStrategies[0];
+            if (!directSub || directSub.isKilledByRedTeam || !directSub.solutionAttempt) return;
+
+            const strategyEntry: any = {
+                strategy_id: mainStrategy.id,
+                strategy_text: mainStrategy.strategyText,
+                original_solution: directSub.solutionAttempt,
+                iterations: []
+            };
+
+            const iterations = (directSub as any).iterativeCorrections?.iterations || [];
+            const compressionThreshold = 3;
+            const totalIterations = iterations.length;
+            if (totalIterations > compressionThreshold) {
+                strategyEntry.compressed_iterations_note = `Iterations 1-${totalIterations - compressionThreshold} completed and compressed. See atomic_reconstruction in solution_pool for summaries.`;
+            }
+            const startIdx = Math.max(0, totalIterations - compressionThreshold);
+            iterations.forEach((iter: any, idx: number) => {
+                if (idx >= startIdx) {
+                    strategyEntry.iterations.push({
+                        iteration_number: idx + 1,
+                        critique: iter.critique,
+                        corrected_solution: iter.correctedSolution
+                    });
+                }
+            });
+
+            if (directSub.solutionCritique && directSub.solutionCritiqueStatus === 'completed') {
+                const lastIter = iterations.length > 0 ? iterations[iterations.length - 1] : null;
+                if (!lastIter || lastIter.critique !== directSub.solutionCritique) {
+                    strategyEntry.latest_critique = directSub.solutionCritique;
+                }
+            }
+
+            const poolAgent = currentProcess.structuredSolutionPoolAgents.find(a => a.mainStrategyId === mainStrategy.id);
+            if (poolAgent && poolAgent.poolResponse) {
+                strategyEntry.solution_pool = poolAgent.parsedPoolResponse || poolAgent.poolResponse;
+            }
+
+            poolData.strategies.push(strategyEntry);
+        });
+
+        return JSON.stringify(poolData, null, 2);
+    };
+
+    try {
+        // Reconstruct history managers from saved iteration data
+        const critiqueHistoryManagers = new Map<string, SolutionCritiqueHistoryManager>();
+        const poolHistoryManagers = new Map<string, StructuredSolutionPoolHistoryManager>();
+        const correctionHistoryManagers = new Map<string, SolutionCorrectionHistoryManager>();
+
+        for (const mainStrategy of activeMainStrategies) {
+            const directSub = mainStrategy.subStrategies[0];
+            if (!directSub || directSub.isKilledByRedTeam || !directSub.solutionAttempt) continue;
+
+            // Reconstruct critique history manager and replay history
+            const critiqueManager = new SolutionCritiqueHistoryManager(
+                deps.customPromptsDeepthinkState.sys_deepthink_solutionCritique,
+                challengeText,
+                mainStrategy.strategyText,
+                directSub.solutionAttempt
+            );
+
+            const iterations = (directSub as any).iterativeCorrections?.iterations || [];
+            for (const iter of iterations) {
+                await critiqueManager.addCritique(iter.critique);
+                await critiqueManager.addCorrectedSolution(iter.correctedSolution, iter.iterationNumber);
+            }
+            // If there's a dangling critique (iter 3 critique completed but correction didn't), add it
+            if (directSub.solutionCritique && directSub.solutionCritiqueStatus === 'completed') {
+                const lastIter = iterations[iterations.length - 1];
+                if (!lastIter || lastIter.critique !== directSub.solutionCritique) {
+                    await critiqueManager.addCritique(directSub.solutionCritique);
+                }
+            }
+            critiqueHistoryManagers.set(mainStrategy.id, critiqueManager);
+
+            // Pool history manager (stateless, no reconstruction needed)
+            poolHistoryManagers.set(
+                mainStrategy.id,
+                new StructuredSolutionPoolHistoryManager(
+                    deps.customPromptsDeepthinkState.sys_deepthink_structuredSolutionPool,
+                    challengeText,
+                    mainStrategy.id,
+                    mainStrategy.strategyText
+                )
+            );
+
+            // Ensure iterativeCorrections structure exists
+            if (!(directSub as any).iterativeCorrections) {
+                (directSub as any).iterativeCorrections = { iterations: [], status: 'processing' };
+            } else {
+                (directSub as any).iterativeCorrections.status = 'processing';
+            }
+        }
+
+        console.log(`[Resume] Reconstructed history managers for ${activeMainStrategies.length} strategies`);
+        console.log(`[Resume] Starting iteration loop from ${resumeIteration} to ${iterativeDepth}`);
+
+        // Main iteration loop (same structure as original)
+        for (let iterNum = resumeIteration; iterNum <= iterativeDepth; iterNum++) {
+            if (currentProcess.isStopRequested) break;
+            console.log(`[Resume] Starting iteration ${iterNum}...`);
+
+            // Determine which phases to run for this iteration
+            const skipCritique = needsCorrectionForCurrentIter && iterNum === resumeIteration;
+            const skipPool = skipCritique; // Pool already completed for iter 3
+
+            // PHASE 1: Generate critiques
+            if (!skipCritique) {
+                console.log(`[Resume] Phase 1: Generating critiques for iteration ${iterNum}...`);
+                const critiquePromises = activeMainStrategies.map(async (mainStrategy) => {
+                    const directSub = mainStrategy.subStrategies[0];
+                    if (!directSub || directSub.isKilledByRedTeam || !directSub.solutionAttempt) return;
+                    if (currentProcess.isStopRequested) { directSub.solutionCritiqueStatus = 'cancelled'; return; }
+
+                    try {
+                        directSub.solutionCritiqueStatus = 'processing';
+                        render();
+
+                        const critiqueHistoryManager = critiqueHistoryManagers.get(mainStrategy.id);
+                        if (!critiqueHistoryManager) throw new Error(`No critique history manager for ${mainStrategy.id}`);
+
+                        let currentSolution: string;
+                        const iterations = (directSub as any).iterativeCorrections?.iterations || [];
+                        currentSolution = iterations.length > 0 ? iterations[iterations.length - 1].correctedSolution : directSub.solutionAttempt || '';
+
+                        const critiquePromptMessages = await critiqueHistoryManager.buildPromptForIteration(currentSolution, iterNum);
+                        const critiquePrompt = critiquePromptMessages.map(m => m.content).join('\n\n');
+                        directSub.requestPromptSolutionCritique = critiquePrompt;
+
+                        const critiqueResponse = await makeResumedApiCallWithTimeout(
+                            parts.concat([{ text: critiquePrompt }]),
+                            deps.customPromptsDeepthinkState.sys_deepthink_solutionCritique,
+                            false,
+                            `Solution Critique Iteration ${iterNum} for ${mainStrategy.id}`,
+                            directSub, 'solutionCritiqueRetryAttempt'
+                        );
+
+                        await critiqueHistoryManager.addCritique(critiqueResponse);
+                        if (iterNum > 1 && iterations.length > 0) {
+                            await critiqueHistoryManager.addCorrectedSolution(iterations[iterations.length - 1].correctedSolution, iterNum);
+                        }
+
+                        directSub.solutionCritique = critiqueResponse;
+                        directSub.solutionCritiqueStatus = 'completed';
+                        render();
+
+                        currentProcess.solutionCritiques.push({
+                            id: `critique-${mainStrategy.id}-iter${iterNum}`,
+                            subStrategyId: directSub.id,
+                            mainStrategyId: mainStrategy.id,
+                            requestPrompt: critiquePrompt,
+                            critiqueResponse: critiqueResponse,
+                            status: 'completed',
+                            isDetailsOpen: true,
+                            retryAttempt: iterNum
+                        });
+                        render();
+                    } catch (error: any) {
+                        if (error instanceof PipelineQuotaPausedError) throw error;
+                        directSub.solutionCritiqueStatus = 'error';
+                        directSub.solutionCritiqueError = error.message || "Critique failed";
+                        console.error(`[Resume] Critique failed for ${mainStrategy.id}:`, error.message);
+                        render();
+                    }
+                });
+
+                await Promise.allSettled(critiquePromises);
+                if (getQuotaBackoffManager().isPaused()) throw new PipelineQuotaPausedError('Quota paused after resume critiques');
+                console.log(`[Resume] All critiques completed for iteration ${iterNum}`);
+            } else {
+                console.log(`[Resume] Skipping critique for iteration ${iterNum} (already completed)`);
+            }
+
+            // Update pool after critiques
+            currentProcess.structuredSolutionPool = buildStructuredSolutionPool();
+            render();
+
+            // PHASE 2: Generate solution pools
+            if (!skipPool) {
+                console.log(`[Resume] Phase 2: Generating solution pools for iteration ${iterNum}...`);
+                const poolPromises = activeMainStrategies.map(async (mainStrategy) => {
+                    const directSub = mainStrategy.subStrategies[0];
+                    if (!directSub || directSub.isKilledByRedTeam || !directSub.solutionAttempt) return;
+                    if (directSub.solutionCritiqueStatus !== 'completed' || !directSub.solutionCritique) return;
+                    if (currentProcess.isStopRequested) return;
+
+                    let poolAgent = currentProcess.structuredSolutionPoolAgents.find(a => a.mainStrategyId === mainStrategy.id);
+                    if (!poolAgent) {
+                        poolAgent = { id: `pool-${mainStrategy.id}`, mainStrategyId: mainStrategy.id, status: 'pending', isDetailsOpen: true };
+                        currentProcess.structuredSolutionPoolAgents.push(poolAgent);
+                    }
+
+                    try {
+                        poolAgent.status = 'processing';
+                        render();
+
+                        const poolHistoryManager = poolHistoryManagers.get(mainStrategy.id);
+                        if (!poolHistoryManager) throw new Error(`No pool history manager for ${mainStrategy.id}`);
+
+                        const poolPromptMessages = await poolHistoryManager.buildPromptForIteration(
+                            currentProcess.structuredSolutionPool || '', directSub.solutionCritique || '', iterNum
+                        );
+                        const poolPrompt = poolPromptMessages.map(m => m.content).join('\n\n');
+                        poolAgent.requestPrompt = poolPrompt;
+
+                        const poolResponse = await makeResumedApiCallWithTimeout(
+                            parts.concat([{ text: poolPrompt }]),
+                            deps.customPromptsDeepthinkState.sys_deepthink_structuredSolutionPool,
+                            true,
+                            `StructuredSolutionPool Agent for ${mainStrategy.id} Iteration ${iterNum}`,
+                            poolAgent, 'retryAttempt'
+                        );
+
+                        poolAgent.poolResponse = poolResponse;
+                        try {
+                            const parsed = deps.parseJsonSafe(poolResponse, `SolutionPool-${mainStrategy.id}`);
+                            if (parsed && Array.isArray(parsed.solutions)) {
+                                poolAgent.parsedPoolResponse = {
+                                    strategy_id: parsed.strategy_id || mainStrategy.id,
+                                    solutions: parsed.solutions.map((s: any) => ({
+                                        title: s.title || 'Untitled Solution',
+                                        approach_summary: s.approach_summary || '',
+                                        content: s.content || '',
+                                        confidence: typeof s.confidence === 'number' ? s.confidence : 0.5,
+                                        internal_critique: s.internal_critique || '',
+                                        atomic_reconstruction: s.atomic_reconstruction || ''
+                                    }))
+                                };
+                            }
+                        } catch (parseError: any) {
+                            console.warn(`[Resume] Failed to parse pool JSON for ${mainStrategy.id}:`, parseError.message);
+                        }
+
+                        poolAgent.status = 'completed';
+                        render();
+                    } catch (error: any) {
+                        if (error instanceof PipelineQuotaPausedError) throw error;
+                        poolAgent.status = 'error';
+                        poolAgent.error = error.message || "Solution pool generation failed";
+                        console.error(`[Resume] Solution pool failed for ${mainStrategy.id}:`, error.message);
+                        render();
+                    }
+                });
+
+                await Promise.allSettled(poolPromises);
+                if (getQuotaBackoffManager().isPaused()) throw new PipelineQuotaPausedError('Quota paused after resume solution pools');
+                console.log(`[Resume] All solution pools completed for iteration ${iterNum}`);
+            } else {
+                console.log(`[Resume] Skipping pool generation for iteration ${iterNum} (already completed)`);
+            }
+
+            // Update pool and track version
+            currentProcess.structuredSolutionPool = buildStructuredSolutionPool();
+            if (currentProcess.structuredSolutionPool) {
+                addSolutionPoolVersion(currentProcess.id, currentProcess.structuredSolutionPool, iterNum);
+            }
+            render();
+
+            // PHASE 3: Generate corrected solutions
+            console.log(`[Resume] Phase 3: Generating corrected solutions for iteration ${iterNum}...`);
+            const correctionPromises = activeMainStrategies.map(async (mainStrategy) => {
+                const directSub = mainStrategy.subStrategies[0];
+                if (!directSub || directSub.isKilledByRedTeam || !directSub.solutionAttempt) return;
+                if (directSub.solutionCritiqueStatus !== 'completed' || !directSub.solutionCritique) return;
+                if (currentProcess.isStopRequested) { directSub.selfImprovementStatus = 'cancelled'; return; }
+
+                try {
+                    directSub.selfImprovementStatus = 'processing';
+                    render();
+
+                    let currentSolution: string;
+                    const iterations = (directSub as any).iterativeCorrections?.iterations || [];
+                    currentSolution = iterations.length > 0 ? iterations[iterations.length - 1].correctedSolution : directSub.solutionAttempt || '';
+
+                    let correctionManager = correctionHistoryManagers.get(mainStrategy.id);
+                    if (!correctionManager) {
+                        correctionManager = new SolutionCorrectionHistoryManager(
+                            deps.customPromptsDeepthinkState.sys_deepthink_selfImprovement,
+                            challengeText,
+                            mainStrategy.strategyText,
+                            currentSolution,
+                            directSub.solutionCritique || '',
+                            mainStrategy.id,
+                            currentProcess.structuredSolutionPool || null
+                        );
+                        correctionHistoryManagers.set(mainStrategy.id, correctionManager);
+                    } else {
+                        await correctionManager.addNewCritique(directSub.solutionCritique || '', iterNum);
+                    }
+
+                    const correctionPromptMessages = await correctionManager.buildPromptForIteration(
+                        directSub.solutionCritique || '', iterNum,
+                        iterNum > 1 ? currentProcess.structuredSolutionPool : null
+                    );
+                    const correctionPrompt = correctionPromptMessages.map(m => m.content).join('\n\n');
+                    directSub.requestPromptSelfImprovement = correctionPrompt;
+
+                    const correctedSolution = await makeResumedApiCallWithTimeout(
+                        parts.concat([{ text: correctionPrompt }]),
+                        deps.customPromptsDeepthinkState.sys_deepthink_selfImprovement,
+                        false,
+                        `Solution Correction Iteration ${iterNum} for ${mainStrategy.id}`,
+                        directSub, 'selfImprovementRetryAttempt'
+                    );
+
+                    directSub.refinedSolution = correctedSolution;
+                    directSub.selfImprovementStatus = 'completed';
+
+                    (directSub as any).iterativeCorrections.iterations.push({
+                        iterationNumber: iterNum,
+                        critique: directSub.solutionCritique || '',
+                        correctedSolution: correctedSolution,
+                        timestamp: Date.now()
+                    });
+                    render();
+                } catch (error: any) {
+                    if (error instanceof PipelineQuotaPausedError) throw error;
+                    directSub.selfImprovementStatus = 'error';
+                    directSub.selfImprovementError = error.message || "Correction failed";
+                    console.error(`[Resume] Correction failed for ${mainStrategy.id}:`, error.message);
+                    render();
+                }
+            });
+
+            await Promise.allSettled(correctionPromises);
+            if (getQuotaBackoffManager().isPaused()) throw new PipelineQuotaPausedError('Quota paused after resume corrections');
+            console.log(`[Resume] All corrections completed for iteration ${iterNum}`);
+
+            // Update pool and track post-correction version
+            currentProcess.structuredSolutionPool = buildStructuredSolutionPool();
+            if (currentProcess.structuredSolutionPool) {
+                addSolutionPoolVersion(currentProcess.id, currentProcess.structuredSolutionPool, iterNum + 0.5);
+            }
+            render();
+
+            // Reset the skip flag after the first resumed iteration
+            needsCorrectionForCurrentIter = false;
+        }
+
+        // Mark iterative corrections as completed
+        activeMainStrategies.forEach((mainStrategy) => {
+            const directSub = mainStrategy.subStrategies[0];
+            if (directSub) {
+                if ((directSub as any).iterativeCorrections) {
+                    (directSub as any).iterativeCorrections.status = 'completed';
+                }
+                if (directSub.selfImprovementStatus === 'completed' || directSub.refinedSolution) {
+                    directSub.status = 'completed';
+                    directSub.selfImprovementStatus = 'completed';
+                    directSub.solutionCritiqueStatus = 'completed';
+                }
+            }
+            mainStrategy.status = 'completed';
+        });
+
+        currentProcess.structuredSolutionPoolStatus = 'completed';
+        currentProcess.strategicSolverComplete = true;
+        console.log('[Resume] All iterations completed');
+        render();
+
+        // Run final judge
+        await runFinalJudge(currentProcess, challengeText);
+
+    } catch (error: any) {
+        if (error instanceof PipelineQuotaPausedError) {
+            console.log('[Resume] Pipeline paused due to quota exceeded — awaiting resume.');
+            // Don't mark as failed; the pipeline will be resumed by QuotaBackoffManager
+        } else if (error instanceof PipelineStopRequestedError) {
+            if (currentProcess.skipToFinalJudgeRequested) {
+                console.log('[Resume] Force judge requested — running final judge with available solutions.');
+                currentProcess.isStopRequested = false;
+                currentProcess.skipToFinalJudgeRequested = false;
+                await runFinalJudge(currentProcess, challengeText);
+            } else {
+                currentProcess.status = 'stopped';
+            }
+        } else {
+            currentProcess.status = 'error';
+            currentProcess.error = error.message;
+        }
+        render();
+    } finally {
+        currentProcess.isResumeActive = false;
+        if (!getQuotaBackoffManager().isPaused()) {
+            deps.updateControlsState({ isGenerating: false });
+        }
+    }
+}
+
+// ========== FINAL JUDGE (shared between main pipeline and resume) ==========
+
+export async function runFinalJudge(currentProcess: DeepthinkPipelineState, challengeText: string): Promise<void> {
+    currentProcess.finalJudgingStatus = 'processing';
+    render();
+
+    const allSolutions: Array<{ id: string, solution: string, mainStrategyId: string, subStrategyText: string }> = [];
+
+    currentProcess.initialStrategies.forEach(mainStrategy => {
+        if (mainStrategy.isKilledByRedTeam) return;
+        mainStrategy.subStrategies.forEach(subStrategy => {
+            if (subStrategy.isKilledByRedTeam) return;
+            const solution = subStrategy.refinedSolution || subStrategy.solutionAttempt;
+            if (solution) {
+                allSolutions.push({
+                    id: subStrategy.id,
+                    solution,
+                    mainStrategyId: mainStrategy.id,
+                    subStrategyText: subStrategy.subStrategyText
+                });
+            }
+        });
+    });
+
+    if (allSolutions.length === 0) {
+        currentProcess.finalJudgingStatus = 'error';
+        currentProcess.finalJudgingError = "No completed solutions available for final review.";
+        currentProcess.status = 'completed';
+        render();
+        return;
+    }
+
+    const sysPromptFinalJudge = deps.customPromptsDeepthinkState.sys_deepthink_finalJudge;
+    const finalSolutionsText = allSolutions.map((sol, i) =>
+        `<SOLUTION_${i + 1}>\nID: ${sol.id}\nMain Strategy: ${sol.mainStrategyId}\nSub-Strategy: ${sol.subStrategyText.substring(0, 100)}...\nSolution Text:\n${sol.solution}\n</SOLUTION_${i + 1}>`
+    ).join('\n\n');
+
+    const userPromptFinalJudge = `Original Challenge: ${challengeText}\n\nBelow are ${allSolutions.length} candidate solutions from different strategic approaches and sub-strategies. Your task is to select the SINGLE OVERALL BEST solution based on correctness, efficiency, elegance, and clarity.\n\nPresent your final verdict as a JSON object with the following structure: \`{"best_solution_id": "ID of the winning solution", "final_solution_text": "The full text of the absolute best solution", "final_reasoning": "Your detailed reasoning for why this solution is the ultimate winner"}\`\n\n${finalSolutionsText}`;
+
+    currentProcess.finalJudgingRequestPrompt = userPromptFinalJudge;
+
+    try {
+        const matched = MODEL_MAP.find(([key]) => 'Final Judge'.includes(key));
+        const agentModel = matched
+            ? (deps.customPromptsDeepthinkState[matched[1]] as string) || deps.getSelectedModel()
+            : deps.getSelectedModel();
+
+        const controller = getAPIRequestController();
+        const response = await controller.request({
+            promptOrParts: [{ text: userPromptFinalJudge }],
+            temperature: deps.getSelectedTemperature(),
+            model: agentModel,
+            systemInstruction: sysPromptFinalJudge,
+            isJsonOutput: true,
+            topP: deps.getSelectedTopP(),
+            maxRetries: MAX_RETRIES,
+            label: '[Resume] Final Judge',
+        });
+        const responseText = response.text || "";
+
+        currentProcess.finalJudgingResponseText = responseText;
+        const parsed = deps.parseJsonSafe(responseText, 'Final Judge');
+
+        if (!parsed.best_solution_id || !parsed.final_reasoning) {
+            throw new Error("Final Judge response is missing critical fields (best_solution_id, final_reasoning).");
+        }
+
+        const winningSolution = allSolutions.find(sol => sol.id === parsed.best_solution_id);
+        const solutionTitle = winningSolution
+            ? `Sub-Strategy "${winningSolution.subStrategyText.substring(0, 60)}..." from Main Strategy ${winningSolution.mainStrategyId}`
+            : `Solution ${parsed.best_solution_id}`;
+
+        currentProcess.finalJudgedBestStrategyId = winningSolution?.id || parsed.best_solution_id;
+        currentProcess.finalJudgedBestSolution = `**Solution ID:** <span class="sub-strategy-purple-id">${parsed.best_solution_id}</span>\n\n**Origin:** ${solutionTitle}\n\n**Final Reasoning:**\n${parsed.final_reasoning}\n\n---\n\n**Definitive Solution:**\n${winningSolution?.solution || parsed.final_solution_text || 'Solution not found'}`;
+        currentProcess.finalJudgingStatus = 'completed';
+        console.log(`[Resume] Final judge complete. Winner: ${parsed.best_solution_id}`);
+    } catch (e: any) {
+        if (e instanceof PipelineQuotaPausedError) throw e;
+        currentProcess.finalJudgingStatus = 'error';
+        currentProcess.finalJudgingError = e.message || "Failed to perform final judging.";
+        console.error('[Resume] Final judge failed:', e.message);
+    }
+
+    currentProcess.status = 'completed';
+    render();
 }

@@ -27,6 +27,12 @@ export interface DeepthinkConfigPanelProps {
     codeExecutionEnabled: boolean;
     isGeminiProvider: boolean;
 
+    // Quota Backoff config
+    quotaBackoffDurationHours: number;
+    quotaConsecutive429Threshold: number;
+    quotaAutoResumeEnabled: boolean;
+    quotaMaxCyclesPerSession: number;
+
     onStrategiesChange: (count: number) => void;
     onSubStrategiesChange: (count: number) => void;
     onHypothesisChange: (count: number) => void;
@@ -40,6 +46,12 @@ export interface DeepthinkConfigPanelProps {
     onIterativeDepthChange: (depth: number) => void;
     onProvideAllSolutionsToggle: (enabled: boolean) => void;
     onCodeExecutionToggle: (enabled: boolean) => void;
+
+    // Quota Backoff callbacks
+    onQuotaBackoffDurationChange: (hours: number) => void;
+    onQuotaConsecutive429ThresholdChange: (threshold: number) => void;
+    onQuotaAutoResumeToggle: (enabled: boolean) => void;
+    onQuotaMaxCyclesPerSessionChange: (max: number) => void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -437,6 +449,108 @@ const RefinementSection: React.FC<{
     );
 };
 
+const QuotaBackoffSection: React.FC<{
+    quotaBackoffDurationHours: number;
+    quotaConsecutive429Threshold: number;
+    quotaAutoResumeEnabled: boolean;
+    quotaMaxCyclesPerSession: number;
+    onQuotaBackoffDurationChange: (hours: number) => void;
+    onQuotaConsecutive429ThresholdChange: (threshold: number) => void;
+    onQuotaAutoResumeToggle: (enabled: boolean) => void;
+    onQuotaMaxCyclesPerSessionChange: (max: number) => void;
+}> = (props) => {
+    const {
+        quotaBackoffDurationHours, quotaConsecutive429Threshold,
+        quotaAutoResumeEnabled, quotaMaxCyclesPerSession,
+        onQuotaBackoffDurationChange, onQuotaConsecutive429ThresholdChange,
+        onQuotaAutoResumeToggle, onQuotaMaxCyclesPerSessionChange,
+    } = props;
+
+    return (
+        <div className="quota-backoff-container">
+            <div className="quota-backoff-header">
+                <span className="material-symbols-outlined">schedule</span>
+                <span>Quota Backoff</span>
+            </div>
+            <div className="quota-backoff-card">
+                {/* Backoff Duration */}
+                <div className="quota-backoff-section">
+                    <div className="input-group-tight">
+                        <label htmlFor="dt-quota-backoff-duration" className="input-label">
+                            Backoff Duration (hours from now)
+                        </label>
+                        <input
+                            type="number"
+                            id="dt-quota-backoff-duration"
+                            className="quota-time-input"
+                            value={quotaBackoffDurationHours || ''}
+                            placeholder="e.g. 2"
+                            min={0}
+                            max={168}
+                            step={0.5}
+                            onChange={e => {
+                                const v = parseFloat(e.target.value);
+                                onQuotaBackoffDurationChange(isNaN(v) ? 0 : v);
+                            }}
+                        />
+                    </div>
+                </div>
+
+                {/* Consecutive 429 Threshold Slider */}
+                <div className="quota-backoff-section">
+                    <div className="input-group-tight">
+                        <label htmlFor="dt-quota-429-threshold-slider" className="input-label">
+                            Consecutive 429 Threshold: <span>{quotaConsecutive429Threshold}</span>
+                        </label>
+                        <SliderWithFill
+                            id="dt-quota-429-threshold-slider"
+                            value={quotaConsecutive429Threshold}
+                            min={1}
+                            max={10}
+                            color="#e8a96b"
+                            onChange={onQuotaConsecutive429ThresholdChange}
+                        />
+                    </div>
+                </div>
+
+                {/* Max Cycles Per Session Slider */}
+                <div className="quota-backoff-section">
+                    <div className="input-group-tight">
+                        <label htmlFor="dt-quota-max-cycles-slider" className="input-label">
+                            Max Cycles Per Session: <span>{quotaMaxCyclesPerSession}</span>
+                        </label>
+                        <SliderWithFill
+                            id="dt-quota-max-cycles-slider"
+                            value={quotaMaxCyclesPerSession}
+                            min={1}
+                            max={20}
+                            color="#e8a96b"
+                            onChange={onQuotaMaxCyclesPerSessionChange}
+                        />
+                    </div>
+                </div>
+
+                {/* Auto-Resume Toggle */}
+                <div className="quota-backoff-section">
+                    <div className="quota-toggle-row">
+                        <label className="toggle-label">
+                            <input
+                                type="checkbox"
+                                id="dt-quota-auto-resume-toggle"
+                                className="toggle-input"
+                                checked={quotaAutoResumeEnabled}
+                                onChange={e => onQuotaAutoResumeToggle(e.target.checked)}
+                            />
+                            <span className="toggle-slider" />
+                        </label>
+                        <span className="quota-toggle-text">Auto-Resume After Quota Reset</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // ═══════════════════════════════════════════════════════════════════════
 // Main Config Panel Component
 // ═══════════════════════════════════════════════════════════════════════
@@ -491,6 +605,22 @@ export const DeepthinkConfigPanelComponent: React.FC<DeepthinkConfigPanelProps> 
                     />
                 </div>
             </div>
+
+            {/* Quota Backoff Row */}
+            <div className="config-row-container">
+                <div className="config-row-inner">
+                    <QuotaBackoffSection
+                        quotaBackoffDurationHours={props.quotaBackoffDurationHours}
+                        quotaConsecutive429Threshold={props.quotaConsecutive429Threshold}
+                        quotaAutoResumeEnabled={props.quotaAutoResumeEnabled}
+                        quotaMaxCyclesPerSession={props.quotaMaxCyclesPerSession}
+                        onQuotaBackoffDurationChange={props.onQuotaBackoffDurationChange}
+                        onQuotaConsecutive429ThresholdChange={props.onQuotaConsecutive429ThresholdChange}
+                        onQuotaAutoResumeToggle={props.onQuotaAutoResumeToggle}
+                        onQuotaMaxCyclesPerSessionChange={props.onQuotaMaxCyclesPerSessionChange}
+                    />
+                </div>
+            </div>
         </div>
     </div>
 );
@@ -517,6 +647,10 @@ function deriveProps(controller: ReturnType<typeof getDeepthinkConfigController>
         onIterativeDepthChange: v => controller.setIterativeDepth(v),
         onProvideAllSolutionsToggle: v => controller.setProvideAllSolutionsEnabled(v),
         onCodeExecutionToggle: v => controller.setCodeExecutionEnabled(v),
+        onQuotaBackoffDurationChange: v => controller.setQuotaBackoffDurationHours(v),
+        onQuotaConsecutive429ThresholdChange: v => controller.setQuotaConsecutive429Threshold(v),
+        onQuotaAutoResumeToggle: v => controller.setQuotaAutoResumeEnabled(v),
+        onQuotaMaxCyclesPerSessionChange: v => controller.setQuotaMaxCyclesPerSession(v),
     };
 }
 

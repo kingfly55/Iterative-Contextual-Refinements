@@ -601,6 +601,358 @@
     border: 1px solid rgba(var(--accent-pink-rgb), 0.3);
 }
 
+/* ── Fallback Rules Section ── */
+
+.fallback-section {
+    margin-top: 2.5rem;
+    padding: 0 2rem;
+}
+
+.fallback-header {
+    margin-bottom: 1.5rem;
+}
+
+.fallback-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.fallback-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-color);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.fallback-title .material-symbols-outlined {
+    font-size: 1.25rem;
+    color: var(--accent-orange);
+}
+
+.fallback-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary-color);
+}
+
+.fallback-toggle input[type="checkbox"] {
+    accent-color: var(--accent-green);
+    width: 16px;
+    height: 16px;
+}
+
+.fallback-toggle-label {
+    font-weight: 500;
+}
+
+.fallback-description {
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary-color);
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* Rules List */
+.fallback-rules-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.fallback-empty {
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--text-tertiary-color);
+    font-size: var(--font-size-sm);
+    background: rgba(var(--card-bg-base-rgb), 0.15);
+    border: 1px dashed var(--border-color);
+    border-radius: var(--border-radius-md);
+}
+
+.fallback-rule {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: rgba(var(--card-bg-base-rgb), 0.25);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    transition: all var(--transition-speed);
+}
+
+.fallback-rule:hover {
+    border-color: var(--border-hover-color);
+    background: rgba(var(--card-bg-base-rgb), 0.35);
+}
+
+.fallback-rule-primary {
+    flex-shrink: 0;
+}
+
+.fallback-rule-arrow {
+    color: var(--text-tertiary-color);
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.fallback-rule-chain {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.fallback-model-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.3rem 0.7rem;
+    border-radius: 100px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.fallback-model-badge.primary {
+    background: rgba(var(--accent-blue-rgb), 0.15);
+    border: 1px solid rgba(var(--accent-blue-rgb), 0.4);
+    color: var(--accent-blue);
+}
+
+.fallback-model-badge.fallback {
+    background: rgba(var(--accent-orange-rgb), 0.15);
+    border: 1px solid rgba(var(--accent-orange-rgb), 0.4);
+    color: var(--accent-orange);
+}
+
+.fallback-chain-separator {
+    font-size: 0.7rem;
+    color: var(--text-tertiary-color);
+    font-style: italic;
+}
+
+.fallback-rule-remove {
+    background: none;
+    border: none;
+    color: var(--text-tertiary-color);
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: 50%;
+    transition: all var(--transition-speed);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.fallback-rule-remove:hover {
+    background: rgba(var(--accent-pink-rgb), 0.2);
+    color: var(--accent-pink);
+}
+
+.fallback-rule-remove .material-symbols-outlined {
+    font-size: 16px;
+}
+
+/* Add Rule Form */
+.fallback-add-form {
+    background: rgba(var(--card-bg-base-rgb), 0.15);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    padding: 1.25rem;
+}
+
+.fallback-add-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 1rem;
+}
+
+.fallback-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.fallback-field label {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--text-secondary-color);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.fallback-select,
+.fallback-input {
+    background-color: rgba(var(--card-bg-base-rgb), 0.2);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    padding: 0.6rem 0.75rem;
+    border-radius: var(--border-radius-md);
+    font-family: var(--font-family);
+    font-size: var(--font-size-sm);
+    transition: all var(--transition-speed);
+}
+
+.fallback-select:focus,
+.fallback-input:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(var(--accent-blue-rgb), 0.25);
+}
+
+.fallback-select option {
+    background: var(--bg-color);
+    color: var(--text-color);
+}
+
+.fallback-arrow {
+    display: flex;
+    align-items: center;
+    padding-bottom: 0.4rem;
+    color: var(--text-tertiary-color);
+}
+
+.fallback-add-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: rgba(var(--accent-green-rgb), 0.15);
+    color: var(--accent-green);
+    border: 1px solid var(--accent-green);
+    padding: 0.6rem 1rem;
+    border-radius: var(--border-radius-md);
+    cursor: pointer;
+    font-family: var(--font-family);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    transition: all var(--transition-speed);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.fallback-add-btn:hover {
+    background: rgba(var(--accent-green-rgb), 0.25);
+}
+
+.fallback-add-btn .material-symbols-outlined {
+    font-size: 18px;
+}
+
+/* ── CLIProxy Settings Section ── */
+
+.cliproxy-section {
+    margin-top: 2.5rem;
+    padding: 0 2rem;
+}
+
+.cliproxy-header {
+    margin-bottom: 1.5rem;
+}
+
+.cliproxy-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.cliproxy-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-color);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.cliproxy-title .material-symbols-outlined {
+    font-size: 1.25rem;
+    color: var(--accent-purple);
+}
+
+.cliproxy-description {
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary-color);
+    margin: 0;
+    line-height: 1.5;
+}
+
+.cliproxy-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: rgba(var(--card-bg-base-rgb), 0.25);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    margin-bottom: 0.5rem;
+    transition: all var(--transition-speed);
+}
+
+.cliproxy-toggle-row:hover {
+    border-color: var(--border-hover-color);
+    background: rgba(var(--card-bg-base-rgb), 0.35);
+}
+
+.cliproxy-toggle-row input[type="checkbox"] {
+    accent-color: var(--accent-green);
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.cliproxy-toggle-row input[type="checkbox"]:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.cliproxy-status {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary-color);
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.cliproxy-notice {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background-color: rgba(var(--accent-orange-rgb), 0.1);
+    color: var(--accent-orange);
+    border-radius: var(--border-radius-sm);
+    font-size: var(--font-size-sm);
+    margin-top: 1rem;
+}
+
+.cliproxy-notice .material-symbols-outlined {
+    font-size: 1.25rem;
+    flex-shrink: 0;
+}
+
+.cliproxy-models-status {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary-color);
+    margin-left: auto;
+}
+
 /* Responsive Design */
 @media (max-width: 1400px) {
     .provider-cards-grid {
@@ -642,4 +994,21 @@
         height: auto;
         min-height: 350px;
     }
+
+    .fallback-add-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .fallback-arrow {
+        display: none;
+    }
+
+    .fallback-section {
+        padding: 0 1rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .cliproxy-section { padding: 0 1rem; }
 }

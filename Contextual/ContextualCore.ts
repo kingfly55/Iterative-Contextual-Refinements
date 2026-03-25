@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { callAI, getSelectedModel, getSelectedTemperature, getSelectedTopP, getProviderForCurrentModel } from '../Routing';
+import { getSelectedModel, getSelectedTemperature, getSelectedTopP, getProviderForCurrentModel, getAPIRequestController } from '../Routing';
 import { updateControlsState } from '../UI/Controls';
 import { globalState } from '../Core/State';
 import { CustomizablePromptsContextual } from './ContextualPrompts';
@@ -950,15 +950,16 @@ async function callMainGeneratorAgent(): Promise<{ text: string; geminiContent?:
 
             if (!globalState.isContextualRunning) throw new Error('Process stopped by user');
 
-            const response = await callAI(
-                prompt,
+            const response = await getAPIRequestController().request({
+                promptOrParts: prompt,
                 temperature,
-                modelName,
-                contextualCustomPrompts!.sys_contextual_mainGenerator,
-                false,
+                model: modelName,
+                systemInstruction: contextualCustomPrompts!.sys_contextual_mainGenerator,
+                isJsonOutput: false,
                 topP,
-                getThinkingConfig()
-            );
+                thinkingConfig: getThinkingConfig(),
+                label: 'Contextual main generator',
+            });
 
             const text = extractTextFromResponse(response);
 
@@ -1025,15 +1026,16 @@ async function callIterativeAgent(currentGeneration: string): Promise<{ text: st
 
             if (!globalState.isContextualRunning) throw new Error('Process stopped by user');
 
-            const response = await callAI(
-                prompt,
+            const response = await getAPIRequestController().request({
+                promptOrParts: prompt,
                 temperature,
-                modelName,
-                contextualCustomPrompts!.sys_contextual_iterativeAgent,
-                false,
+                model: modelName,
+                systemInstruction: contextualCustomPrompts!.sys_contextual_iterativeAgent,
+                isJsonOutput: false,
                 topP,
-                getThinkingConfig()
-            );
+                thinkingConfig: getThinkingConfig(),
+                label: 'Contextual iterative agent',
+            });
 
             const text = extractTextFromResponse(response);
 
@@ -1104,15 +1106,16 @@ async function callStrategicPoolAgent(currentGeneration: string, currentCritique
 
             if (!globalState.isContextualRunning) throw new Error('Process stopped by user');
 
-            const response = await callAI(
-                prompt,
+            const response = await getAPIRequestController().request({
+                promptOrParts: prompt,
                 temperature,
-                modelName,
-                contextualCustomPrompts!.sys_contextual_solutionPoolAgent,
-                false,
+                model: modelName,
+                systemInstruction: contextualCustomPrompts!.sys_contextual_solutionPoolAgent,
+                isJsonOutput: false,
                 topP,
-                getThinkingConfig()
-            );
+                thinkingConfig: getThinkingConfig(),
+                label: 'Contextual solution pool agent',
+            });
 
             const text = extractTextFromResponse(response);
 
@@ -1167,15 +1170,16 @@ async function callMemoryAgentForCondense(recentIterations: IterationData[], cur
     if (onStateUpdated) onStateUpdated({ ...activeContextualState });
 
     try {
-        const response = await callAI(
-            prompt,
+        const response = await getAPIRequestController().request({
+            promptOrParts: prompt,
             temperature,
-            modelName,
-            contextualCustomPrompts!.sys_contextual_memoryAgent,
-            false,
+            model: modelName,
+            systemInstruction: contextualCustomPrompts!.sys_contextual_memoryAgent,
+            isJsonOutput: false,
             topP,
-            getThinkingConfig()
-        );
+            thinkingConfig: getThinkingConfig(),
+            label: 'Contextual memory agent',
+        });
 
         const memory = extractTextFromResponse(response);
 

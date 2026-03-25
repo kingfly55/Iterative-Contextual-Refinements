@@ -21,13 +21,28 @@ export function parseJsonSafe(raw: string, context: string): any {
         throw new Error(`Invalid input for ${context}: ${typeof raw}`);
     }
 
+    // Strip markdown code fences that LLMs commonly wrap JSON in
+    let cleaned = raw.trim();
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+
+    // If still no leading brace/bracket, try to extract JSON object/array
+    if (cleaned[0] !== '{' && cleaned[0] !== '[') {
+        const jsonStart = cleaned.search(/[\[{]/);
+        const jsonEndBrace = cleaned.lastIndexOf('}');
+        const jsonEndBracket = cleaned.lastIndexOf(']');
+        const jsonEnd = Math.max(jsonEndBrace, jsonEndBracket);
+        if (jsonStart !== -1 && jsonEnd > jsonStart) {
+            cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
+        }
+    }
+
     // Try native JSON.parse first (fastest, handles strict JSON)
     try {
-        return JSON.parse(raw);
+        return JSON.parse(cleaned);
     } catch {
         // Fallback to JSON5 for relaxed JSON (trailing commas, unquoted keys, single quotes)
         try {
-            return JSON5.parse(raw);
+            return JSON5.parse(cleaned);
         } catch (e) {
             console.warn(`JSON parse failed in ${context}. Error:`, e);
             throw e;

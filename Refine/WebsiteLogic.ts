@@ -1,7 +1,7 @@
 import { globalState } from '../Core/State';
 import { PipelineStopRequestedError } from '../Core/Types';
 import { updatePipelineStatusUI, notifyIterationUpdated } from './WebsiteUI';
-import { getSelectedRefinementStages, getSelectedTopP, callAI, getSelectedModel, getSelectedTemperature } from '../Routing';
+import { getSelectedRefinementStages, getSelectedTopP, getSelectedModel, getSelectedTemperature, getAPIRequestController } from '../Routing';
 import { QUALITY_MODE_SYSTEM_PROMPT } from './RefinePrompts';
 
 function renderPrompt(template: string, data: Record<string, string>): string {
@@ -13,8 +13,6 @@ function renderPrompt(template: string, data: Record<string, string>): string {
 }
 
 const MAX_RETRIES = 3;
-const INITIAL_DELAY_MS = 20000;
-const BACKOFF_FACTOR = 2;
 
 export async function runPipeline(pipelineId: number, initialRequest: string) {
     const pipeline = globalState.pipelinesState.find(p => p.id === pipelineId);
@@ -80,33 +78,25 @@ export async function runPipeline(pipelineId: number, initialRequest: string) {
                     throw new Error(`No model specified for ${stepDesc}. Please select a model for this agent or set a global model.`);
                 }
 
-                for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-                    if (pipeline.isStopRequested) throw new PipelineStopRequestedError(`Stop requested during retry for: ${stepDesc}`);
-                    iteration.retryAttempt = attempt;
-                    iteration.status = attempt > 0 ? 'retrying' : 'processing';
-                    notifyIterationUpdated(pipelineId, i);
+                iteration.retryAttempt = 0;
+                iteration.status = 'processing';
+                notifyIterationUpdated(pipelineId, i);
 
-                    if (attempt > 0) {
-                        await new Promise(resolve => setTimeout(resolve, INITIAL_DELAY_MS * Math.pow(BACKOFF_FACTOR, attempt)));
-                    }
+                const controller = getAPIRequestController();
+                const apiResponse = await controller.request({
+                    promptOrParts: userPrompt,
+                    temperature: pipeline.temperature,
+                    model: modelToUse,
+                    systemInstruction,
+                    isJsonOutput: isJson,
+                    topP: getSelectedTopP(),
+                    maxRetries: MAX_RETRIES,
+                    label: stepDesc,
+                });
 
-                    try {
-                        const apiResponse = await callAI(userPrompt, pipeline.temperature, modelToUse, systemInstruction, isJson, getSelectedTopP());
-                        iteration.status = 'processing';
-                        notifyIterationUpdated(pipelineId, i);
-                        return apiResponse.text || '';
-                    } catch (e: any) {
-                        iteration.error = `Attempt ${attempt + 1} for ${stepDesc} failed: ${e.message || 'Unknown API error'}`;
-                        if (e.details) iteration.error += `\nDetails: ${JSON.stringify(e.details)}`;
-                        if (e.status) iteration.error += `\nStatus: ${e.status}`;
-                        notifyIterationUpdated(pipelineId, i);
-                        if (attempt === MAX_RETRIES) {
-                            iteration.error = `Failed ${stepDesc} after ${MAX_RETRIES + 1} attempts: ${e.message || 'Unknown API error'}`;
-                            throw e;
-                        }
-                    }
-                }
-                throw new Error(`API call for ${stepDesc} failed all retries.`);
+                iteration.status = 'processing';
+                notifyIterationUpdated(pipelineId, i);
+                return apiResponse.text || '';
             };
 
             if (globalState.currentMode === 'website') {
@@ -152,7 +142,14 @@ export async function runPipeline(pipelineId: number, initialRequest: string) {
                         if (!featuresModel) {
                             throw new Error('No model specified for initial feature suggestions. Please select a model for this agent or set a global model.');
                         }
-                        const featuresResponse = await callAI(userPromptInitialFeatures, pipeline.temperature, featuresModel, featureSuggestSystemPrompt, false, getSelectedTopP());
+                        const featuresResponse = await getAPIRequestController().request({
+                            promptOrParts: userPromptInitialFeatures,
+                            temperature: pipeline.temperature,
+                            model: featuresModel,
+                            systemInstruction: featureSuggestSystemPrompt,
+                            topP: getSelectedTopP(),
+                            label: 'Initial feature suggestions',
+                        });
                         iteration.suggestedFeaturesContent = featuresResponse.text || '';
                         currentSuggestions = iteration.suggestedFeaturesContent;
                     } else {
@@ -206,7 +203,14 @@ export async function runPipeline(pipelineId: number, initialRequest: string) {
                         if (!refineFeatureModel) {
                             throw new Error('No model specified for refine feature suggestions. Please select a model for this agent or set a global model.');
                         }
-                        const featuresResponse = await callAI(userPromptRefineFeatures, pipeline.temperature, refineFeatureModel, refineFeatureSuggestSystemPrompt, false, getSelectedTopP());
+                        const featuresResponse = await getAPIRequestController().request({
+                            promptOrParts: userPromptRefineFeatures,
+                            temperature: pipeline.temperature,
+                            model: refineFeatureModel,
+                            systemInstruction: refineFeatureSuggestSystemPrompt,
+                            topP: getSelectedTopP(),
+                            label: 'Refine feature suggestions',
+                        });
                         iteration.suggestedFeaturesContent = featuresResponse.text || '';
                         currentSuggestions = iteration.suggestedFeaturesContent;
                     } else {

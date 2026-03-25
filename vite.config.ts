@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => {
     define: {
       'process.env.AI_API_KEY': JSON.stringify(env.AI_API_KEY || env.GEMINI_API_KEY),
       'process.env.API_KEY': JSON.stringify(env.API_KEY || env.GEMINI_API_KEY),
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
     },
     resolve: {
       alias: {
@@ -15,6 +15,15 @@ export default defineConfig(({ mode }) => {
       }
     },
     base: '/Iterative-Contextual-Refinements/',
+    server: {
+      proxy: {
+        '/cliproxy': {
+          target: env.VITE_CLIPROXY_BASE_URL || 'http://localhost:8317',
+          changeOrigin: true,
+          rewrite: (path: string) => path.replace(/^\/cliproxy/, ''),
+        }
+      }
+    },
     build: {
       rollupOptions: {
         output: {
